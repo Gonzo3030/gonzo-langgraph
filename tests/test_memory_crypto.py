@@ -16,6 +16,7 @@ def basic_state():
         HumanMessage(content="What's your take on the latest crypto market rally?")
     )
 
+@pytest.mark.asyncio
 async def test_crypto_analysis_with_memories(basic_state, mock_memory):
     # Act
     updates = await analyze_crypto_with_memory(basic_state, mock_memory)
@@ -42,6 +43,7 @@ async def test_crypto_analysis_with_memories(basic_state, mock_memory):
     assert len(stored) == 1
     assert stored[0].category == "crypto"
 
+@pytest.mark.asyncio
 async def test_memory_enhanced_crash_analysis(mock_memory):
     # Arrange
     crash_state = create_initial_state(
@@ -69,6 +71,7 @@ async def test_memory_enhanced_crash_analysis(mock_memory):
     report = updates["context"]["structured_report"]
     assert len(report) >= 3
 
+@pytest.mark.asyncio
 async def test_memory_storage(mock_memory):
     # Arrange
     state = create_initial_state(
@@ -84,6 +87,7 @@ async def test_memory_storage(mock_memory):
     assert isinstance(stored[0].timestamp, datetime)
     assert "report" in stored[0].metadata
 
+@pytest.mark.asyncio
 async def test_error_handling_with_memory(mock_memory):
     # Arrange - create invalid state
     invalid_state = create_initial_state("")
