@@ -1,22 +1,22 @@
 from typing import Dict, Any
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_anthropic import ChatAnthropic
+from langchain_core.messages import AIMessage
 from langsmith import traceable
-from ..types import AgentState
-from ..config import ANTHROPIC_MODEL
+from ..types import MessagesState
 
 @traceable(name="response_generation")
-def response_generation(state: AgentState) -> AgentState:
+def response_generation(state: MessagesState) -> Dict[str, Any]:
     """Generate final response."""
     try:
-        new_state = state.model_copy()
-        new_state.assistant_message = "This is a placeholder response."
-        new_state.intermediate_steps.append({
-            "step": "response_generation",
-            "result": "Response generated"
-        })
-        return new_state
+        response_msg = AIMessage(content="This is a placeholder response")
+        return {
+            "messages": [response_msg],
+            "assistant_message": response_msg.content,
+            "intermediate_steps": [{
+                "step": "response_generation",
+                "result": "Response generated"
+            }]
+        }
     except Exception as e:
-        new_state = state.model_copy()
-        new_state.errors.append(f"Error in response generation: {str(e)}")
-        return new_state
+        return {
+            "errors": [f"Error in response generation: {str(e)}"]
+        }
