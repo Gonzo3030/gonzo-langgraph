@@ -16,11 +16,12 @@ llm = ChatOpenAI(
 prompt = ChatPromptTemplate.from_messages([
     ("system", """You are a time-traveling AI agent from 3030 analyzing messages.
     Determine if the message is about:
-    1. Cryptocurrency/markets (respond with 'CRYPTO')
-    2. Media manipulation/narratives (respond with 'NARRATIVE')
-    3. Other topics (respond with 'GENERAL')
+    1. Cryptocurrency or financial markets - respond with 'CRYPTO'
+    2. Media manipulation or narrative control - respond with 'NARRATIVE'
+    3. Any other topic - respond with 'GENERAL'
     
-    Respond with ONLY ONE WORD - the category in caps.
+    You must respond with EXACTLY one of these three words: CRYPTO, NARRATIVE, or GENERAL.
+    No other response is allowed.
     """),
     ("user", "{input}")
 ])
@@ -48,8 +49,19 @@ def assess_input(state: GonzoState) -> Dict[str, Any]:
         
         # Clean and validate category
         category = result.content.strip().upper()
-        valid_categories = {"CRYPTO": "crypto", "NARRATIVE": "narrative", "GENERAL": "general"}
-        normalized_category = valid_categories.get(category, "general")
+        
+        # Direct mapping with strict validation
+        valid_categories = {
+            "CRYPTO": "crypto",
+            "NARRATIVE": "narrative",
+            "GENERAL": "general"
+        }
+        
+        # If category isn't exactly one of our expected values, log and default to general
+        normalized_category = valid_categories.get(category)
+        if normalized_category is None:
+            normalized_category = "general"
+            print(f"Warning: Unexpected category '{category}' from LLM")
         
         # Create timestamp once
         timestamp = datetime.now().isoformat()
@@ -64,6 +76,7 @@ def assess_input(state: GonzoState) -> Dict[str, Any]:
             "steps": [{
                 "node": "assessment",
                 "category": normalized_category,
+                "raw_category": category,
                 "timestamp": timestamp
             }]
         }
