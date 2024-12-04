@@ -14,6 +14,11 @@ def test_narrative_analysis_basic():
     # Act
     updates = analyze_narrative(initial_state)
     
+    # Print analysis for inspection
+    print("\nGonzo Analysis (Basic):\n" + "=" * 50)
+    print(updates["response"])
+    print("=" * 50 + "\n")
+    
     # Assert
     assert "gonzo_analysis" in updates["context"]
     assert len(updates["context"]["gonzo_analysis"]) > 100  # Should be a substantial analysis
@@ -30,6 +35,12 @@ def test_narrative_analysis_propaganda():
     
     # Act
     updates = analyze_narrative(initial_state)
+    
+    # Print analysis for inspection
+    print("\nGonzo Analysis (Propaganda):\n" + "=" * 50)
+    print(updates["response"])
+    print("=" * 50 + "\n")
+    
     analysis = updates["context"]["gonzo_analysis"]
     
     # Assert - Check for Gonzo style markers
