@@ -3,86 +3,81 @@ from typing import Dict, Any
 from langsmith import traceable
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
+from langchain_core.output_parsers import StrOutputParser
 from ..types import GonzoState, update_state
 from ..config import OPENAI_MODEL
 
-# Initialize LLM
+# Initialize LLM with tracing
 llm = ChatOpenAI(
     model=OPENAI_MODEL,
-    temperature=0
+    temperature=0,
+    callbacks=[]
 )
 
 # Define prompt
 prompt = ChatPromptTemplate.from_messages([
     ("system", """You are a time-traveling AI agent from 3030 analyzing messages.
-    Determine if the message is about:
-    1. Cryptocurrency or financial markets - respond with 'CRYPTO'
-    2. Media manipulation or narrative control - respond with 'NARRATIVE'
-    3. Any other topic - respond with 'GENERAL'
+    Your task is to classify the message into one of these categories:
+    1. CRYPTO - for cryptocurrency, Bitcoin, or financial markets topics
+    2. NARRATIVE - for media manipulation, narrative control, or social influence topics
+    3. GENERAL - for any other topics
     
-    You must respond with EXACTLY one of these three words: CRYPTO, NARRATIVE, or GENERAL.
-    No other response is allowed.
+    Response rules:
+    - You MUST respond with EXACTLY one word
+    - Only these responses are allowed: CRYPTO, NARRATIVE, or GENERAL
+    - Do not add any explanation or punctuation
+    - Do not add any other words
     """),
     ("user", "{input}")
 ])
 
-@traceable(name="initial_assessment")
+# Create chain with output parser
+chain = prompt | llm | StrOutputParser()
+
+@traceable(name="assess_input")
 def assess_input(state: GonzoState) -> Dict[str, Any]:
-    """Assess user input and determine category.
-    
-    Args:
-        state: Current GonzoState
-        
-    Returns:
-        Dict[str, Any]: Updates to apply to state
-    """
+    """Assess user input and determine category."""
     try:
-        # Get input from latest message
         if not state["messages"]:
             raise ValueError("No messages in state")
             
         latest_msg = state["messages"][-1]
         
-        # Get assessment from LLM
-        chain = prompt | llm
-        result = chain.invoke({"input": latest_msg.content})
+        # Get raw response for debugging
+        raw_response = chain.invoke({"input": latest_msg.content})
+        print(f"LLM Response: '{raw_response}'")
         
-        # Clean and validate category
-        category = result.content.strip().upper()
-        
-        # Direct mapping with strict validation
+        # Clean and validate
+        category = raw_response.strip().upper()
         valid_categories = {
             "CRYPTO": "crypto",
             "NARRATIVE": "narrative",
             "GENERAL": "general"
         }
         
-        # If category isn't exactly one of our expected values, log and default to general
-        normalized_category = valid_categories.get(category)
-        if normalized_category is None:
-            normalized_category = "general"
+        normalized_category = valid_categories.get(category, "general")
+        if normalized_category == "general" and category not in valid_categories:
             print(f"Warning: Unexpected category '{category}' from LLM")
         
-        # Create timestamp once
         timestamp = datetime.now().isoformat()
         
-        # Return state updates
         return {
             "category": normalized_category,
             "context": {
                 "assessment_timestamp": timestamp,
-                "raw_category": category
+                "raw_response": raw_response,
+                "normalized_category": normalized_category
             },
             "steps": [{
                 "node": "assessment",
                 "category": normalized_category,
-                "raw_category": category,
+                "raw_response": raw_response,
                 "timestamp": timestamp
             }]
         }
         
     except Exception as e:
-        # Handle errors by returning general category with error info
+        print(f"Assessment error: {str(e)}")
         timestamp = datetime.now().isoformat()
         return {
             "category": "general",
