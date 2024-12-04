@@ -49,28 +49,52 @@ def create_thread(text: str, max_length: int = 280) -> List[str]:
     Returns:
         List[str]: List of tweet-sized chunks
     """
-    # Remove any existing thread numbering
+    # Account for thread numbering format "🧵 X/Y "
+    THREAD_PREFIX_LENGTH = 12  # Length of "🧵 XX/XX " 
+    effective_length = max_length - THREAD_PREFIX_LENGTH
+    
+    # Remove any existing thread numbering and clean text
     clean_text = text.replace('*', '').strip()
     
-    # Split into sentences (roughly)
-    sentences = [s.strip() for s in clean_text.split('.')
+    # Split into sentences and clean them
+    sentences = [s.strip() + "." for s in clean_text.split('.')
                 if s.strip()]
     
     tweets = []
     current_tweet = ""
     
     for sentence in sentences:
-        # Test if adding this sentence would exceed length
-        test_tweet = current_tweet + ". " + sentence if current_tweet else sentence
-        
-        if len(test_tweet) <= (max_length - 10):  # Leave room for thread numbers
-            current_tweet = test_tweet
-        else:
+        # If sentence alone exceeds limit, need to split it
+        if len(sentence) > effective_length:
+            # If we have accumulated content, add it as a tweet
             if current_tweet:
                 tweets.append(current_tweet.strip())
-            current_tweet = sentence
+                current_tweet = ""
+            
+            # Split long sentence into chunks
+            words = sentence.split()
+            chunk = ""
+            for word in words:
+                test_chunk = chunk + (" " if chunk else "") + word
+                if len(test_chunk) <= effective_length:
+                    chunk = test_chunk
+                else:
+                    if chunk:
+                        tweets.append(chunk.strip())
+                    chunk = word
+            if chunk:
+                tweets.append(chunk.strip())
+        else:
+            # Test if adding this sentence would exceed length
+            test_tweet = current_tweet + (" " if current_tweet else "") + sentence
+            if len(test_tweet) <= effective_length:
+                current_tweet = test_tweet
+            else:
+                if current_tweet:
+                    tweets.append(current_tweet.strip())
+                current_tweet = sentence
     
-    # Add any remaining text
+    # Add any remaining content
     if current_tweet:
         tweets.append(current_tweet.strip())
     
