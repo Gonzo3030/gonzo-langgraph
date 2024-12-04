@@ -4,10 +4,10 @@ from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langsmith import traceable
 from ..types import GonzoState
-from ..config import MODEL_NAME
+from ..config import OPENAI_MODEL
 
 # Initialize LLM
-llm = ChatOpenAI(model_name=MODEL_NAME)
+llm = ChatOpenAI(model=OPENAI_MODEL)
 
 # Define prompt template
 ASSESSMENT_PROMPT = ChatPromptTemplate.from_messages([
