@@ -15,17 +15,11 @@ def test_narrative_analysis_basic():
     updates = analyze_narrative(initial_state)
     
     # Assert
-    assert "narrative_analysis" in updates["context"]
-    assert "steps" in updates
-    assert "response" in updates
-    
-    analysis = updates["context"]["narrative_analysis"]
-    assert "propaganda_techniques" in analysis
-    assert "primary_beneficiaries" in analysis
-    assert "counter_narratives" in analysis
-    assert "manipulation_tactics" in analysis
-    assert "societal_impact" in analysis
-    assert "gonzo_perspective" in analysis
+    assert "gonzo_analysis" in updates["context"]
+    assert len(updates["context"]["gonzo_analysis"]) > 100  # Should be a substantial analysis
+    assert updates["steps"][0]["node"] == "narrative_analysis"
+    assert "raw_analysis" in updates["steps"][0]
+    assert updates["response"].startswith('🔥')  # Fire emoji
 
 def test_narrative_analysis_propaganda():
     # Arrange
@@ -36,15 +30,16 @@ def test_narrative_analysis_propaganda():
     
     # Act
     updates = analyze_narrative(initial_state)
-    analysis = updates["context"]["narrative_analysis"]
+    analysis = updates["context"]["gonzo_analysis"]
     
-    # Assert
-    assert len(analysis["propaganda_techniques"]) > 0
-    assert len(analysis["primary_beneficiaries"]) > 0
-    assert len(analysis["counter_narratives"]) > 0
-    assert len(analysis["manipulation_tactics"]) > 0
-    assert analysis["societal_impact"].strip() != ""
-    assert analysis["gonzo_perspective"].strip() != ""
+    # Assert - Check for Gonzo style markers
+    analysis_lower = analysis.lower()
+    # Should contain critique of power structures
+    assert any(term in analysis_lower for term in ["corporate", "power", "control", "profit", "surveillance"])
+    # Should be substantial
+    assert len(analysis) > 200
+    # Should maintain Gonzo voice
+    assert any(marker in analysis for term in ["!", "*", "-", "..."])
 
 def test_narrative_analysis_error_handling():
     # Arrange - create invalid state
@@ -58,4 +53,4 @@ def test_narrative_analysis_error_handling():
     assert "narrative_error" in updates["context"]
     assert len(updates["steps"]) == 1
     assert "error" in updates["steps"][0]
-    assert updates["response"].startswith("Error")
+    assert "bad trips" in updates["response"].lower()  # Check for Gonzo-style error message
