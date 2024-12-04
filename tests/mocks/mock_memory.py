@@ -45,6 +45,7 @@ class MockMemoryInterface(MemoryInterface):
         limit: int = 5
     ) -> List[TimelineMemory]:
         """Return mock memories for the given timeline."""
+        # Return a list of memories, not just True/False
         return self.memories.get(timeline, [])
     
     async def store_memory(
