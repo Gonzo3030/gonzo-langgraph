@@ -3,7 +3,7 @@ from typing import Dict, Any
 from langsmith import traceable
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
-from ..types import GonzoState
+from ..types import GonzoState, update_state
 from ..config import OPENAI_MODEL
 
 # Initialize LLM
@@ -27,9 +27,19 @@ prompt = ChatPromptTemplate.from_messages([
 
 @traceable(name="initial_assessment")
 def assess_input(state: GonzoState) -> Dict[str, Any]:
-    """Assess user input and determine category."""
+    """Assess user input and determine category.
+    
+    Args:
+        state: Current GonzoState
+        
+    Returns:
+        Dict[str, Any]: Updates to apply to state
+    """
     try:
         # Get input from latest message
+        if not state["messages"]:
+            raise ValueError("No messages in state")
+            
         latest_msg = state["messages"][-1]
         
         # Get assessment from LLM
@@ -37,30 +47,39 @@ def assess_input(state: GonzoState) -> Dict[str, Any]:
         result = chain.invoke({"input": latest_msg.content})
         
         # Clean and validate category
-        category = result.content.strip().lower()
-        if category not in ["crypto", "narrative", "general"]:
-            category = "general"
+        category = result.content.strip().upper()
+        valid_categories = {"CRYPTO": "crypto", "NARRATIVE": "narrative", "GENERAL": "general"}
+        normalized_category = valid_categories.get(category, "general")
+        
+        # Create timestamp once
+        timestamp = datetime.now().isoformat()
         
         # Return state updates
         return {
-            "category": category,
+            "category": normalized_category,
             "context": {
-                "assessment_timestamp": datetime.now().isoformat()
+                "assessment_timestamp": timestamp,
+                "raw_category": category
             },
             "steps": [{
                 "node": "assessment",
-                "category": category,
-                "timestamp": datetime.now().isoformat()
+                "category": normalized_category,
+                "timestamp": timestamp
             }]
         }
         
     except Exception as e:
-        # Handle errors by returning general category
+        # Handle errors by returning general category with error info
+        timestamp = datetime.now().isoformat()
         return {
             "category": "general",
+            "context": {
+                "assessment_error": str(e),
+                "assessment_timestamp": timestamp
+            },
             "steps": [{
                 "node": "assessment",
                 "error": str(e),
-                "timestamp": datetime.now().isoformat()
+                "timestamp": timestamp
             }]
         }
