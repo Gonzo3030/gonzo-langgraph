@@ -1,44 +1,30 @@
-from typing import Dict, Any, Annotated, Literal
+from typing import Dict, Any
 from langgraph.graph import StateGraph, Graph
-from ..types import MessagesState, Channel
-from ..states import (
-    initial_assessment,
-    crypto_analysis,
-    narrative_detection,
-    response_generation
-)
+from ..types import GonzoState
+from ..nodes.assessment import assess_input
 
 def create_workflow() -> Graph:
     """Create the Gonzo agent workflow graph."""
     # Initialize the graph with our state type
-    workflow = StateGraph(MessagesState)
+    workflow = StateGraph(GonzoState)
     
     # Add nodes
-    workflow.add_node("initial", initial_assessment)
-    workflow.add_node("crypto", crypto_analysis)
-    workflow.add_node("narrative", narrative_detection)
-    workflow.add_node("response", response_generation)
+    workflow.add_node("assessment", assess_input)
     
-    # Define conditional state router
-    def route_next_step(state: MessagesState) -> str:
-        # Route based on category and errors
-        if state["errors"]:
-            return "response"
-            
-        category = state["context"].get("category", "GENERAL")
-        if category == "CRYPTO":
+    # Define conditional router
+    def route_next(state: GonzoState) -> str:
+        category = state["category"]
+        if category == "crypto":
             return "crypto"
-        elif category == "NARRATIVE":
+        elif category == "narrative":
             return "narrative"
         return "response"
     
     # Add edges with conditional routing
-    workflow.add_edge("initial", route_next_step)
-    workflow.add_edge("crypto", "response")
-    workflow.add_edge("narrative", "response")
+    workflow.add_edge("assessment", route_next)
     
     # Set entry point
-    workflow.set_entry_point("initial")
+    workflow.set_entry_point("assessment")
     
     # Compile graph
     return workflow.compile()
