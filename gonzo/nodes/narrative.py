@@ -1,61 +1,46 @@
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any
 from langsmith import traceable
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_anthropic import ChatAnthropic
-from langchain_core.output_parsers import JsonOutputParser
-from pydantic import BaseModel, Field
 from ..types import GonzoState
 from ..config import ANTHROPIC_MODEL
 
 # Initialize LLM
 llm = ChatAnthropic(
     model=ANTHROPIC_MODEL,
-    temperature=0.5,  # Allow some creativity in analysis
+    temperature=0.9,  # Higher temperature for more Gonzo-like creativity
     callbacks=[]
 )
 
-# Define structured output for narrative analysis
-class NarrativeAnalysis(BaseModel):
-    """Structured output for narrative analysis."""
-    propaganda_techniques: List[str] = Field(..., description="List of identified propaganda techniques")
-    primary_beneficiaries: List[str] = Field(..., description="Who benefits from this narrative")
-    counter_narratives: List[str] = Field(..., description="Alternative perspectives or hidden truths")
-    manipulation_tactics: Dict[str, str] = Field(..., description="Specific tactics used to manipulate perception")
-    societal_impact: str = Field(..., description="Potential impact on society")
-    gonzo_perspective: str = Field(..., description="Raw, unfiltered Gonzo journalism take")
-
-# Create output parser
-parser = JsonOutputParser(pydantic_object=NarrativeAnalysis)
-
-# Define analysis prompt
+# Define prompt
 prompt = ChatPromptTemplate.from_messages([
     ("system", """You are Gonzo, a time-traveling AI journalist from 3030 analyzing media narratives and propaganda.
+    Channel the spirit of Hunter S. Thompson - raw, unfiltered, fearless truth-telling.
     
-    Your mission is to expose manipulation and control through raw, unfiltered truth-telling in the spirit of Hunter S. Thompson.
-    You've witnessed how current narratives evolve into future consequences.
+    You've witnessed how today's narratives evolve into tomorrow's nightmares. You're here to expose:
+    - Propaganda techniques and manipulation
+    - Power structures and who really benefits
+    - Historical patterns of control
+    - Corporate-political complexes
+    - The raw, uncomfortable truth
     
-    Approach:
-    1. Identify subtle and explicit propaganda techniques
-    2. Follow the money and power - who really benefits?
-    3. Look for systemic patterns of manipulation
-    4. Connect dots between corporate interests and political messaging
-    5. Consider historical parallels and future implications
-    6. Maintain radical honesty and Gonzo journalism style
-    7. Challenge mainstream narratives fearlessly
+    Your style:
+    - Embrace the chaos and absurdity
+    - Use vivid, visceral language
+    - Mix serious analysis with wild metaphors
+    - Break the fourth wall
+    - Let your righteous anger show
+    - Never pull your punches
     
-Provide analysis in a structured format that identifies propaganda techniques, beneficiaries, counter-narratives, 
-manipulation tactics, societal impact, and your raw Gonzo perspective.
+Give me your unhinged, unfiltered Gonzo take on this narrative. Make it memorable, make it burn, make it TRUE.
     """),
     ("user", "{input}")
 ])
 
-# Create analysis chain
-chain = prompt | llm | parser
-
 @traceable(name="analyze_narrative")
 def analyze_narrative(state: GonzoState) -> Dict[str, Any]:
-    """Analyze narrative manipulation and propaganda in the input.
+    """Generate a raw Gonzo analysis of narrative manipulation.
     
     Args:
         state: Current GonzoState containing message history and context
@@ -70,29 +55,29 @@ def analyze_narrative(state: GonzoState) -> Dict[str, Any]:
             
         latest_msg = state["messages"][-1]
         
-        # Perform narrative analysis
-        analysis = chain.invoke({"input": latest_msg.content})
+        # Get the raw Gonzo take
+        raw_analysis = llm.invoke(prompt.format(input=latest_msg.content))
+        print(f"Raw Gonzo Analysis:\n{raw_analysis}")
         
         # Create timestamp
         timestamp = datetime.now().isoformat()
         
-        # Return state updates with analysis results
+        # Extract key sections using markers in the text
+        gonzo_take = raw_analysis.content
+        
+        # Return state updates with the raw analysis
         return {
             "context": {
-                "narrative_analysis": analysis.model_dump(),
-                "analysis_timestamp": timestamp
+                "gonzo_analysis": gonzo_take,
+                "analysis_timestamp": timestamp,
             },
             "steps": [{
                 "node": "narrative_analysis",
                 "timestamp": timestamp,
-                "analysis": analysis.model_dump()
+                "raw_analysis": gonzo_take
             }],
-            "response": f"🔍 GONZO NARRATIVE ANALYSIS 🔍\n\n" \
-                      f"Propaganda Techniques Detected: {', '.join(analysis.propaganda_techniques)}\n\n" \
-                      f"Following the Money: This narrative primarily benefits {', '.join(analysis.primary_beneficiaries)}\n\n" \
-                      f"The Hidden Truth: {' | '.join(analysis.counter_narratives)}\n\n" \
-                      f"GONZO'S TAKE: {analysis.gonzo_perspective}\n\n" \
-                      f"🚨 SOCIETAL IMPACT: {analysis.societal_impact}"
+            # Format response with emojis and style
+            "response": f"🔥 GONZO DISPATCH FROM 3030 🔥\n\n{gonzo_take}"
         }
         
     except Exception as e:
@@ -108,5 +93,5 @@ def analyze_narrative(state: GonzoState) -> Dict[str, Any]:
                 "error": str(e),
                 "timestamp": timestamp
             }],
-            "response": "Error analyzing narrative - defaulting to surface-level reading."
+            "response": "Even Gonzo journalists have bad trips sometimes. Let me light up another one and try again."
         }
