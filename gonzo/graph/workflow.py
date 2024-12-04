@@ -1,15 +1,17 @@
-from typing import Dict, TypeVar, Annotated
+from typing import Dict, Any, Annotated, Literal
 from langgraph.graph import StateGraph, Graph
-from pydantic import BaseModel
-from ..types import AgentState
-from .nodes import initial_assessment, crypto_analysis, narrative_detection, response_generation
-
-AgentStateT = TypeVar("AgentStateT", bound=AgentState)
+from ..types import MessagesState, Channel
+from ..states import (
+    initial_assessment,
+    crypto_analysis,
+    narrative_detection,
+    response_generation
+)
 
 def create_workflow() -> Graph:
     """Create the Gonzo agent workflow graph."""
-    # Initialize the graph with our Pydantic state type
-    workflow = StateGraph(AgentState)
+    # Initialize the graph with our state type
+    workflow = StateGraph(MessagesState)
     
     # Add nodes
     workflow.add_node("initial", initial_assessment)
@@ -18,15 +20,15 @@ def create_workflow() -> Graph:
     workflow.add_node("response", response_generation)
     
     # Define conditional state router
-    def route_next_step(state: AgentState) -> str:
+    def route_next_step(state: MessagesState) -> str:
         # Route based on category and errors
-        if state.errors:
+        if state["errors"]:
             return "response"
             
-        category = state.context.get("category", "general")
-        if category == "crypto":
+        category = state["context"].get("category", "GENERAL")
+        if category == "CRYPTO":
             return "crypto"
-        elif category == "narrative":
+        elif category == "NARRATIVE":
             return "narrative"
         return "response"
     
