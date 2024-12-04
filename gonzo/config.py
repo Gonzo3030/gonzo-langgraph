@@ -11,7 +11,7 @@ LANGCHAIN_API_KEY = os.getenv("LANGCHAIN_API_KEY")
 
 # OpenAI Configuration (for analysis tasks)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_MODEL = "gpt-4-0125-preview"  # Using model we have access to
+OPENAI_MODEL = "gpt-4-1106-preview"  # Using correct model version
 
 # Anthropic Configuration (for response generation)
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
