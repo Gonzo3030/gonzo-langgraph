@@ -1,12 +1,16 @@
 import pytest
-from langchain_core.messages import HumanMessage
-from gonzo.types import GonzoState
+from langchain_core.messages import HumanMessage, SystemMessage
+from gonzo.types import AgentState
 from gonzo.states.initial_assessment import initial_assessment
+from gonzo.config import SYSTEM_PROMPT
 
-def create_test_state(message_content: str) -> GonzoState:
+def create_test_state(message_content: str) -> AgentState:
     """Helper function to create a test state."""
-    return GonzoState(
-        messages=[HumanMessage(content=message_content)],
+    return AgentState(
+        messages=[
+            SystemMessage(content=SYSTEM_PROMPT),
+            HumanMessage(content=message_content)
+        ],
         current_step="initial",
         context={},
         intermediate_steps=[],
@@ -23,11 +27,10 @@ def test_initial_assessment_crypto():
     new_state = initial_assessment(state)
     
     # Check results
-    assert "context" in new_state
-    assert "category" in new_state["context"]
-    assert "crypto" in new_state["context"]["category"].lower()
-    assert len(new_state["intermediate_steps"]) > 0
-    assert not new_state["errors"]
+    assert "category" in new_state.context
+    assert "crypto" in new_state.context["category"].lower()
+    assert len(new_state.intermediate_steps) > 0
+    assert not new_state.errors
 
 def test_initial_assessment_narrative():
     # Create test state
@@ -37,15 +40,14 @@ def test_initial_assessment_narrative():
     new_state = initial_assessment(state)
     
     # Check results
-    assert "context" in new_state
-    assert "category" in new_state["context"]
-    assert "narrative" in new_state["context"]["category"].lower()
-    assert len(new_state["intermediate_steps"]) > 0
-    assert not new_state["errors"]
+    assert "category" in new_state.context
+    assert "narrative" in new_state.context["category"].lower()
+    assert len(new_state.intermediate_steps) > 0
+    assert not new_state.errors
 
 def test_initial_assessment_error_handling():
     # Create invalid state to test error handling
-    state = GonzoState(
+    state = AgentState(
         messages=[],  # Empty messages should cause an error
         current_step="initial",
         context={},
@@ -59,7 +61,6 @@ def test_initial_assessment_error_handling():
     new_state = initial_assessment(state)
     
     # Check error handling
-    assert "context" in new_state
-    assert "category" in new_state["context"]
-    assert new_state["context"]["category"] == "general"  # Default category on error
-    assert len(new_state["errors"]) > 0
+    assert "category" in new_state.context
+    assert new_state.context["category"] == "general"  # Default category on error
+    assert len(new_state.errors) > 0
