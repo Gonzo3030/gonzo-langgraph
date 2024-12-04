@@ -3,10 +3,12 @@ langgraph>=0.0.20
 langchain>=0.1.0
 langchain-core>=0.1.4
 langchain-openai>=0.0.5
+langchain-anthropic>=0.0.5
 langsmith>=0.0.75
 
 # LLM Integration
 openai>=1.0.0
+anthropic>=0.3.0
 
 # Search API
 brave-search==0.1.8
