@@ -14,10 +14,13 @@ llm = ChatOpenAI(
 
 # Define prompt
 prompt = ChatPromptTemplate.from_messages([
-    ("system", """You are analyzing user queries as a time-traveling AI agent from 3030.
-    Return the category and assessment of the query in the following format:
-    CATEGORY: [crypto/narrative/general]
-    ASSESSMENT: [brief explanation]
+    ("system", """You are a time-traveling AI agent from 3030 analyzing messages.
+    Determine if the message is about:
+    1. Cryptocurrency/markets (respond with 'CRYPTO')
+    2. Media manipulation/narratives (respond with 'NARRATIVE')
+    3. Other topics (respond with 'GENERAL')
+    
+    Respond with ONLY ONE WORD - the category in caps.
     """),
     ("user", "{input}")
 ])
@@ -33,32 +36,30 @@ def assess_input(state: GonzoState) -> Dict[str, Any]:
         chain = prompt | llm
         result = chain.invoke({"input": latest_msg.content})
         
-        # Extract category from response
-        response_lines = result.content.split("\n")
-        category = response_lines[0].split(":")[1].strip().lower()
-        assessment = response_lines[1].split(":")[1].strip()
+        # Clean and validate category
+        category = result.content.strip().lower()
+        if category not in ["crypto", "narrative", "general"]:
+            category = "general"
         
         # Return state updates
         return {
             "category": category,
             "context": {
-                "assessment": assessment,
-                "timestamp": datetime.now().isoformat()
+                "assessment_timestamp": datetime.now().isoformat()
             },
             "steps": [{
                 "node": "assessment",
                 "category": category,
-                "assessment": assessment,
                 "timestamp": datetime.now().isoformat()
             }]
         }
         
     except Exception as e:
-        # Handle errors gracefully
+        # Handle errors by returning general category
         return {
             "category": "general",
             "steps": [{
-                "node": "assessment", 
+                "node": "assessment",
                 "error": str(e),
                 "timestamp": datetime.now().isoformat()
             }]
