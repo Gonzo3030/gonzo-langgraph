@@ -56,14 +56,12 @@ def analyze_narrative(state: GonzoState) -> Dict[str, Any]:
         latest_msg = state["messages"][-1]
         
         # Get the raw Gonzo take
-        raw_analysis = llm.invoke(prompt.format(input=latest_msg.content))
-        print(f"Raw Gonzo Analysis:\n{raw_analysis}")
+        raw_response = llm.invoke(prompt.format(input=latest_msg.content))
+        gonzo_take = raw_response.content  # Properly extract content from response
+        print(f"Raw Gonzo Analysis:\n{gonzo_take}")
         
         # Create timestamp
         timestamp = datetime.now().isoformat()
-        
-        # Extract key sections using markers in the text
-        gonzo_take = raw_analysis.content
         
         # Return state updates with the raw analysis
         return {
