@@ -1,12 +1,16 @@
-from typing import TypedDict, List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional
+from pydantic import BaseModel, Field
 from langchain_core.messages import BaseMessage
 
-class GonzoState(TypedDict):
-    """Type definition for Gonzo agent state"""
-    messages: List[BaseMessage]  # Conversation history
-    current_step: str  # Current step in the workflow
-    context: Dict[str, Any]  # Context information
-    intermediate_steps: List[Dict[str, Any]]  # Track intermediate steps
-    assistant_message: Optional[str]  # Final response message
-    tools: Dict[str, Any]  # Available tools
-    errors: List[str]  # Any errors encountered
+class AgentState(BaseModel):
+    """State definition for the Gonzo agent using Pydantic."""
+    messages: List[BaseMessage] = Field(default_factory=list)
+    current_step: str = Field(default="initial")
+    context: Dict[str, Any] = Field(default_factory=dict)
+    intermediate_steps: List[Dict[str, Any]] = Field(default_factory=list)
+    assistant_message: Optional[str] = None
+    tools: Dict[str, Any] = Field(default_factory=dict)
+    errors: List[str] = Field(default_factory=list)
+
+    class Config:
+        arbitrary_types_allowed = True
