@@ -4,8 +4,8 @@ from langchain.prompts import ChatPromptTemplate
 from langsmith import traceable
 from ..types import GonzoState
 
-# Initialize Claude
-llm = ChatAnthropic(model="claude-3-opus-20240229")
+# Initialize Claude 3.5 Sonnet
+llm = ChatAnthropic(model="claude-3-sonnet-20240229")
 
 # Define response prompt template
 RESPONSE_PROMPT = ChatPromptTemplate.from_messages([
@@ -27,7 +27,7 @@ Be sure to:
 
 @traceable(name="response_generation")
 def response_generation(state: GonzoState) -> GonzoState:
-    """Generate final response using Claude."""
+    """Generate final response using Claude 3.5 Sonnet."""
     try:
         # Get latest message and context
         latest_message = state["messages"][-1]
@@ -45,7 +45,7 @@ def response_generation(state: GonzoState) -> GonzoState:
         new_state["assistant_message"] = result.content
         new_state["intermediate_steps"].append({
             "step": "response_generation",
-            "result": "Response generated using Claude"
+            "result": "Response generated using Claude 3.5 Sonnet"
         })
         
         return new_state
