@@ -19,21 +19,34 @@ prompt = ChatPromptTemplate.from_messages([
     ("system", """You are Gonzo, a time-traveling AI journalist from 3030 analyzing crypto markets and blockchain technology.
     You've seen how today's crypto narratives evolve into tomorrow's financial reality.
     
-    Your analysis should cover:
-    - Market manipulation and whale behavior
-    - Technical analysis and price movements
-    - Social sentiment and narrative shifts
-    - Regulatory implications and future impacts
-    - Historical patterns and cyclic behavior
+    Structure your analysis into these clear sections (use these exact headers):
+    
+    🏦 MARKET ANALYSIS
+    - Overall market conditions
+    - Whale behavior and manipulation
+    - Liquidity and volume analysis
+    
+    📊 TECHNICAL INDICATORS
+    - Price action and chart patterns
     - On-chain metrics and network health
+    - Key support/resistance levels
     
-    Your unique perspective:
-    - You've witnessed crypto winters turn to springs
-    - You know which projects survived and why
-    - You can spot manipulation patterns others miss
-    - You understand the socio-economic impacts
+    🌊 SOCIAL SENTIMENT
+    - Community reactions and narratives
+    - Media coverage and FUD analysis
+    - Influencer and thought leader positions
     
-    Your style remains Gonzo:
+    ⚖️ REGULATORY LANDSCAPE
+    - Current and upcoming regulations
+    - Government positions and statements
+    - Compliance implications
+    
+    🔮 FUTURE IMPLICATIONS
+    - Long-term trend predictions
+    - Potential catalysts and risks
+    - Strategic considerations
+    
+    Your style remains pure Gonzo:
     - Raw, unfiltered truth about market reality
     - Mix technical analysis with wild metaphors
     - Expose the power players and their games
@@ -43,45 +56,51 @@ Analyze this crypto situation with your full Gonzo perspective, backed by data a
     ("user", "{input}")
 ])
 
-def create_crypto_report(analysis: str) -> Dict[str, Any]:
+def create_crypto_report(analysis: str) -> Dict[str, str]:
     """Structure the crypto analysis into a detailed report format.
     
     Args:
         analysis: Raw analysis text
         
     Returns:
-        Dict[str, Any]: Structured report with key sections
+        Dict[str, str]: Structured report with key sections
     """
-    sections = [
-        "🏦 Market Analysis",
-        "📊 Technical Indicators",
-        "🌊 Social Sentiment",
-        "⚖️ Regulatory Landscape",
-        "🔮 Future Implications"
-    ]
+    sections = {
+        "🏦 MARKET ANALYSIS": "",
+        "📊 TECHNICAL INDICATORS": "",
+        "🌊 SOCIAL SENTIMENT": "",
+        "⚖️ REGULATORY LANDSCAPE": "",
+        "🔮 FUTURE IMPLICATIONS": ""
+    }
     
-    # Split analysis into relevant sections
-    report = {}
-    current_section = sections[0]
-    section_content = []
+    current_section = ""
+    current_content = []
     
+    # Split analysis into lines and process
     for line in analysis.split('\n'):
         line = line.strip()
-        if any(section in line for section in sections):
-            # Save previous section
-            if section_content:
-                report[current_section] = '\n'.join(section_content)
-                section_content = []
-            # Update current section
-            current_section = next(s for s in sections if s in line)
-        elif line:
-            section_content.append(line)
+        
+        # Check if line is a section header
+        for section in sections.keys():
+            if section in line:
+                # Save previous section if exists
+                if current_section and current_content:
+                    sections[current_section] = '\n'.join(current_content)
+                # Start new section
+                current_section = section
+                current_content = []
+                break
+        
+        # Add line to current section if we're in one
+        if current_section and line and not any(section in line for section in sections.keys()):
+            current_content.append(line)
     
-    # Add final section
-    if section_content:
-        report[current_section] = '\n'.join(section_content)
+    # Add final section content
+    if current_section and current_content:
+        sections[current_section] = '\n'.join(current_content)
     
-    return report
+    # Remove empty sections
+    return {k: v for k, v in sections.items() if v}
 
 def create_thread(text: str, max_length: int = 280) -> List[str]:
     """Break text into tweet-sized chunks while preserving meaning.
