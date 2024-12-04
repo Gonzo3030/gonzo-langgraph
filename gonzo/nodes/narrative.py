@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Dict, Any
+from time import sleep
 from langsmith import traceable
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_anthropic import ChatAnthropic
@@ -38,6 +39,18 @@ Give me your unhinged, unfiltered Gonzo take on this narrative. Make it memorabl
     ("user", "{input}")
 ])
 
+def retry_with_backoff(func, max_retries=3):
+    """Retry a function with exponential backoff."""
+    for attempt in range(max_retries):
+        try:
+            return func()
+        except Exception as e:
+            if attempt == max_retries - 1:  # Last attempt
+                raise e
+            wait_time = (2 ** attempt) * 2  # 2, 4, 8 seconds
+            print(f"Attempt {attempt + 1} failed. Waiting {wait_time} seconds...")
+            sleep(wait_time)
+
 @traceable(name="analyze_narrative")
 def analyze_narrative(state: GonzoState) -> Dict[str, Any]:
     """Generate a raw Gonzo analysis of narrative manipulation.
@@ -55,9 +68,12 @@ def analyze_narrative(state: GonzoState) -> Dict[str, Any]:
             
         latest_msg = state["messages"][-1]
         
-        # Get the raw Gonzo take
-        raw_response = llm.invoke(prompt.format(input=latest_msg.content))
-        gonzo_take = raw_response.content  # Properly extract content from response
+        # Get the raw Gonzo take with retry logic
+        def get_analysis():
+            raw_response = llm.invoke(prompt.format(input=latest_msg.content))
+            return raw_response.content
+            
+        gonzo_take = retry_with_backoff(get_analysis)
         print(f"Raw Gonzo Analysis:\n{gonzo_take}")
         
         # Create timestamp
