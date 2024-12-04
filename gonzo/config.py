@@ -9,9 +9,13 @@ LANGCHAIN_TRACING_V2 = True
 LANGCHAIN_PROJECT = "gonzo-langgraph"
 LANGCHAIN_API_KEY = os.getenv("LANGCHAIN_API_KEY")
 
-# Model Configuration
-MODEL_NAME = "gpt-4-1106-preview"  # or your preferred model
+# OpenAI Configuration (for analysis tasks)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_MODEL = "gpt-4-turbo-preview"  # Latest GPT-4 model
+
+# Anthropic Configuration (for response generation)
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+ANTHROPIC_MODEL = "claude-3-sonnet-20240229"  # Latest Claude 3.5 Sonnet
 
 # Brave Search Configuration
 BRAVE_API_KEY = os.getenv("BRAVE_API_KEY")
