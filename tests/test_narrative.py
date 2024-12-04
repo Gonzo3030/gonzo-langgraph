@@ -38,8 +38,9 @@ def test_narrative_analysis_propaganda():
     assert any(term in analysis_lower for term in ["corporate", "power", "control", "profit", "surveillance"])
     # Should be substantial
     assert len(analysis) > 200
-    # Should maintain Gonzo voice
-    assert any(marker in analysis for term in ["!", "*", "-", "..."])
+    # Should maintain Gonzo voice - check for style markers
+    gonzo_markers = ["!", "*", "-", "..."]
+    assert any(term in analysis for term in gonzo_markers), f"No Gonzo style markers found. Looking for: {gonzo_markers}"
 
 def test_narrative_analysis_error_handling():
     # Arrange - create invalid state
