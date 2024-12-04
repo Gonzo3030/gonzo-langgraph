@@ -2,14 +2,14 @@ from datetime import datetime
 from typing import Dict, Any
 from langsmith import traceable
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
+from langchain_anthropic import ChatAnthropic
 from langchain_core.output_parsers import StrOutputParser
 from ..types import GonzoState, update_state
-from ..config import OPENAI_MODEL
+from ..config import ANTHROPIC_MODEL
 
 # Initialize LLM with tracing
-llm = ChatOpenAI(
-    model=OPENAI_MODEL,
+llm = ChatAnthropic(
+    model=ANTHROPIC_MODEL,
     temperature=0,
     callbacks=[]
 )
@@ -65,13 +65,13 @@ def assess_input(state: GonzoState) -> Dict[str, Any]:
             "category": normalized_category,
             "context": {
                 "assessment_timestamp": timestamp,
-                "raw_category": category,  # Changed from raw_response to raw_category
+                "raw_category": category,
                 "normalized_category": normalized_category
             },
             "steps": [{
                 "node": "assessment",
                 "category": normalized_category,
-                "raw_category": category,  # Changed here too for consistency
+                "raw_category": category,
                 "timestamp": timestamp
             }]
         }
