@@ -4,7 +4,7 @@ from datetime import datetime
 from langchain_core.messages import HumanMessage
 from gonzo.nodes.memory_enhanced_crypto import analyze_crypto_with_memory
 from gonzo.types import GonzoState, create_initial_state
-from .mocks.mock_memory import MockMemoryInterface
+from tests.mocks.mock_memory import MockMemoryInterface
 
 @pytest.fixture
 def mock_memory():
