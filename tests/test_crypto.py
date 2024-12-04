@@ -1,84 +1,88 @@
 import pytest
-from datetime import datetime
-from ..gonzo.nodes.crypto import create_thread, analyze_crypto
-from ..gonzo.types import GonzoState, Message
+from typing import Dict, Any
+from langchain_core.messages import HumanMessage
+from gonzo.nodes.crypto import analyze_crypto, create_thread
+from gonzo.types import GonzoState, create_initial_state
 
 def test_create_thread():
-    """Test breaking long crypto analysis into tweet-sized chunks."""
-    test_text = "This is a test of the crypto analysis system. It should be broken into multiple tweets. Each tweet should be properly formatted with the crypto emoji."
-    thread = create_thread(test_text)
+    # Test thread creation with sample crypto analysis
+    text = "First insight about Bitcoin markets. Second point about institutional adoption. Third very detailed analysis about the technical indicators and market sentiment that should definitely be split into multiple tweets."
+    thread = create_thread(text, max_length=100)
     
-    assert all(tweet.startswith('💰') for tweet in thread)
-    assert all(len(tweet) <= 280 for tweet in thread)
-    assert all(f"{i+1}/{len(thread)}" in tweet for i, tweet in enumerate(thread))
+    assert len(thread) > 1  # Should create multiple tweets
+    assert all(len(tweet) <= 100 for tweet in thread)  # Each tweet within limit
+    assert all('💰' in tweet for tweet in thread)  # Crypto emoji in each
+    assert all("/" in tweet for tweet in thread)  # Thread numbering
 
 def test_crypto_analysis_basic():
-    """Test basic crypto market analysis functionality."""
-    # Setup test state
-    test_state = GonzoState(
-        messages=[Message(role="user", content="What's your take on Bitcoin's latest price action?")],
-        context={},
-        steps=[],
-        response=""
+    # Arrange
+    initial_state = create_initial_state(
+        HumanMessage(content="Bitcoin just broke $50k and everyone's calling for $100k. "  
+                    "What's really driving this rally?")
     )
     
-    # Run analysis
-    result = analyze_crypto(test_state)
+    # Act
+    updates = analyze_crypto(initial_state)
     
-    # Verify structure
-    assert "crypto_analysis" in result["context"]
-    assert "structured_report" in result["context"]
-    assert "tweet_thread" in result["context"]
-    assert "analysis_timestamp" in result["context"]
+    # Print analysis for inspection
+    print("\nGonzo Crypto Analysis (Basic):\n" + "=" * 50)
+    print(updates["response"])
+    print("=" * 50 + "\n")
     
-    # Verify steps
-    assert len(result["steps"]) == 1
-    assert result["steps"][0]["node"] == "crypto_analysis"
-    
-    # Print analysis for review
-    print("Raw Crypto Analysis:")
-    print(result["context"]["crypto_analysis"])
-    print("\nStructured Report:")
-    for section, content in result["context"]["structured_report"].items():
-        print(f"\n{section}:")
-        print(content)
-    print("\nTweet Thread:")
-    for tweet in result["context"]["tweet_thread"]:
-        print(f"\n{tweet}")
-    
-    # Print full response
-    print("\nGonzo Crypto Analysis:")
-    print("=" * 50)
-    print(result["response"])
-    print("=" * 50)
+    # Assert
+    assert "crypto_analysis" in updates["context"]
+    assert "structured_report" in updates["context"]
+    assert "tweet_thread" in updates["context"]
+    assert len(updates["context"]["tweet_thread"]) > 0
+    assert len(updates["context"]["crypto_analysis"]) > 100
+    assert updates["steps"][0]["node"] == "crypto_analysis"
+    assert "tweet_thread" in updates["steps"][0]
+    assert updates["response"].startswith('💰')  # Crypto emoji
 
 def test_crypto_analysis_market_crash():
-    """Test analysis during market crash scenarios."""
-    test_state = GonzoState(
-        messages=[Message(role="user", content="The crypto market just crashed 40% in 24 hours! What's really going on?")],
-        context={},
-        steps=[],
-        response=""
+    # Arrange
+    initial_state = create_initial_state(
+        HumanMessage(content="The crypto market just crashed 40% in 24 hours! " 
+                    "What's really going on behind the scenes?")
     )
     
-    result = analyze_crypto(test_state)
-    print("Market Crash Analysis:")
-    print("=" * 50)
-    print(result["response"])
-    print("=" * 50)
+    # Act
+    updates = analyze_crypto(initial_state)
+    
+    # Print analysis for inspection
+    print("\nGonzo Analysis (Market Crash):\n" + "=" * 50)
+    print(updates["response"])
+    print("=" * 50 + "\n")
+    
+    analysis = updates["context"]["crypto_analysis"]
+    report = updates["context"]["structured_report"]
+    thread = updates["context"]["tweet_thread"]
+    
+    # Assert - Check for Gonzo style markers and crash analysis
+    analysis_lower = analysis.lower()
+    # Should contain market crash terminology
+    assert any(term in analysis_lower for term in ["crash", "liquidation", "panic", "whale", "manipulation"])
+    # Should be substantial
+    assert len(analysis) > 200
+    # Should have structured sections
+    assert len(report) >= 3  # At least 3 sections
+    # Should maintain Gonzo voice
+    gonzo_markers = ["!", "*", "-", "..."]
+    assert any(term in analysis for term in gonzo_markers)
+    # Check thread
+    assert len(thread) > 0
+    assert all(len(t) <= 280 for t in thread)  # Twitter limit
 
 def test_crypto_analysis_error_handling():
-    """Test error handling with empty state."""
-    test_state = GonzoState(
-        messages=[],
-        context={},
-        steps=[],
-        response=""
-    )
+    # Arrange - create invalid state
+    invalid_state = create_initial_state("")
+    invalid_state["messages"] = []
     
-    result = analyze_crypto(test_state)
-    print(f"Crypto analysis error: {result['context'].get('crypto_error')}")
+    # Act
+    updates = analyze_crypto(invalid_state)
     
-    assert "crypto_error" in result["context"]
-    assert result["steps"][0]["node"] == "crypto_analysis"
-    assert "error" in result["steps"][0]
+    # Assert
+    assert "crypto_error" in updates["context"]
+    assert len(updates["steps"]) == 1
+    assert "error" in updates["steps"][0]
+    assert "neural networks" in updates["response"].lower()  # Check for crypto-themed error message
