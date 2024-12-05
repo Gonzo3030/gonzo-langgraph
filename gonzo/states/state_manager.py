@@ -55,3 +55,35 @@ class StateManager:
         
         # Compile graph
         self.compiled_graph = self.graph.compile()
+    
+    def _determine_next_state(self, state: Dict[str, Any]) -> str:
+        """Determine the next state based on current state and processing results."""
+        # Check for errors first
+        if state.get("errors"):
+            return "response"
+        
+        # Get category and batch processing results
+        category = state.get("context", {}).get("category")
+        batch_results = state.get("current_batch", {})
+        
+        # Use batch processing results to influence routing
+        if batch_results:
+            similarity_score = batch_results.get("similarity_score", 0)
+            if similarity_score > 0.8:  # High similarity suggests related events
+                if category == "crypto":
+                    return "crypto"
+                elif category == "narrative":
+                    return "narrative"
+        
+        # Default to knowledge integration for mixed or uncertain cases
+        return "knowledge"
+    
+    async def run(self, initial_state: Dict[str, Any]) -> Dict[str, Any]:
+        """Run the state machine with given initial state and tracking."""
+        if self.run_tree:
+            with self.run_tree.as_child('graph_execution') as run:
+                run.update_inputs({'initial_state': initial_state})
+                final_state = await self.compiled_graph.ainvoke(initial_state)
+                run.update_outputs({'final_state': final_state})
+                return final_state
+        return await self.compiled_graph.ainvoke(initial_state)
