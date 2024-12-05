@@ -1,5 +1,6 @@
 from typing import Dict, Any, List
 from datetime import datetime
+import logging
 from langsmith import traceable
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_anthropic import ChatAnthropic
@@ -9,10 +10,13 @@ from langchain_core.runnables import RunnableParallel, RunnablePassthrough
 from ..graph.state import GonzoState
 from ..config import ANTHROPIC_MODEL
 
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
 # Initialize LLM
 llm = ChatAnthropic(
     model=ANTHROPIC_MODEL,
-    temperature=0.85  # Slightly lower temperature for more analytical precision
+    temperature=0.85
 )
 
 # Define crypto analysis prompt
@@ -64,6 +68,7 @@ analysis_chain = RunnableParallel(
 
 def create_crypto_report(analysis: str) -> Dict[str, str]:
     """Structure the crypto analysis into a detailed report format."""
+    logger.debug(f"Creating crypto report from analysis: {analysis[:100]}...")
     sections = {
         "🏦 MARKET ANALYSIS": "",
         "📊 TECHNICAL INDICATORS": "",
@@ -97,10 +102,13 @@ def create_crypto_report(analysis: str) -> Dict[str, str]:
     if current_section and current_content:
         sections[current_section] = '\n'.join(current_content)
     
-    return {k: v for k, v in sections.items() if v}
+    result = {k: v for k, v in sections.items() if v}
+    logger.debug(f"Created report with {len(result)} sections")
+    return result
 
 def create_thread(text: str, max_length: int = 280) -> List[str]:
     """Break text into tweet-sized chunks while preserving meaning."""
+    logger.debug(f"Creating thread from text: {text[:100]}...")
     THREAD_PREFIX_LENGTH = 12
     effective_length = max_length - THREAD_PREFIX_LENGTH
     
@@ -140,22 +148,27 @@ def create_thread(text: str, max_length: int = 280) -> List[str]:
         tweets.append(current_tweet.strip())
     
     total = len(tweets)
-    return [f"💰 {i+1}/{total} {tweet}" for i, tweet in enumerate(tweets)]
+    result = [f"💰 {i+1}/{total} {tweet}" for i, tweet in enumerate(tweets)]
+    logger.debug(f"Created thread with {len(result)} tweets")
+    return result
 
 @traceable(name="analyze_crypto")
 async def analyze_crypto(state: GonzoState) -> Dict[str, Any]:
     """Generate a detailed Gonzo analysis of crypto markets and trends."""
     try:
         if not state.state['messages']:
+            logger.error("No messages in state")
             state.add_error("No messages in state")
             state.set_next_step('error')
             return {"next": "error"}
             
         latest_msg = state.state['messages'][-1]
+        logger.debug(f"Processing message: {latest_msg.content[:100]}...")
         
         # Get analysis using chain
-        result = await analysis_chain.ainvoke({"content": latest_msg.content})
-        gonzo_take = result["output"]
+        chain_result = await analysis_chain.ainvoke({"content": latest_msg.content})
+        logger.debug(f"Got chain result: {chain_result}")
+        gonzo_take = chain_result["output"]
         
         # Create structured report and thread
         crypto_report = create_crypto_report(gonzo_take)
@@ -171,11 +184,16 @@ async def analyze_crypto(state: GonzoState) -> Dict[str, Any]:
             "timestamp": timestamp
         }
         
+        logger.debug(f"Saving analysis result to memory: {analysis_result}")
         state.save_to_memory(
             key="last_crypto_analysis",
             value=analysis_result,
             permanent=True  # Save crypto analysis permanently
         )
+        
+        # Verify memory storage
+        memory_check = state.get_from_memory("last_crypto_analysis", "long_term")
+        logger.debug(f"Memory check result: {memory_check}")
         
         # Format final response
         response = (
@@ -193,6 +211,7 @@ async def analyze_crypto(state: GonzoState) -> Dict[str, Any]:
         
     except Exception as e:
         error_msg = f"Crypto analysis error: {str(e)}"
+        logger.error(error_msg)
         state.add_error(error_msg)
         state.save_to_memory(
             key="last_error",
