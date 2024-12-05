@@ -1,5 +1,5 @@
 from typing import TypedDict, Annotated, Sequence, cast
-from langchain.pydantic_v1 import BaseModel
+from pydantic import BaseModel  # Updated import
 from langgraph.prebuilt.tool_executor import ToolExecutor
 from langchain.tools import Tool
 from gonzo.state import GonzoState
