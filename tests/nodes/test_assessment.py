@@ -26,7 +26,7 @@ async def test_assess_input_crypto(state, mock_chain):
     """Test assessment with crypto message."""
     state.add_message(HumanMessage(content="Bitcoin price analysis"))
     
-    with patch("gonzo.nodes.new_assessment.chain.ainvoke", mock_chain):
+    with patch("gonzo.nodes.new_assessment.chain.invoke", mock_chain):
         result = await assess_input(state)
         
         assert result["next"] == "crypto"
@@ -43,7 +43,7 @@ async def test_assess_input_error_handling(state):
     async def mock_error(*args, **kwargs):
         raise ValueError("Test error")
     
-    with patch("gonzo.nodes.new_assessment.chain.ainvoke", mock_error):
+    with patch("gonzo.nodes.new_assessment.chain.invoke", mock_error):
         result = await assess_input(state)
         
         assert result["next"] == "error"
@@ -59,7 +59,7 @@ async def test_assess_input_invalid_category(state):
     """Test assessment with invalid category response."""
     state.add_message(HumanMessage(content="Test message"))
     
-    with patch("gonzo.nodes.new_assessment.chain.ainvoke", AsyncMock(return_value="INVALID")):
+    with patch("gonzo.nodes.new_assessment.chain.invoke", AsyncMock(return_value="INVALID")):
         result = await assess_input(state)
         
         assert result["next"] == "general"
