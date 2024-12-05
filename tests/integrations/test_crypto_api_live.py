@@ -9,7 +9,8 @@ load_dotenv()
 @pytest.fixture
 def api_client():
     api_key = os.getenv('CRYPTOCOMPARE_API_KEY')
-    return CryptoAPIClient(api_key=api_key)
+    # Use verify_ssl=False for development/testing
+    return CryptoAPIClient(api_key=api_key, verify_ssl=False)
 
 @pytest.mark.asyncio
 async def test_live_price_fetch(api_client):
