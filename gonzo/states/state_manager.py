@@ -31,3 +31,27 @@ class StateManager:
             if hasattr(node, 'set_run_tree'):
                 node.set_run_tree(self.run_tree)
             self.graph.add_node(name, node)
+    
+    def _setup_transitions(self):
+        """Setup state transitions with tracking."""
+        def next_step_router(state: Dict[str, Any]) -> str:
+            """Route to next state based on current state and batch processing results."""
+            if self.run_tree:
+                with self.run_tree.as_child('state_transition') as run:
+                    run.update_inputs({'current_state': state})
+                    next_state = self._determine_next_state(state)
+                    run.update_outputs({'next_state': next_state})
+                    return next_state
+            return self._determine_next_state(state)
+        
+        # Add edges with conditional routing
+        self.graph.add_edge("initial", next_step_router)
+        self.graph.add_edge("crypto", "response")
+        self.graph.add_edge("narrative", "response")
+        self.graph.add_edge("knowledge", "response")
+        
+        # Set entry point
+        self.graph.set_entry_point("initial")
+        
+        # Compile graph
+        self.compiled_graph = self.graph.compile()
