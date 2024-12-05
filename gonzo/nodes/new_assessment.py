@@ -4,6 +4,7 @@ from langsmith import traceable
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_anthropic import ChatAnthropic
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnableParallel, RunnablePassthrough
 
 from ..graph.state import GonzoState
 from ..config import ANTHROPIC_MODEL
@@ -28,11 +29,13 @@ prompt = ChatPromptTemplate.from_messages([
     - Do not add any explanation or punctuation
     - Do not add any other words
     """),
-    ("user", "{input}")
+    ("user", "{content}")
 ])
 
-# Create chain with output parser
-chain = (prompt | llm | StrOutputParser())
+# Create assessment chain
+assessment_chain = RunnableParallel(
+    output=prompt | llm | StrOutputParser()
+).with_types(input_type=Dict)
 
 @traceable(name="assess_input")
 async def assess_input(state: GonzoState) -> Dict[str, Any]:
@@ -52,9 +55,9 @@ async def assess_input(state: GonzoState) -> Dict[str, Any]:
             
         latest_msg = state.state['messages'][-1]
         
-        # Get category from LLM
-        raw_response = await chain.invoke({"input": latest_msg.content})
-        category = raw_response.strip().upper()
+        # Get category from LLM using the assessment chain
+        result = await assessment_chain.ainvoke({"content": latest_msg.content})
+        category = result["output"].strip().upper()
         
         # Validate and normalize category
         valid_categories = {
