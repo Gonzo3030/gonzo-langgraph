@@ -2,6 +2,8 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 from pydantic import BaseModel
 import aiohttp
+from aiohttp import TCPConnector
+import ssl
 
 class CryptoPrice(BaseModel):
     symbol: str
@@ -13,14 +15,25 @@ class CryptoPrice(BaseModel):
 class CryptoAPIClient:
     """Client for CryptoCompare API"""
     
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, verify_ssl: bool = True):
         self.base_url = "https://min-api.cryptocompare.com/data"
         self.api_key = api_key
         self.session: Optional[aiohttp.ClientSession] = None
+        self.verify_ssl = verify_ssl
     
     async def _ensure_session(self):
         if self.session is None:
-            self.session = aiohttp.ClientSession()
+            # Create SSL context if needed
+            if not self.verify_ssl:
+                ssl_context = ssl.create_default_context()
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
+                connector = TCPConnector(ssl=ssl_context)
+            else:
+                connector = None
+            
+            # Create session with proper headers and connector
+            self.session = aiohttp.ClientSession(connector=connector)
             if self.api_key:
                 self.session.headers.update({"authorization": f"Apikey {self.api_key}"})
     
