@@ -12,8 +12,8 @@ class BatchState(TypedDict):
 
 class MemoryState(TypedDict):
     """State for memory management."""
-    short_term: Dict[str, Any]
-    long_term: Dict[str, Any]
+    short_term: Dict[str, Dict[str, Any]]
+    long_term: Dict[str, Dict[str, Any]]
     last_accessed: str
 
 class GonzoStateDict(TypedDict):
@@ -52,7 +52,13 @@ class GonzoState(BaseModel):
         self.state['current_batch'] = batch
     
     def save_to_memory(self, key: str, value: Any, permanent: bool = False) -> None:
-        """Save data to memory, either short-term or long-term."""
+        """Save data to memory, either short-term or long-term.
+        
+        Args:
+            key: Key to store the value under
+            value: Value to store
+            permanent: If True, store in long-term memory
+        """
         memory_type = 'long_term' if permanent else 'short_term'
         if self.state['memory'] is None:
             self.state['memory'] = {
@@ -61,6 +67,7 @@ class GonzoState(BaseModel):
                 'last_accessed': datetime.now().isoformat()
             }
         
+        # Store value with metadata
         self.state['memory'][memory_type][key] = {
             'value': value,
             'timestamp': datetime.now().isoformat()
@@ -68,10 +75,23 @@ class GonzoState(BaseModel):
         self.state['memory']['last_accessed'] = datetime.now().isoformat()
     
     def get_from_memory(self, key: str, memory_type: str = 'short_term') -> Optional[Any]:
-        """Retrieve data from memory."""
-        if not self.state['memory'] or key not in self.state['memory'][memory_type]:
+        """Retrieve data from memory.
+        
+        Args:
+            key: Key to retrieve
+            memory_type: Either 'short_term' or 'long_term'
+            
+        Returns:
+            The stored value or None if not found
+        """
+        if not self.state['memory']:
             return None
-        return self.state['memory'][memory_type][key]['value']
+            
+        memory_dict = self.state['memory'][memory_type]
+        if key not in memory_dict:
+            return None
+            
+        return memory_dict[key]['value']
     
     def set_next_step(self, step: str) -> None:
         """Set the next step in the workflow."""
