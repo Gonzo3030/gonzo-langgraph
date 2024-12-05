@@ -96,3 +96,75 @@ def create_thread(text: str, max_length: int = 280) -> List[str]:
     result = [f"🧵 {i+1}/{total} {tweet}" for i, tweet in enumerate(tweets)]
     logger.debug(f"Created Gonzo thread with {len(result)} tweets")
     return result
+
+@traceable(name="analyze_narrative")
+async def analyze_narrative(state: GonzoState) -> Dict[str, Any]:
+    """Generate a raw Gonzo analysis of narrative manipulation."""
+    try:
+        if not state.state['messages']:
+            logger.error("No messages in state")
+            state.add_error("No messages in state")
+            state.set_next_step('error')
+            return {"next": "error"}
+            
+        latest_msg = state.state['messages'][-1]
+        logger.debug(f"Processing message: {latest_msg.content[:100]}...")
+        
+        # Get the pure Gonzo take
+        chain_result = await analysis_chain.ainvoke({"content": latest_msg.content})
+        logger.debug(f"Got chain result: {chain_result}")
+        gonzo_take = chain_result["output"]
+        
+        # Create the thread version
+        tweet_thread = create_thread(gonzo_take)
+        
+        timestamp = datetime.now().isoformat()
+        
+        # Save the analysis for future reference
+        analysis_result = {
+            "raw_analysis": gonzo_take,
+            "tweet_thread": tweet_thread,
+            "timestamp": timestamp
+        }
+        
+        logger.debug(f"Saving narrative analysis to memory: {analysis_result}")
+        state.save_to_memory(
+            key="last_narrative_analysis",
+            value=analysis_result,
+            permanent=True  # Keep Gonzo's insights permanently
+        )
+        
+        # Verify memory storage
+        memory_check = state.get_from_memory("last_narrative_analysis", "long_term")
+        logger.debug(f"Memory check result: {memory_check}")
+        
+        # Format with classic Gonzo style
+        response = (
+            f"🔥 GONZO DISPATCH FROM 3030 🔥\n\n{gonzo_take}\n\n"
+            f"🧵 THREAD VERSION:\n\n" + "\n\n".join(tweet_thread)
+        )
+        
+        state.set_next_step("respond")
+        return {
+            "next": "respond",
+            "response": response
+        }
+        
+    except Exception as e:
+        error_msg = f"Narrative analysis error: {str(e)}"
+        logger.error(error_msg)
+        state.add_error(error_msg)
+        state.save_to_memory(
+            key="last_error",
+            value={
+                "error": error_msg,
+                "timestamp": datetime.now().isoformat(),
+                "node": "narrative"
+            }
+        )
+        
+        state.set_next_step("error")
+        return {
+            "next": "error",
+            "response": "Even Gonzo journalists have bad trips sometimes. Let me light up another one and try again."
+        }
