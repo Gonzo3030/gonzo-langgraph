@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gonzo-langgraph"
+version = "0.0.1"
+description = "LangGraph-based implementation of the Gonzo AI Agent"
+requires-python = ">= 3.9"
+dependencies = [
+    "langchain>=0.1.0",
+    "langgraph>=0.0.1",
+    "langsmith",
+    "pydantic>=2.0.0",
+    "numpy",
+    "pytest",
+    "pytest-asyncio"
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["gonzo/"]
