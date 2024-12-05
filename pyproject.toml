@@ -9,6 +9,7 @@ description = "LangGraph-based implementation of the Gonzo AI Agent"
 requires-python = ">= 3.9"
 dependencies = [
     "langchain>=0.1.0",
+    "langchain-community>=0.0.10",
     "langgraph>=0.0.1",
     "langsmith",
     "pydantic>=2.0.0",
