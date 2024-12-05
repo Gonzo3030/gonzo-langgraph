@@ -32,7 +32,7 @@ prompt = ChatPromptTemplate.from_messages([
 ])
 
 # Create chain with output parser
-chain = prompt | llm | StrOutputParser()
+chain = (prompt | llm | StrOutputParser())
 
 @traceable(name="assess_input")
 async def assess_input(state: GonzoState) -> Dict[str, Any]:
@@ -53,7 +53,7 @@ async def assess_input(state: GonzoState) -> Dict[str, Any]:
         latest_msg = state.state['messages'][-1]
         
         # Get category from LLM
-        raw_response = await chain.ainvoke({"input": latest_msg.content})
+        raw_response = await chain.invoke({"input": latest_msg.content})
         category = raw_response.strip().upper()
         
         # Validate and normalize category
