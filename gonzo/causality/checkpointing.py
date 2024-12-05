@@ -1,6 +1,5 @@
 from typing import Dict, Optional, Any
 from datetime import datetime
-from langgraph.checkpoint import Checkpointer
 from dataclasses import dataclass, asdict
 from .types import CausalEvent, TimelineChain
 
@@ -12,7 +11,7 @@ class AnalysisCache:
     chains: Dict[str, TimelineChain]
     metadata: Dict[str, Any]
 
-class CausalAnalysisCheckpointer(Checkpointer):
+class CausalAnalysisCheckpointer:
     """Checkpointer for causal analysis state."""
     
     def __init__(self, ttl: int = 3600):
