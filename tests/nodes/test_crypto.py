@@ -60,3 +60,41 @@ async def test_analyze_crypto_success(state, mock_chain, monkeypatch):
     # Print debug info
     print(f"\nState memory: {state.state['memory']}")
     print(f"Memory result: {memory_result}")
+
+@pytest.mark.asyncio
+async def test_analyze_crypto_error_handling(state, monkeypatch):
+    """Test crypto analysis error handling."""
+    state.add_message(HumanMessage(content="Test message"))
+    
+    error_chain = AsyncMock()
+    error_chain.ainvoke.side_effect = ValueError("Test error")
+    monkeypatch.setattr("gonzo.nodes.new_crypto.analysis_chain", error_chain)
+    
+    result = await analyze_crypto(state)
+    
+    assert result["next"] == "error"
+    assert state.state["errors"] is not None
+    assert "Test error" in state.state["errors"][0]
+    
+    error_info = state.get_from_memory("last_error", "short_term")
+    assert error_info["node"] == "crypto"
+    assert "Test error" in error_info["error"]
+    assert "timeline" in result["response"].lower()
+
+@pytest.mark.asyncio
+async def test_crypto_report_structure(state, mock_chain, monkeypatch):
+    """Test structure of generated crypto report."""
+    state.add_message(HumanMessage(content="Analyze crypto market"))
+    monkeypatch.setattr("gonzo.nodes.new_crypto.analysis_chain", mock_chain)
+    
+    result = await analyze_crypto(state)
+    memory_result = state.get_from_memory("last_crypto_analysis", "long_term")
+    assert memory_result is not None
+    
+    report = memory_result["structured_report"]
+    assert len(report) == 5  # All sections present
+    assert all(section.strip() for section in report.values())  # No empty sections
+    
+    thread = memory_result["tweet_thread"]
+    assert all(tweet.startswith("💰") for tweet in thread)  # Proper tweet formatting
+    assert all(len(tweet) <= 280 for tweet in thread)  # Tweet length constraint
