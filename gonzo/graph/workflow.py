@@ -25,10 +25,10 @@ def create_workflow() -> Graph:
     causality_analysis = CausalityAnalysisNode()
     
     # Add nodes to graph
-    workflow.add_node("assessment", assessment.process)
-    workflow.add_node("market_analysis", market_analysis.process)
-    workflow.add_node("narrative_analysis", narrative_analysis.process)
-    workflow.add_node("causality_analysis", causality_analysis.process)
+    workflow.add_node("assessment", assessment.invoke)
+    workflow.add_node("market_analysis", market_analysis.invoke)
+    workflow.add_node("narrative_analysis", narrative_analysis.invoke)
+    workflow.add_node("causality_analysis", causality_analysis.invoke)
     
     # Define routing logic
     def route_after_assessment(state: GonzoState) -> str:
