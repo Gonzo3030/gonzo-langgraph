@@ -1,16 +1,32 @@
-from typing import TypedDict, List, Annotated, Dict, Any
+from typing import TypedDict, List, Annotated, Dict, Any, Optional
 from langchain_core.messages import BaseMessage, HumanMessage
 from datetime import datetime
 
-# Core state type for Gonzo agent
-class GonzoState(TypedDict):
-    """Central state definition for Gonzo agent."""
+class GonzoState(TypedDict, total=False):
+    """Central state definition for Gonzo agent.
+    
+    Using total=False to make all fields optional.
+    """
+    # Core fields
     messages: List[BaseMessage]  # Conversation history
     context: Dict[str, Any]     # Current context information
-    steps: List[Dict[str, Any]] # Track agent steps and progress
+    steps: List[str]           # Track agent steps and progress
     timestamp: str              # Current operation timestamp
-    category: str               # Current category (crypto/narrative/general)
+    category: str               # Current category (market/narrative/causality)
     response: str               # Final response to user
+    
+    # Analysis flags and results
+    market_analysis_completed: bool
+    market_analysis_timestamp: str
+    narrative_analysis_completed: bool
+    narrative_analysis_timestamp: str
+    causality_analysis_completed: bool
+    causality_analysis_timestamp: str
+    
+    # Analysis requirements
+    requires_market_analysis: bool
+    requires_narrative_analysis: bool
+    requires_causality_analysis: bool
 
 # Channel type for state updates
 Channel = Annotated[GonzoState, "channel"]
@@ -50,13 +66,12 @@ def update_state(state: GonzoState, updates: Dict[str, Any]) -> GonzoState:
     Returns:
         GonzoState: New state with updates applied
     """
-    new_state = state.copy()
+    new_state = dict(state)
     for key, value in updates.items():
-        if key in new_state:
-            if isinstance(value, list) and isinstance(new_state[key], list):
-                new_state[key] = new_state[key] + value
-            elif isinstance(value, dict) and isinstance(new_state[key], dict):
-                new_state[key] = {**new_state[key], **value}
-            else:
-                new_state[key] = value
+        if isinstance(value, list) and key in new_state and isinstance(new_state[key], list):
+            new_state[key] = new_state[key] + value
+        elif isinstance(value, dict) and key in new_state and isinstance(new_state[key], dict):
+            new_state[key].update(value)
+        else:
+            new_state[key] = value
     return new_state
