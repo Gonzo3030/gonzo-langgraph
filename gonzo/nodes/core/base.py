@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional
 from ...types import GonzoState
+from langchain_core.runnables import RunnableConfig
 
 class BaseNode(ABC):
     """Base class for all Gonzo graph nodes.
@@ -10,16 +11,40 @@ class BaseNode(ABC):
     
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         self.config = config or {}
-        
-    @abstractmethod
-    async def process(self, state: GonzoState) -> GonzoState:
-        """Process the current state and return updated state.
+    
+    def invoke(self, state: GonzoState, config: Optional[RunnableConfig] = None, **kwargs: Any) -> GonzoState:
+        """Synchronous processing of state.
         
         Args:
             state: Current GonzoState
+            config: Optional runtime configuration
             
         Returns:
             Updated GonzoState
+        """
+        return self._process(state)
+        
+    async def ainvoke(self, state: GonzoState, config: Optional[RunnableConfig] = None, **kwargs: Any) -> GonzoState:
+        """Asynchronous processing of state.
+        
+        Args:
+            state: Current GonzoState
+            config: Optional runtime configuration
+            
+        Returns:
+            Updated GonzoState
+        """
+        return self._process(state)
+    
+    @abstractmethod
+    def _process(self, state: GonzoState) -> GonzoState:
+        """Core processing logic to be implemented by subclasses.
+        
+        Args:
+            state: Current state
+            
+        Returns:
+            Updated state
         """
         pass
         
@@ -33,14 +58,3 @@ class BaseNode(ABC):
             bool: Whether state is valid
         """
         return True
-        
-    def get_state_updates(self, state: GonzoState) -> Dict[str, Any]:
-        """Extract relevant updates from state.
-        
-        Args:
-            state: Current state
-            
-        Returns:
-            Dict of updates to apply
-        """
-        return {}

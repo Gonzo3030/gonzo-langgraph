@@ -12,7 +12,7 @@ class AssessmentNode(BaseNode):
     - Historical context needs
     """
     
-    async def process(self, state: GonzoState) -> GonzoState:
+    def _process(self, state: GonzoState) -> GonzoState:
         """Process incoming state to determine next steps.
         
         Args:
@@ -21,8 +21,12 @@ class AssessmentNode(BaseNode):
         Returns:
             State updated with assessment results
         """
-        # Initial assessment logic will go here
-        # For now returns unchanged state
+        # For now, just maintain existing state routing
+        if not state.get('category'):
+            # Default to market analysis if no category is set
+            state['category'] = 'market'
+            state['requires_market_analysis'] = True
+            
         return state
         
     def validate_state(self, state: GonzoState) -> bool:
