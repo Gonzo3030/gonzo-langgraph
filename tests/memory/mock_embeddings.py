@@ -21,19 +21,28 @@ class MockEmbeddings(Embeddings):
         # Create base vectors for each concept
         self._components = {}
         
-        # Domain components (emphasized in first half)
-        for domain in ['crypto', 'finance', 'defi']:
-            vec = np.zeros(size)
-            vec[:size//2] = rng.randn(size//2) * 2  # Stronger signal in first half
-            vec[size//2:] = rng.randn(size//2) * 0.5  # Weaker signal in second half
+        # Shared financial domain vector (common to crypto/defi concepts)
+        financial_vec = np.zeros(size)
+        financial_vec[:size//2] = rng.randn(size//2)
+        self._components['financial'] = self._normalize(financial_vec)
+        
+        # Domain components - all share financial base with variations
+        for domain in ['crypto', 'defi']:
+            vec = self._components['financial'].copy()
+            # Add domain-specific variation
+            variation = np.zeros(size)
+            variation[:size//2] = rng.randn(size//2) * 0.5
+            vec += variation
             self._components[domain] = self._normalize(vec)
         
         # Timeline components (emphasized in second half)
-        for timeline in ['future', 'present']:
-            vec = np.zeros(size)
-            vec[:size//2] = rng.randn(size//2) * 0.5  # Weaker signal in first half
-            vec[size//2:] = rng.randn(size//2) * 2  # Stronger signal in second half
-            self._components[timeline] = self._normalize(vec)
+        future_vec = np.zeros(size)
+        future_vec[size//2:] = np.array([1.0, 1.0, -1.0, 1.0, 1.0])  # Fixed pattern
+        self._components['future'] = self._normalize(future_vec)
+        
+        present_vec = np.zeros(size)
+        present_vec[size//2:] = np.array([-1.0, -1.0, 1.0, -1.0, -1.0])  # Opposite pattern
+        self._components['present'] = self._normalize(present_vec)
     
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
         """Generate embeddings for a list of texts."""
@@ -48,21 +57,21 @@ class MockEmbeddings(Embeddings):
         text = text.lower()
         vec = np.zeros(self.size)
         
-        # Add domain components (with higher weight)
-        domain_weight = 0.6
+        # Start with financial domain if relevant
+        if any(term in text for term in ['finance', 'financial', 'market', 'crypto', 'defi']):
+            vec += self._components['financial']
+        
+        # Add specific domain components
         if any(term in text for term in ['crypto', 'bitcoin', 'cryptocurrency']):
-            vec += domain_weight * self._components['crypto']
-        if any(term in text for term in ['finance', 'financial', 'market']):
-            vec += domain_weight * self._components['finance']
+            vec += self._components['crypto']
         if any(term in text for term in ['defi', 'decentralized']):
-            vec += domain_weight * self._components['defi']
+            vec += self._components['defi']
             
-        # Add timeline components
-        timeline_weight = 0.4
+        # Add timeline components with strong weighting
         if any(term in text for term in ['future', '3030', 'will', 'becomes']):
-            vec += timeline_weight * self._components['future']
+            vec += self._components['future'] * 2
         if any(term in text for term in ['present', 'current', 'now', 'adoption']):
-            vec += timeline_weight * self._components['present']
+            vec += self._components['present'] * 2
         
         # Add more weight to empty vectors to avoid zero division
         if np.all(vec == 0):
