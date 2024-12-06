@@ -5,7 +5,7 @@ import numpy as np
 class MockEmbeddings(Embeddings):
     """Mock embeddings provider for testing.
     
-    Generates deterministic embeddings based on text content.
+    Generates deterministic embeddings that maintain semantic relationships.
     """
     
     def __init__(self, size: int = 10):
@@ -15,6 +15,14 @@ class MockEmbeddings(Embeddings):
             size: Dimension of embedding vectors
         """
         self.size = size
+        # Define base vectors for different domains
+        self._base_vectors = {
+            'crypto': self._create_base_vector('crypto'),
+            'finance': self._create_base_vector('finance'),
+            'defi': self._create_base_vector('defi'),
+            'future': self._create_base_vector('future'),
+            'present': self._create_base_vector('present')
+        }
     
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
         """Generate embeddings for a list of texts."""
@@ -23,21 +31,37 @@ class MockEmbeddings(Embeddings):
     def embed_query(self, text: str) -> List[float]:
         """Generate embedding for a single text.
         
-        Uses deterministic vector generation based on text content.
+        Creates embeddings that maintain semantic relationships between
+        related concepts and timelines.
         """
-        # Use text content to generate deterministic values
-        text_value = sum(ord(c) for c in text)
-        rng = np.random.RandomState(text_value)
+        text = text.lower()
         
-        # Generate base vector
-        vec = rng.randn(self.size)
+        # Initialize vector
+        vec = np.zeros(self.size)
         
-        # Add some similarity for related concepts
-        if "crypto" in text.lower() or "defi" in text.lower() or "financial" in text.lower():
-            vec[0] = 1.0  # Set first dimension to indicate financial domain
+        # Add domain components
+        if any(term in text for term in ['crypto', 'bitcoin', 'currency']):
+            vec += self._base_vectors['crypto']
+        if any(term in text for term in ['finance', 'financial', 'market']):
+            vec += self._base_vectors['finance']
+        if any(term in text for term in ['defi', 'decentralized']):
+            vec += self._base_vectors['defi']
+            
+        # Add timeline components
+        if any(term in text for term in ['future', '3030', 'will']):
+            vec += self._base_vectors['future']
+        if any(term in text for term in ['present', 'current', 'now']):
+            vec += self._base_vectors['present']
+            
+        # Normalize
+        norm = np.linalg.norm(vec)
+        if norm > 0:
+            vec = vec / norm
+        else:
+            # Random fallback if no components matched
+            vec = self._create_base_vector(text)
         
-        # Normalize to unit vector
-        return (vec / np.linalg.norm(vec)).tolist()
+        return vec.tolist()
 
     async def aembed_documents(self, texts: List[str]) -> List[List[float]]:
         """Async version of embed_documents."""
@@ -46,3 +70,9 @@ class MockEmbeddings(Embeddings):
     async def aembed_query(self, text: str) -> List[float]:
         """Async version of embed_query."""
         return self.embed_query(text)
+        
+    def _create_base_vector(self, seed: str) -> np.ndarray:
+        """Create a deterministic base vector for a concept."""
+        rng = np.random.RandomState(hash(seed) % (2**32))
+        vec = rng.randn(self.size)
+        return vec / np.linalg.norm(vec)
