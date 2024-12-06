@@ -19,8 +19,8 @@ class Entity:
     An entity represents a node in the knowledge graph with properties
     and temporal metadata.
     """
-    id: UUID = field(default_factory=uuid4)
-    type: str
+    type: str  # Required argument first
+    id: UUID = field(default_factory=uuid4)  # Default arguments after
     properties: Dict[str, Property] = field(default_factory=dict)
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
@@ -44,10 +44,10 @@ class Relationship:
     A relationship represents a directed edge between entities with
     temporal and causal metadata.
     """
-    id: UUID = field(default_factory=uuid4)
-    type: str
+    type: str  # Required arguments first
     source_id: UUID
     target_id: UUID
+    id: UUID = field(default_factory=uuid4)  # Default arguments after
     properties: Dict[str, Property] = field(default_factory=dict)
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
@@ -79,11 +79,3 @@ class TimeAwareEntity(Entity):
                 "timestamp": old_prop.timestamp
             })
         self.add_property(key, value, confidence, source)
-        
-    def is_valid_at(self, timestamp: datetime) -> bool:
-        """Check if the entity was valid at a given timestamp."""
-        if self.valid_from and timestamp < self.valid_from:
-            return False
-        if self.valid_to and timestamp > self.valid_to:
-            return False
-        return True
