@@ -105,7 +105,7 @@ class ManipulationDetector(PatternDetector):
         return {
             "pattern_type": "narrative_repetition",
             "category": category,
-            "topic_count": len(related),
+            "topic_count": len(related) + 1,  # Include base topic in count
             "confidence": 0.7,
             "timeframe": timeframe,
             "metadata": {
