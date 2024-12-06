@@ -27,24 +27,17 @@ def test_detect_narrative_repetition():
     
     topics = []
     for i in range(3):
-        topic = TimeAwareEntity(
-            type="topic",
-            id=uuid4(),
-            properties={
-                "category": Property(
-                    key="category",
-                    value="crypto",
-                    timestamp=base_time + timedelta(minutes=i*10)
-                ),
-                "content": Property(
-                    key="content",
-                    value=f"Test content {i} about crypto",
-                    timestamp=base_time + timedelta(minutes=i*10)
-                )
-            },
-            valid_from=base_time + timedelta(minutes=i*10)
+        topic_time = base_time + timedelta(minutes=i*10)
+        props = {
+            "category": "crypto",
+            "content": f"Test content {i} about crypto"
+        }
+        topic = graph.add_entity(
+            entity_type="topic",
+            properties=props,
+            temporal=True,
+            valid_from=topic_time
         )
-        graph.add_entity(topic)
         topics.append(topic)
     
     # Test pattern detection
@@ -68,24 +61,17 @@ def test_no_repetition_different_categories():
     
     categories = ["crypto", "politics", "tech"]
     for i, category in enumerate(categories):
-        topic = TimeAwareEntity(
-            type="topic",
-            id=uuid4(),
-            properties={
-                "category": Property(
-                    key="category",
-                    value=category,
-                    timestamp=base_time + timedelta(minutes=i*10)
-                ),
-                "content": Property(
-                    key="content",
-                    value=f"Test content about {category}",
-                    timestamp=base_time + timedelta(minutes=i*10)
-                )
-            },
-            valid_from=base_time + timedelta(minutes=i*10)
+        topic_time = base_time + timedelta(minutes=i*10)
+        props = {
+            "category": category,
+            "content": f"Test content about {category}"
+        }
+        graph.add_entity(
+            entity_type="topic",
+            properties=props,
+            temporal=True,
+            valid_from=topic_time
         )
-        graph.add_entity(topic)
     
     # Test pattern detection
     patterns = detector.detect_narrative_manipulation(timeframe=3600)
@@ -103,24 +89,16 @@ def test_topics_outside_timeframe():
     now = datetime.now(UTC)
     old_time = now - timedelta(hours=2)
     
-    topic = TimeAwareEntity(
-        type="topic",
-        id=uuid4(),
-        properties={
-            "category": Property(
-                key="category",
-                value="crypto",
-                timestamp=old_time
-            ),
-            "content": Property(
-                key="content",
-                value="Old crypto content",
-                timestamp=old_time
-            )
-        },
+    props = {
+        "category": "crypto",
+        "content": "Old crypto content"
+    }
+    graph.add_entity(
+        entity_type="topic",
+        properties=props,
+        temporal=True,
         valid_from=old_time
     )
-    graph.add_entity(topic)
     
     # Test with 1 hour timeframe
     patterns = detector.detect_narrative_manipulation(timeframe=3600)
