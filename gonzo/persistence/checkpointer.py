@@ -49,8 +49,8 @@ class GonzoCheckpointer:
             "thread_id": self.thread_id
         }
         
-        # Save checkpoint
-        key = f"{self.thread_id}_{step}"
+        # Save checkpoint with step-specific key
+        key = self._make_key(step)
         await self.store.set(key, checkpoint)
         
         # Update metadata
@@ -71,7 +71,7 @@ class GonzoCheckpointer:
         """
         if step is not None:
             # Restore specific step
-            key = f"{self.thread_id}_{step}"
+            key = self._make_key(step)
         else:
             # Get latest checkpoint
             checkpoints = await self.list_checkpoints()
@@ -84,19 +84,33 @@ class GonzoCheckpointer:
     
     async def list_checkpoints(self) -> list[str]:
         """List available checkpoints for this thread."""
-        prefix = f"{self.thread_id}_"
+        prefix = f"checkpoint_{self.thread_id}_"
         all_keys = await self.store.list(prefix=prefix)
-        return sorted(
-            all_keys,
-            key=lambda k: int(k.split('_')[1])
-        )
+        
+        # Extract step numbers and sort
+        def get_step(key: str) -> int:
+            # Format: checkpoint_<thread_id>_<step>
+            return int(key.split('_')[-1])
+            
+        return sorted(all_keys, key=get_step)
     
     async def delete(self, step: int) -> None:
         """Delete checkpoint at specific step."""
-        key = f"{self.thread_id}_{step}"
+        key = self._make_key(step)
         await self.store.delete(key)
     
     async def clear(self) -> None:
         """Clear all checkpoints for this thread."""
         checkpoints = await self.list_checkpoints()
         await self.store.mdelete(checkpoints)
+        
+    def _make_key(self, step: int) -> str:
+        """Create consistent checkpoint key.
+        
+        Args:
+            step: Step number
+            
+        Returns:
+            Formatted key string
+        """
+        return f"checkpoint_{self.thread_id}_{step}"
