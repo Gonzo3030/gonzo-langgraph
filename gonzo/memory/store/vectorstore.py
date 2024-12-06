@@ -11,14 +11,16 @@ class VectorMemoryStore(GonzoBaseStore[str, Dict[str, Any]]):
     and enhanced pattern recognition capabilities.
     """
     
-    def __init__(self, embeddings: Embeddings):
+    def __init__(self, embeddings: Embeddings, similarity_threshold: float = 0.5):
         """Initialize vector store.
         
         Args:
             embeddings: LangChain embeddings interface for vector operations
+            similarity_threshold: Threshold for pattern matching (default 0.5)
         """
         super().__init__()
         self.embeddings = embeddings
+        self.similarity_threshold = similarity_threshold
         self._data: Dict[str, Dict[str, Any]] = {}
         self._vectors: Dict[str, List[float]] = {}
     
@@ -147,7 +149,7 @@ class VectorMemoryStore(GonzoBaseStore[str, Dict[str, Any]]):
                         future_vec
                     )
                     
-                    if similarity > 0.7:
+                    if similarity > self.similarity_threshold:
                         patterns.append({
                             "type": "timeline_correlation",
                             "present_event": present,
