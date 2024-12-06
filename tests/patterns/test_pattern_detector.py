@@ -6,7 +6,6 @@ from uuid import uuid4
 
 from gonzo.graph.knowledge.graph import KnowledgeGraph
 from gonzo.patterns.detector import PatternDetector
-from gonzo.types import TimeAwareEntity, Property, Relationship
 
 @pytest.fixture
 def graph():
@@ -18,42 +17,22 @@ def detector(graph):
     """Create a pattern detector instance."""
     return PatternDetector(graph)
 
-def create_topic_entity(category: str, timestamp: datetime) -> TimeAwareEntity:
+def create_topic_entity(category: str, timestamp: datetime):
     """Helper to create topic entities."""
-    return TimeAwareEntity(
-        type="topic",
-        id=uuid4(),
-        properties={
-            "category": Property(
-                key="category",
-                value=category,
-                timestamp=timestamp
-            ),
-            "content": Property(
-                key="content",
-                value=f"Test content for {category}",
-                timestamp=timestamp
-            )
-        },
-        valid_from=timestamp
-    )
+    properties = {
+        "category": category,
+        "content": f"Test content for {category}"
+    }
+    return "topic", properties, True, timestamp, None
 
-def create_transition(source_id, target_id, timestamp: datetime) -> Relationship:
+def create_transition(source_id, target_id, timestamp: datetime, from_cat: str, to_cat: str):
     """Helper to create transition relationships."""
-    return Relationship(
-        type="topic_transition",
-        id=uuid4(),
-        source_id=source_id,
-        target_id=target_id,
-        properties={
-            "transition_time": Property(
-                key="transition_time",
-                value=0.5,
-                timestamp=timestamp
-            )
-        },
-        created_at=timestamp
-    )
+    properties = {
+        "transition_time": 0.5,
+        "from_category": from_cat,
+        "to_category": to_cat
+    }
+    return "topic_transition", source_id, target_id, properties
 
 def test_detect_topic_cycles_empty_graph(detector):
     """Test cycle detection with empty graph."""
@@ -65,20 +44,28 @@ def test_detect_simple_cycle(graph, detector):
     # Create topic sequence: crypto -> narrative -> crypto
     now = datetime.utcnow()
     
-    topic1 = create_topic_entity("crypto", now)
-    topic2 = create_topic_entity("narrative", now + timedelta(minutes=5))
-    topic3 = create_topic_entity("crypto", now + timedelta(minutes=10))
+    # Create entities
+    type1, props1, temporal1, valid_from1, valid_to1 = create_topic_entity("crypto", now)
+    topic1 = graph.add_entity(type1, props1, temporal1, valid_from1, valid_to1)
     
-    graph.add_entity(topic1)
-    graph.add_entity(topic2)
-    graph.add_entity(topic3)
+    type2, props2, temporal2, valid_from2, valid_to2 = create_topic_entity("narrative", now + timedelta(minutes=5))
+    topic2 = graph.add_entity(type2, props2, temporal2, valid_from2, valid_to2)
+    
+    type3, props3, temporal3, valid_from3, valid_to3 = create_topic_entity("crypto", now + timedelta(minutes=10))
+    topic3 = graph.add_entity(type3, props3, temporal3, valid_from3, valid_to3)
     
     # Add transitions
-    trans1 = create_transition(topic1.id, topic2.id, now + timedelta(minutes=5))
-    trans2 = create_transition(topic2.id, topic3.id, now + timedelta(minutes=10))
+    rel_type1, src1, tgt1, props1 = create_transition(
+        topic1.id, topic2.id, now + timedelta(minutes=5),
+        "crypto", "narrative"
+    )
+    graph.add_relationship(rel_type1, src1, tgt1, props1)
     
-    graph.add_relationship(trans1)
-    graph.add_relationship(trans2)
+    rel_type2, src2, tgt2, props2 = create_transition(
+        topic2.id, topic3.id, now + timedelta(minutes=10),
+        "narrative", "crypto"
+    )
+    graph.add_relationship(rel_type2, src2, tgt2, props2)
     
     # Detect cycles
     cycles = detector.detect_topic_cycles(timeframe=3600)
@@ -94,19 +81,28 @@ def test_no_cycle_different_topics(graph, detector):
     """Test with different topics that don't form a cycle."""
     now = datetime.utcnow()
     
-    topic1 = create_topic_entity("crypto", now)
-    topic2 = create_topic_entity("narrative", now + timedelta(minutes=5))
-    topic3 = create_topic_entity("general", now + timedelta(minutes=10))
+    # Create entities
+    type1, props1, temporal1, valid_from1, valid_to1 = create_topic_entity("crypto", now)
+    topic1 = graph.add_entity(type1, props1, temporal1, valid_from1, valid_to1)
     
-    graph.add_entity(topic1)
-    graph.add_entity(topic2)
-    graph.add_entity(topic3)
+    type2, props2, temporal2, valid_from2, valid_to2 = create_topic_entity("narrative", now + timedelta(minutes=5))
+    topic2 = graph.add_entity(type2, props2, temporal2, valid_from2, valid_to2)
     
-    trans1 = create_transition(topic1.id, topic2.id, now + timedelta(minutes=5))
-    trans2 = create_transition(topic2.id, topic3.id, now + timedelta(minutes=10))
+    type3, props3, temporal3, valid_from3, valid_to3 = create_topic_entity("general", now + timedelta(minutes=10))
+    topic3 = graph.add_entity(type3, props3, temporal3, valid_from3, valid_to3)
     
-    graph.add_relationship(trans1)
-    graph.add_relationship(trans2)
+    # Add transitions
+    rel_type1, src1, tgt1, props1 = create_transition(
+        topic1.id, topic2.id, now + timedelta(minutes=5),
+        "crypto", "narrative"
+    )
+    graph.add_relationship(rel_type1, src1, tgt1, props1)
+    
+    rel_type2, src2, tgt2, props2 = create_transition(
+        topic2.id, topic3.id, now + timedelta(minutes=10),
+        "narrative", "general"
+    )
+    graph.add_relationship(rel_type2, src2, tgt2, props2)
     
     cycles = detector.detect_topic_cycles(timeframe=3600)
     assert len(cycles) == 0
@@ -115,19 +111,28 @@ def test_cycle_outside_timeframe(graph, detector):
     """Test that cycles outside timeframe are not detected."""
     now = datetime.utcnow()
     
-    topic1 = create_topic_entity("crypto", now)
-    topic2 = create_topic_entity("narrative", now + timedelta(hours=2))
-    topic3 = create_topic_entity("crypto", now + timedelta(hours=4))
+    # Create entities with long time gaps
+    type1, props1, temporal1, valid_from1, valid_to1 = create_topic_entity("crypto", now)
+    topic1 = graph.add_entity(type1, props1, temporal1, valid_from1, valid_to1)
     
-    graph.add_entity(topic1)
-    graph.add_entity(topic2)
-    graph.add_entity(topic3)
+    type2, props2, temporal2, valid_from2, valid_to2 = create_topic_entity("narrative", now + timedelta(hours=2))
+    topic2 = graph.add_entity(type2, props2, temporal2, valid_from2, valid_to2)
     
-    trans1 = create_transition(topic1.id, topic2.id, now + timedelta(hours=2))
-    trans2 = create_transition(topic2.id, topic3.id, now + timedelta(hours=4))
+    type3, props3, temporal3, valid_from3, valid_to3 = create_topic_entity("crypto", now + timedelta(hours=4))
+    topic3 = graph.add_entity(type3, props3, temporal3, valid_from3, valid_to3)
     
-    graph.add_relationship(trans1)
-    graph.add_relationship(trans2)
+    # Add transitions
+    rel_type1, src1, tgt1, props1 = create_transition(
+        topic1.id, topic2.id, now + timedelta(hours=2),
+        "crypto", "narrative"
+    )
+    graph.add_relationship(rel_type1, src1, tgt1, props1)
+    
+    rel_type2, src2, tgt2, props2 = create_transition(
+        topic2.id, topic3.id, now + timedelta(hours=4),
+        "narrative", "crypto"
+    )
+    graph.add_relationship(rel_type2, src2, tgt2, props2)
     
     # Use 1 hour timeframe
     cycles = detector.detect_topic_cycles(timeframe=3600)
