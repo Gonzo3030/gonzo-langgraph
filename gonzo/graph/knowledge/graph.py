@@ -92,3 +92,24 @@ class KnowledgeGraph:
     def get_entities_by_type(self, entity_type: str) -> List[Entity]:
         """Get all entities of a given type."""
         return [e for e in self._entities.values() if e.type == entity_type]
+
+    def get_relationships_by_type(self, 
+                                 relationship_type: str,
+                                 source_id: Optional[UUID] = None) -> List[Relationship]:
+        """Get all relationships of a given type, optionally filtered by source.
+        
+        Args:
+            relationship_type: Type of relationships to retrieve
+            source_id: Optional ID to filter relationships by source
+            
+        Returns:
+            List of matching relationships
+        """
+        relationships = [r for r in self._relationships.values() 
+                       if r.type == relationship_type]
+        
+        if source_id is not None:
+            relationships = [r for r in relationships 
+                           if r.source_id == source_id]
+            
+        return relationships
