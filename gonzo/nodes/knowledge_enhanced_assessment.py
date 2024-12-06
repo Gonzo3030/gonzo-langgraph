@@ -19,6 +19,7 @@ class KnowledgeEnhancedAssessment:
         
     def _create_topic_entity(self, assessment: Dict[str, Any]) -> Entity:
         """Create an entity representing the assessed topic."""
+        logger.debug(f"Creating topic entity for assessment: {assessment}")
         return self.knowledge_graph.add_entity(
             entity_type="topic",
             properties={
@@ -36,73 +37,112 @@ class KnowledgeEnhancedAssessment:
                                    state: GonzoState) -> List[Relationship]:
         """Create relationships between topics."""
         relationships = []
+        logger.debug("Creating topic relationships")
         
-        # Get previous assessments
-        prev_assessments = state.get_from_memory("topic_assessments", "long_term") or []
+        # Get previous assessments from long-term memory
+        prev_assessments = state.get_from_memory("topic_assessments", "long_term")
+        logger.debug(f"Found previous assessments: {prev_assessments}")
         
         if prev_assessments:
             # Get the most recent previous assessment
             prev_assessment = prev_assessments[-1]
             if "entity_id" in prev_assessment:
                 prev_topic = self.knowledge_graph.get_entity(prev_assessment["entity_id"])
+                logger.debug(f"Found previous topic: {prev_topic}")
+                
                 if prev_topic:
                     # Create topic transition relationship
-                    relationship = self.knowledge_graph.add_relationship(
+                    transition_rel = self.knowledge_graph.add_relationship(
                         relationship_type="topic_transition",
                         source_id=prev_topic.id,
                         target_id=current_topic.id,
                         properties={
                             "from_category": prev_topic.properties["category"].value,
-                            "to_category": current_topic.properties["category"].value
-                        },
-                        temporal_ordering="before"
+                            "to_category": current_topic.properties["category"].value,
+                            "transition_time": (datetime.fromisoformat(current_topic.properties["timestamp"].value) - 
+                                              datetime.fromisoformat(prev_topic.properties["timestamp"].value)).total_seconds()
+                        }
                     )
-                    relationships.append(relationship)
+                    relationships.append(transition_rel)
+                    logger.debug(f"Created transition relationship: {transition_rel}")
                     
-                    # If topics are related, create additional relationship
+                    # Check for topic relations
                     if self._are_topics_related(prev_topic, current_topic):
+                        relation_type = self._get_relation_type(
+                            prev_topic.properties["category"].value,
+                            current_topic.properties["category"].value
+                        )
                         related_rel = self.knowledge_graph.add_relationship(
                             relationship_type="topic_relation",
                             source_id=prev_topic.id,
                             target_id=current_topic.id,
                             properties={
-                                "relation_type": self._get_relation_type(
-                                    prev_topic.properties["category"].value,
-                                    current_topic.properties["category"].value
+                                "relation_type": relation_type,
+                                "strength": self._calculate_relation_strength(
+                                    prev_topic, current_topic, relation_type
                                 )
                             }
                         )
                         relationships.append(related_rel)
-                        
+                        logger.debug(f"Created relation relationship: {related_rel}")
+        
         return relationships
     
     def _are_topics_related(self, topic1: Entity, topic2: Entity) -> bool:
         """Determine if two topics are related based on their categories and content."""
-        # Check for direct category relationships
+        # Get category values
+        cat1 = topic1.properties["category"].value
+        cat2 = topic2.properties["category"].value
+        
+        # Define related category pairs
         related_pairs = {
             frozenset(["crypto", "narrative"]),  # Crypto and narrative manipulation often related
-            frozenset(["narrative", "general"])  # General topics might evolve into narratives
+            frozenset(["narrative", "general"]),  # General topics might evolve into narratives
+            frozenset(["crypto", "general"])  # General topics might relate to crypto
         }
         
-        current_pair = frozenset([
-            topic1.properties["category"].value,
-            topic2.properties["category"].value
-        ])
-        
-        return current_pair in related_pairs
+        return frozenset([cat1, cat2]) in related_pairs
     
     def _get_relation_type(self, category1: str, category2: str) -> str:
         """Determine the type of relationship between categories."""
-        if {category1, category2} == {"crypto", "narrative"}:
+        pair = frozenset([category1, category2])
+        
+        if pair == frozenset(["crypto", "narrative"]):
             return "narrative_influence"
-        elif {category1, category2} == {"narrative", "general"}:
+        elif pair == frozenset(["narrative", "general"]):
             return "narrative_evolution"
+        elif pair == frozenset(["crypto", "general"]):
+            return "market_impact"
         return "temporal_sequence"
+    
+    def _calculate_relation_strength(self, topic1: Entity, topic2: Entity, relation_type: str) -> float:
+        """Calculate the strength of relationship between topics."""
+        # Start with a base strength
+        strength = 0.5
+        
+        # Adjust based on time proximity (closer in time = stronger relationship)
+        time1 = datetime.fromisoformat(topic1.properties["timestamp"].value)
+        time2 = datetime.fromisoformat(topic2.properties["timestamp"].value)
+        time_diff = abs((time2 - time1).total_seconds() / 3600)  # Convert to hours
+        
+        # Decay strength based on time difference (max 24 hours)
+        time_factor = max(0, 1 - (time_diff / 24))
+        strength += time_factor * 0.3
+        
+        # Boost strength for certain relation types
+        if relation_type == "narrative_influence":
+            strength += 0.2
+        elif relation_type == "narrative_evolution":
+            strength += 0.1
+        
+        return min(1.0, strength)
 
 @traceable(name="enhance_assessment")
 async def enhance_assessment(state: GonzoState) -> Dict[str, Any]:
     """Enhance assessment with knowledge graph integration."""
     try:
+        logger.debug("Starting enhanced assessment")
+        
         # First, run the regular assessment
         assessment_result = await assess_input(state)
         if assessment_result["next"] == "error":
@@ -114,14 +154,18 @@ async def enhance_assessment(state: GonzoState) -> Dict[str, Any]:
             logger.error("No assessment found in memory")
             return assessment_result
             
+        logger.debug(f"Got latest assessment: {latest_assessment}")
+        
         # Enhance with knowledge graph
         enhancer = KnowledgeEnhancedAssessment()
         
         # Create topic entity
         topic_entity = enhancer._create_topic_entity(latest_assessment)
+        logger.debug(f"Created topic entity: {topic_entity}")
         
         # Create relationships with previous topics
         relationships = enhancer._create_topic_relationships(topic_entity, state)
+        logger.debug(f"Created relationships: {relationships}")
         
         # Update memory with entity reference
         assessment_record = {
