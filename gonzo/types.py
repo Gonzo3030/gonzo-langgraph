@@ -1,6 +1,42 @@
 from datetime import datetime
 from typing import Dict, List, Optional, Any
+from uuid import UUID
 from pydantic import BaseModel, Field
+
+class Property(BaseModel):
+    """Represents a property with temporal metadata."""
+    key: str
+    value: Any
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    confidence: float = 1.0
+    source: Optional[str] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+class TimeAwareEntity(BaseModel):
+    """Base class for entities with temporal awareness."""
+    type: str
+    id: UUID
+    properties: Dict[str, Property]
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    valid_from: datetime
+    valid_to: Optional[datetime] = None
+    previous_versions: List[Any] = Field(default_factory=list)
+
+class Relationship(BaseModel):
+    """Represents a relationship between entities."""
+    type: str
+    id: UUID
+    source_id: UUID
+    target_id: UUID
+    properties: Dict[str, Property] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    confidence: float = 1.0
+    causal_strength: Optional[float] = None
+    temporal_ordering: Optional[int] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 class Message(BaseModel):
     """Represents a message in the system."""
