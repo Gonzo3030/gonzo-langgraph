@@ -1,7 +1,7 @@
 """Core pattern detection functionality."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import List, Dict, Optional, Set
 from uuid import UUID
 
@@ -40,13 +40,12 @@ class PatternDetector:
             return cycles
             
         # Get reference time
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
             
         # Analyze transitions
         for topic in topics:
             # Skip topics outside timeframe
-            time_diff = (now - topic.valid_from).total_seconds()
-            if time_diff > timeframe:
+            if self._is_outside_timeframe(topic, now, timeframe):
                 continue
                 
             cycle = self._analyze_topic_transitions(
@@ -57,12 +56,31 @@ class PatternDetector:
                 
         return cycles
     
+    def _is_outside_timeframe(self,
+        topic: TimeAwareEntity,
+        now: datetime,
+        timeframe: float
+    ) -> bool:
+        """Check if a topic is outside the analysis timeframe.
+        
+        Args:
+            topic: Topic to check
+            now: Reference time
+            timeframe: Analysis window in seconds
+            
+        Returns:
+            True if topic is outside timeframe
+        """
+        time_diff = (now - topic.valid_from).total_seconds()
+        return time_diff > timeframe
+    
     def _analyze_topic_transitions(self, 
         topic: TimeAwareEntity,
         timeframe: float,
         now: Optional[datetime] = None,
         seen_ids: Optional[Set[UUID]] = None,
         seen_categories: Optional[Set[str]] = None,
+        path_start_time: Optional[datetime] = None,
         depth: int = 0
     ) -> Optional[Dict]:
         """Analyze transitions for a single topic.
@@ -73,28 +91,31 @@ class PatternDetector:
             now: Reference time for timeframe checks
             seen_ids: Set of already seen entity IDs
             seen_categories: Set of already seen categories
+            path_start_time: Start time of current path
             depth: Current recursion depth
             
         Returns:
             Cycle metadata if detected, None otherwise
         """
         if now is None:
-            now = datetime.utcnow()
+            now = datetime.now(UTC)
             
         # Initialize tracking sets
         if seen_ids is None:
             seen_ids = set()
         if seen_categories is None:
             seen_categories = set()
+        if path_start_time is None:
+            path_start_time = topic.valid_from
+            
+        # Check if this topic is too far from path start
+        path_duration = (topic.valid_from - path_start_time).total_seconds()
+        if path_duration > timeframe:
+            return None
             
         # Add current topic
         current_id = topic.id
         current_category = topic.properties["category"].value
-        
-        # Check if this topic is within timeframe
-        time_diff = (now - topic.valid_from).total_seconds()
-        if time_diff > timeframe:
-            return None
         
         # Check for cycle
         if current_category in seen_categories and depth > 0:
@@ -129,6 +150,7 @@ class PatternDetector:
                 now=now,
                 seen_ids=seen_ids,
                 seen_categories=seen_categories,
+                path_start_time=path_start_time,
                 depth=depth + 1
             )
             
