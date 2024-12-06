@@ -31,7 +31,7 @@ def create_workflow() -> Graph:
     workflow.add_node("causality_analysis", causality_analysis.process)
     
     # Define routing logic
-    def route_after_assessment(state: GonzoState) -> Dict[str, Any]:
+    def route_after_assessment(state: GonzoState) -> str:
         """Route to appropriate analysis node based on state assessment."""
         # Extract routing information
         category = state.get("category", "")
@@ -41,49 +41,44 @@ def create_workflow() -> Graph:
         
         # Priority routing based on state flags
         if requires_causality:
-            return {"next": "causality_analysis"}
+            return "causality_analysis"
         elif requires_market:
-            return {"next": "market_analysis"}
+            return "market_analysis"
         elif requires_narrative:
-            return {"next": "narrative_analysis"}
+            return "narrative_analysis"
             
         # Fallback routing based on category
         if category == "market":
-            return {"next": "market_analysis"}
+            return "market_analysis"
         elif category == "narrative":
-            return {"next": "narrative_analysis"}
+            return "narrative_analysis"
         
-        return {"next": END}
+        return END
     
-    def route_after_analysis(state: GonzoState) -> Dict[str, Any]:
+    def route_after_analysis(state: GonzoState) -> str:
         """Route after analysis completion."""
         # For now, end after analysis
-        return {"next": END}
+        return END
     
-    # Add conditional edges
+    # Add conditional edges with correct pathing
     workflow.add_conditional_edges(
         "assessment",
         route_after_assessment,
-        {"next": ["market_analysis", "narrative_analysis", "causality_analysis", END]}
+        {
+            "market_analysis": "market_analysis",
+            "narrative_analysis": "narrative_analysis",
+            "causality_analysis": "causality_analysis",
+            END: END
+        }
     )
     
-    workflow.add_conditional_edges(
-        "market_analysis",
-        route_after_analysis,
-        {"next": [END]}
-    )
-    
-    workflow.add_conditional_edges(
-        "narrative_analysis",
-        route_after_analysis,
-        {"next": [END]}
-    )
-    
-    workflow.add_conditional_edges(
-        "causality_analysis",
-        route_after_analysis,
-        {"next": [END]}
-    )
+    # Add analysis completion edges
+    for node in ["market_analysis", "narrative_analysis", "causality_analysis"]:
+        workflow.add_conditional_edges(
+            node,
+            route_after_analysis,
+            {END: END}
+        )
     
     # Set entry point
     workflow.set_entry_point("assessment")
