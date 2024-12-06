@@ -40,6 +40,10 @@ class VectorMemoryStore(GonzoBaseStore[str, Dict[str, Any]]):
         text_content = self._get_text_content(value)
         vector = await self.embeddings.aembed_query(text_content)
         
+        # Ensure vector is normalized
+        vector = np.array(vector)
+        vector = (vector / np.linalg.norm(vector)).tolist()
+        
         self._data[key] = {
             "value": value,
             "timeline": timeline,
@@ -110,15 +114,29 @@ class VectorMemoryStore(GonzoBaseStore[str, Dict[str, Any]]):
         n_results: int = 5
     ) -> List[Tuple[Dict[str, Any], float]]:
         """Search for semantically similar entries."""
+        # Get and normalize query vector
         query_vector = await self.embeddings.aembed_query(query)
+        query_vector = np.array(query_vector)
+        query_vector = query_vector / np.linalg.norm(query_vector)
         
-        similarities = [
-            (key, self._cosine_similarity(query_vector, vec))
-            for key, vec in self._vectors.items()
-        ]
+        # Calculate similarities
+        similarities = []
+        for key, vec in self._vectors.items():
+            # Convert stored vector to numpy and ensure it's normalized
+            vec_array = np.array(vec)
+            vec_array = vec_array / np.linalg.norm(vec_array)
+            
+            # Calculate normalized cosine similarity (guaranteed to be between -1 and 1)
+            similarity = float(np.dot(query_vector, vec_array))
+            # Scale to [0, 1] range
+            similarity = (similarity + 1) / 2
+            
+            similarities.append((key, similarity))
         
+        # Sort by similarity
         similarities.sort(key=lambda x: x[1], reverse=True)
         
+        # Return top results with values
         return [
             (self._data[key]["value"], score)
             for key, score in similarities[:n_results]
@@ -135,26 +153,27 @@ class VectorMemoryStore(GonzoBaseStore[str, Dict[str, Any]]):
             
             # Find correlations
             for present in present_entries:
-                present_vec = await self.embeddings.aembed_query(
-                    self._get_text_content(present)
-                )
+                present_text = self._get_text_content(present)
+                present_vec = await self.embeddings.aembed_query(present_text)
+                present_vec = np.array(present_vec)
+                present_vec = present_vec / np.linalg.norm(present_vec)
                 
                 for future in future_entries:
-                    future_vec = await self.embeddings.aembed_query(
-                        self._get_text_content(future)
-                    )
+                    future_text = self._get_text_content(future)
+                    future_vec = await self.embeddings.aembed_query(future_text)
+                    future_vec = np.array(future_vec)
+                    future_vec = future_vec / np.linalg.norm(future_vec)
                     
-                    similarity = self._cosine_similarity(
-                        present_vec,
-                        future_vec
-                    )
+                    # Calculate normalized similarity
+                    similarity = float(np.dot(present_vec, future_vec))
+                    similarity = (similarity + 1) / 2
                     
                     if similarity > self.similarity_threshold:
                         patterns.append({
                             "type": "timeline_correlation",
                             "present_event": present,
                             "future_event": future,
-                            "confidence": float(similarity)
+                            "confidence": similarity
                         })
         
         return patterns
@@ -164,14 +183,4 @@ class VectorMemoryStore(GonzoBaseStore[str, Dict[str, Any]]):
         return " ".join(
             str(v) for v in value.values()
             if isinstance(v, (str, int, float))
-        )
-    
-    def _cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
-        """Calculate cosine similarity between vectors."""
-        vec1 = np.array(vec1)
-        vec2 = np.array(vec2)
-        return float(
-            np.dot(vec1, vec2) / (
-                np.linalg.norm(vec1) * np.linalg.norm(vec2)
-            )
         )
