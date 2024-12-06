@@ -1,15 +1,16 @@
-from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional
+from abc import ABC, abstractmethod
+from langchain_core.runnables import Runnable, RunnableConfig
 from ...types import GonzoState
-from langchain_core.runnables import RunnableConfig
 
-class BaseNode(ABC):
+class BaseNode(Runnable[GonzoState, GonzoState], ABC):
     """Base class for all Gonzo graph nodes.
     
-    Provides common functionality and enforces consistent interface.
+    Inherits from Runnable to properly integrate with LangGraph.
     """
     
     def __init__(self, config: Optional[Dict[str, Any]] = None):
+        super().__init__()
         self.config = config or {}
     
     def invoke(self, state: GonzoState, config: Optional[RunnableConfig] = None, **kwargs: Any) -> GonzoState:
@@ -22,6 +23,10 @@ class BaseNode(ABC):
         Returns:
             Updated GonzoState
         """
+        # Validate state before processing
+        if not self.validate_state(state):
+            return state
+            
         return self._process(state)
         
     async def ainvoke(self, state: GonzoState, config: Optional[RunnableConfig] = None, **kwargs: Any) -> GonzoState:
@@ -34,6 +39,10 @@ class BaseNode(ABC):
         Returns:
             Updated GonzoState
         """
+        # Validate state before processing
+        if not self.validate_state(state):
+            return state
+            
         return self._process(state)
     
     @abstractmethod
