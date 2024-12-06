@@ -5,18 +5,14 @@ from langchain_core.embeddings import Embeddings
 from .base import GonzoBaseStore
 
 class VectorMemoryStore(GonzoBaseStore[str, Dict[str, Any]]):
-    """Vector-based memory store for semantic search and pattern matching.
+    """Vector-based memory store for semantic search and pattern matching."""
     
-    Extends base store with vector embeddings for semantic similarity search
-    and enhanced pattern recognition capabilities.
-    """
-    
-    def __init__(self, embeddings: Embeddings, similarity_threshold: float = 0.5):
+    def __init__(self, embeddings: Embeddings, similarity_threshold: float = 0.3):
         """Initialize vector store.
         
         Args:
             embeddings: LangChain embeddings interface for vector operations
-            similarity_threshold: Threshold for pattern matching (default 0.5)
+            similarity_threshold: Threshold for pattern matching (default 0.3)
         """
         super().__init__()
         self.embeddings = embeddings
@@ -37,12 +33,10 @@ class VectorMemoryStore(GonzoBaseStore[str, Dict[str, Any]]):
     
     async def set(self, key: str, value: Dict[str, Any], timeline: str = "present") -> None:
         """Set a value with vector embedding."""
+        # Get embedding for combined text content
         text_content = self._get_text_content(value)
+        text_content += f" {timeline} timeline"  # Add timeline context
         vector = await self.embeddings.aembed_query(text_content)
-        
-        # Ensure vector is normalized
-        vector = np.array(vector)
-        vector = (vector / np.linalg.norm(vector)).tolist()
         
         self._data[key] = {
             "value": value,
@@ -114,29 +108,15 @@ class VectorMemoryStore(GonzoBaseStore[str, Dict[str, Any]]):
         n_results: int = 5
     ) -> List[Tuple[Dict[str, Any], float]]:
         """Search for semantically similar entries."""
-        # Get and normalize query vector
         query_vector = await self.embeddings.aembed_query(query)
-        query_vector = np.array(query_vector)
-        query_vector = query_vector / np.linalg.norm(query_vector)
         
-        # Calculate similarities
-        similarities = []
-        for key, vec in self._vectors.items():
-            # Convert stored vector to numpy and ensure it's normalized
-            vec_array = np.array(vec)
-            vec_array = vec_array / np.linalg.norm(vec_array)
-            
-            # Calculate normalized cosine similarity (guaranteed to be between -1 and 1)
-            similarity = float(np.dot(query_vector, vec_array))
-            # Scale to [0, 1] range
-            similarity = (similarity + 1) / 2
-            
-            similarities.append((key, similarity))
+        similarities = [
+            (key, self._cosine_similarity(query_vector, vec))
+            for key, vec in self._vectors.items()
+        ]
         
-        # Sort by similarity
         similarities.sort(key=lambda x: x[1], reverse=True)
         
-        # Return top results with values
         return [
             (self._data[key]["value"], score)
             for key, score in similarities[:n_results]
@@ -153,27 +133,20 @@ class VectorMemoryStore(GonzoBaseStore[str, Dict[str, Any]]):
             
             # Find correlations
             for present in present_entries:
-                present_text = self._get_text_content(present)
+                present_text = self._get_text_content(present) + " present timeline"
                 present_vec = await self.embeddings.aembed_query(present_text)
-                present_vec = np.array(present_vec)
-                present_vec = present_vec / np.linalg.norm(present_vec)
                 
                 for future in future_entries:
-                    future_text = self._get_text_content(future)
+                    future_text = self._get_text_content(future) + " future timeline"
                     future_vec = await self.embeddings.aembed_query(future_text)
-                    future_vec = np.array(future_vec)
-                    future_vec = future_vec / np.linalg.norm(future_vec)
                     
-                    # Calculate normalized similarity
-                    similarity = float(np.dot(present_vec, future_vec))
-                    similarity = (similarity + 1) / 2
-                    
+                    similarity = self._cosine_similarity(present_vec, future_vec)
                     if similarity > self.similarity_threshold:
                         patterns.append({
                             "type": "timeline_correlation",
                             "present_event": present,
                             "future_event": future,
-                            "confidence": similarity
+                            "confidence": float(similarity)
                         })
         
         return patterns
@@ -183,4 +156,14 @@ class VectorMemoryStore(GonzoBaseStore[str, Dict[str, Any]]):
         return " ".join(
             str(v) for v in value.values()
             if isinstance(v, (str, int, float))
+        )
+    
+    def _cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
+        """Calculate cosine similarity between vectors."""
+        vec1 = np.array(vec1)
+        vec2 = np.array(vec2)
+        return float(
+            np.dot(vec1, vec2) / (
+                np.linalg.norm(vec1) * np.linalg.norm(vec2)
+            )
         )
