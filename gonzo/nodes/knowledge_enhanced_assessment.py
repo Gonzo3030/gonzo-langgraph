@@ -14,13 +14,19 @@ logger = logging.getLogger(__name__)
 class KnowledgeEnhancedAssessment:
     """Enhances assessment with knowledge graph capabilities."""
     
-    def __init__(self):
-        self.knowledge_graph = KnowledgeGraph()
-        
+    _instance = None
+    _graph = None
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._graph = KnowledgeGraph()
+        return cls._instance
+    
     def _create_topic_entity(self, assessment: Dict[str, Any]) -> Entity:
         """Create an entity representing the assessed topic."""
         logger.debug(f"Creating topic entity for assessment: {assessment}")
-        return self.knowledge_graph.add_entity(
+        return self._graph.add_entity(
             entity_type="topic",
             properties={
                 "category": assessment["category"],
@@ -47,12 +53,12 @@ class KnowledgeEnhancedAssessment:
             # Get the most recent previous assessment
             prev_assessment = prev_assessments[-1]
             if "entity_id" in prev_assessment:
-                prev_topic = self.knowledge_graph.get_entity(prev_assessment["entity_id"])
+                prev_topic = self._graph.get_entity(prev_assessment["entity_id"])
                 logger.debug(f"Found previous topic: {prev_topic}")
                 
                 if prev_topic:
                     # Create topic transition relationship
-                    transition_rel = self.knowledge_graph.add_relationship(
+                    transition_rel = self._graph.add_relationship(
                         relationship_type="topic_transition",
                         source_id=prev_topic.id,
                         target_id=current_topic.id,
@@ -72,7 +78,9 @@ class KnowledgeEnhancedAssessment:
                             prev_topic.properties["category"].value,
                             current_topic.properties["category"].value
                         )
-                        related_rel = self.knowledge_graph.add_relationship(
+                        logger.debug(f"Topics are related with type: {relation_type}")
+                        
+                        related_rel = self._graph.add_relationship(
                             relationship_type="topic_relation",
                             source_id=prev_topic.id,
                             target_id=current_topic.id,
@@ -101,7 +109,9 @@ class KnowledgeEnhancedAssessment:
             frozenset(["crypto", "general"])  # General topics might relate to crypto
         }
         
-        return frozenset([cat1, cat2]) in related_pairs
+        current_pair = frozenset([cat1, cat2])
+        logger.debug(f"Checking relation between categories: {current_pair}")
+        return current_pair in related_pairs
     
     def _get_relation_type(self, category1: str, category2: str) -> str:
         """Determine the type of relationship between categories."""
