@@ -39,9 +39,19 @@ class PatternDetector:
         if not topics:
             return cycles
             
+        # Get reference time
+        now = datetime.utcnow()
+            
         # Analyze transitions
         for topic in topics:
-            cycle = self._analyze_topic_transitions(topic, timeframe)
+            # Skip topics outside timeframe
+            time_diff = (now - topic.valid_from).total_seconds()
+            if time_diff > timeframe:
+                continue
+                
+            cycle = self._analyze_topic_transitions(
+                topic, timeframe, now=now
+            )
             if cycle:
                 cycles.append(cycle)
                 
@@ -50,6 +60,7 @@ class PatternDetector:
     def _analyze_topic_transitions(self, 
         topic: TimeAwareEntity,
         timeframe: float,
+        now: Optional[datetime] = None,
         seen_ids: Optional[Set[UUID]] = None,
         seen_categories: Optional[Set[str]] = None,
         depth: int = 0
@@ -59,6 +70,7 @@ class PatternDetector:
         Args:
             topic: Topic entity to analyze
             timeframe: Analysis time window
+            now: Reference time for timeframe checks
             seen_ids: Set of already seen entity IDs
             seen_categories: Set of already seen categories
             depth: Current recursion depth
@@ -66,6 +78,9 @@ class PatternDetector:
         Returns:
             Cycle metadata if detected, None otherwise
         """
+        if now is None:
+            now = datetime.utcnow()
+            
         # Initialize tracking sets
         if seen_ids is None:
             seen_ids = set()
@@ -75,6 +90,11 @@ class PatternDetector:
         # Add current topic
         current_id = topic.id
         current_category = topic.properties["category"].value
+        
+        # Check if this topic is within timeframe
+        time_diff = (now - topic.valid_from).total_seconds()
+        if time_diff > timeframe:
+            return None
         
         # Check for cycle
         if current_category in seen_categories and depth > 0:
@@ -106,9 +126,10 @@ class PatternDetector:
             cycle = self._analyze_topic_transitions(
                 target,
                 timeframe,
-                seen_ids,
-                seen_categories,
-                depth + 1
+                now=now,
+                seen_ids=seen_ids,
+                seen_categories=seen_categories,
+                depth=depth + 1
             )
             
             if cycle:
