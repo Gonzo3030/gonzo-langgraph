@@ -1,19 +1,20 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, TypeVar, Generic
+from typing import Any, Dict, List, Optional, TypeVar, Generic, AsyncIterator
 from datetime import datetime
-from langchain_core.stores import BaseStore
+from langchain_core.stores import BaseStore as LangChainBaseStore
 
 KeyType = TypeVar("KeyType")
 ValueType = TypeVar("ValueType")
 
-class GonzoBaseStore(BaseStore[KeyType, ValueType], Generic[KeyType, ValueType]):
+class GonzoBaseStore(LangChainBaseStore[KeyType, ValueType], Generic[KeyType, ValueType]):
     """Base store interface for Gonzo's memory system.
     
-    Extends LangGraph's BaseStore to add timeline-aware storage capabilities
+    Extends LangChain's BaseStore to add timeline-aware storage capabilities
     and pattern tracking functionality.
     """
     
     def __init__(self):
+        super().__init__()
         self.metadata: Dict[str, Any] = {
             "created_at": datetime.now().isoformat(),
             "last_updated": datetime.now().isoformat(),
@@ -21,32 +22,8 @@ class GonzoBaseStore(BaseStore[KeyType, ValueType], Generic[KeyType, ValueType])
         }
     
     @abstractmethod
-    async def get(self, key: KeyType) -> Optional[ValueType]:
-        """Get a value by key."""
-        pass
-    
-    @abstractmethod
-    async def set(self, key: KeyType, value: ValueType) -> None:
-        """Set a value by key."""
-        pass
-    
-    @abstractmethod
-    async def delete(self, key: KeyType) -> None:
-        """Delete a value by key."""
-        pass
-    
-    @abstractmethod
-    async def exists(self, key: KeyType) -> bool:
-        """Check if a key exists."""
-        pass
-    
-    @abstractmethod
-    async def list(self) -> List[KeyType]:
-        """List all keys."""
-        pass
-    
-    @abstractmethod
-    async def get_timeline_entries(self, 
+    async def get_timeline_entries(
+        self,
         start_time: Optional[datetime] = None,
         end_time: Optional[datetime] = None,
         timeline: str = "present"
