@@ -1,7 +1,7 @@
 from typing import Dict, Any, List
 from datetime import datetime
 from .base import BaseNode
-from ...types import GonzoState
+from ...types import GonzoState, update_state
 
 class AnalysisNode(BaseNode):
     """Base class for analysis nodes that process different types of content.
@@ -18,7 +18,8 @@ class AnalysisNode(BaseNode):
         """Validate state has required content for analysis."""
         return (
             'category' in state 
-            and state['category'] == self.analysis_type
+            and (state['category'] == self.analysis_type 
+                 or state.get(f'requires_{self.analysis_type}_analysis', False))
         )
 
 class MarketAnalysisNode(AnalysisNode):
@@ -43,12 +44,13 @@ class MarketAnalysisNode(AnalysisNode):
         Returns:
             Updated state with market analysis
         """
-        # Basic implementation for testing
-        if state.get('category') == 'market':
-            state['market_analysis_completed'] = True
-            state['market_analysis_timestamp'] = datetime.now().isoformat()
-            
-        return state
+        updates = {
+            'market_analysis_completed': True,
+            'market_analysis_timestamp': datetime.now().isoformat(),
+            'steps': state.get('steps', []) + ['market_analysis']
+        }
+        
+        return update_state(state, updates)
 
 class NarrativeAnalysisNode(AnalysisNode):
     """Analyzes narratives for manipulation and control patterns.
@@ -72,12 +74,13 @@ class NarrativeAnalysisNode(AnalysisNode):
         Returns:
             Updated state with narrative analysis
         """
-        # Basic implementation for testing
-        if state.get('category') == 'narrative':
-            state['narrative_analysis_completed'] = True
-            state['narrative_analysis_timestamp'] = datetime.now().isoformat()
-            
-        return state
+        updates = {
+            'narrative_analysis_completed': True,
+            'narrative_analysis_timestamp': datetime.now().isoformat(),
+            'steps': state.get('steps', []) + ['narrative_analysis']
+        }
+        
+        return update_state(state, updates)
 
 class CausalityAnalysisNode(AnalysisNode):
     """Analyzes cause-effect relationships across time periods.
@@ -101,9 +104,10 @@ class CausalityAnalysisNode(AnalysisNode):
         Returns:
             Updated state with causality analysis
         """
-        # Basic implementation for testing
-        if state.get('requires_causality_analysis'):
-            state['causality_analysis_completed'] = True
-            state['causality_analysis_timestamp'] = datetime.now().isoformat()
-            
-        return state
+        updates = {
+            'causality_analysis_completed': True,
+            'causality_analysis_timestamp': datetime.now().isoformat(),
+            'steps': state.get('steps', []) + ['causality_analysis']
+        }
+        
+        return update_state(state, updates)
