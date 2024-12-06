@@ -7,8 +7,8 @@ This module defines the main graph structure that enables Gonzo to:
 4. Maintain the authentic voice of the original "Brown Buffalo"
 """
 
-from typing import Dict, Any
-from langgraph.graph import StateGraph, Graph
+from typing import Dict, Any, List
+from langgraph.graph import StateGraph, Graph, END
 from ..types import GonzoState
 from ..nodes.core import AssessmentNode
 from ..nodes.core.analysis import MarketAnalysisNode, NarrativeAnalysisNode, CausalityAnalysisNode
@@ -31,7 +31,7 @@ def create_workflow() -> Graph:
     workflow.add_node("causality_analysis", causality_analysis.process)
     
     # Define routing logic
-    def route_next(state: GonzoState) -> str:
+    def route_after_assessment(state: GonzoState) -> Dict[str, Any]:
         """Route to appropriate analysis node based on state assessment."""
         # Extract routing information
         category = state.get("category", "")
@@ -41,25 +41,49 @@ def create_workflow() -> Graph:
         
         # Priority routing based on state flags
         if requires_causality:
-            return "causality_analysis"
+            return {"next": "causality_analysis"}
         elif requires_market:
-            return "market_analysis"
+            return {"next": "market_analysis"}
         elif requires_narrative:
-            return "narrative_analysis"
+            return {"next": "narrative_analysis"}
             
         # Fallback routing based on category
         if category == "market":
-            return "market_analysis"
+            return {"next": "market_analysis"}
         elif category == "narrative":
-            return "narrative_analysis"
+            return {"next": "narrative_analysis"}
         
-        return "end"
+        return {"next": END}
     
-    # Add edges with conditional routing
-    workflow.add_edge("assessment", route_next)
-    workflow.add_edge("market_analysis", route_next)
-    workflow.add_edge("narrative_analysis", route_next)
-    workflow.add_edge("causality_analysis", route_next)
+    def route_after_analysis(state: GonzoState) -> Dict[str, Any]:
+        """Route after analysis completion."""
+        # For now, end after analysis
+        return {"next": END}
+    
+    # Add conditional edges
+    workflow.add_conditional_edges(
+        "assessment",
+        route_after_assessment,
+        {"next": ["market_analysis", "narrative_analysis", "causality_analysis", END]}
+    )
+    
+    workflow.add_conditional_edges(
+        "market_analysis",
+        route_after_analysis,
+        {"next": [END]}
+    )
+    
+    workflow.add_conditional_edges(
+        "narrative_analysis",
+        route_after_analysis,
+        {"next": [END]}
+    )
+    
+    workflow.add_conditional_edges(
+        "causality_analysis",
+        route_after_analysis,
+        {"next": [END]}
+    )
     
     # Set entry point
     workflow.set_entry_point("assessment")
