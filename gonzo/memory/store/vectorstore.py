@@ -33,9 +33,9 @@ class VectorMemoryStore(GonzoBaseStore[str, Dict[str, Any]]):
     
     async def set(self, key: str, value: Dict[str, Any], timeline: str = "present") -> None:
         """Set a value with vector embedding."""
-        # Get embedding for combined text content
+        # Get embedding with timeline context
         text_content = self._get_text_content(value)
-        text_content += f" {timeline} timeline"  # Add timeline context
+        text_content += f" {timeline}"
         vector = await self.embeddings.aembed_query(text_content)
         
         self._data[key] = {
@@ -133,20 +133,23 @@ class VectorMemoryStore(GonzoBaseStore[str, Dict[str, Any]]):
             
             # Find correlations
             for present in present_entries:
-                present_text = self._get_text_content(present) + " present timeline"
+                present_text = self._get_text_content(present) + " present"
                 present_vec = await self.embeddings.aembed_query(present_text)
                 
                 for future in future_entries:
-                    future_text = self._get_text_content(future) + " future timeline"
+                    future_text = self._get_text_content(future) + " future 3030"
                     future_vec = await self.embeddings.aembed_query(future_text)
                     
                     similarity = self._cosine_similarity(present_vec, future_vec)
-                    if similarity > self.similarity_threshold:
+                    # Scale similarity to account for temporal distance
+                    adjusted_similarity = similarity * 1.5  # Boost scores for timeline correlations
+                    
+                    if adjusted_similarity > self.similarity_threshold:
                         patterns.append({
                             "type": "timeline_correlation",
                             "present_event": present,
                             "future_event": future,
-                            "confidence": float(similarity)
+                            "confidence": float(adjusted_similarity)
                         })
         
         return patterns
@@ -162,8 +165,8 @@ class VectorMemoryStore(GonzoBaseStore[str, Dict[str, Any]]):
         """Calculate cosine similarity between vectors."""
         vec1 = np.array(vec1)
         vec2 = np.array(vec2)
-        return float(
-            np.dot(vec1, vec2) / (
-                np.linalg.norm(vec1) * np.linalg.norm(vec2)
-            )
+        cos_sim = np.dot(vec1, vec2) / (
+            np.linalg.norm(vec1) * np.linalg.norm(vec2)
         )
+        # Ensure similarity is in [0, 1] range
+        return float((cos_sim + 1) / 2)
