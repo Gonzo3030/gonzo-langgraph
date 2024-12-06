@@ -44,6 +44,11 @@ class Message(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.now)
     metadata: Optional[Dict[str, Any]] = None
 
+class MessagesState(BaseModel):
+    """State for managing message history."""
+    messages: List[Message] = Field(default_factory=list)
+    context: Dict[str, Any] = Field(default_factory=dict)
+
 class GonzoState(BaseModel):
     """State object for Gonzo workflow."""
     messages: List[Message] = Field(default_factory=list)
@@ -83,3 +88,18 @@ class GonzoState(BaseModel):
 def create_initial_state() -> GonzoState:
     """Create an initial state for the workflow."""
     return GonzoState()
+
+def update_state(state: GonzoState, updates: Dict[str, Any]) -> GonzoState:
+    """Update the state with new values.
+    
+    Args:
+        state: Current state
+        updates: Dictionary of updates to apply
+        
+    Returns:
+        Updated state
+    """
+    for key, value in updates.items():
+        if hasattr(state, key):
+            setattr(state, key, value)
+    return state
