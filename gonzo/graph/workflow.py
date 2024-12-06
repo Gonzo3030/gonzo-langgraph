@@ -1,7 +1,16 @@
+"""Core workflow definition for the Gonzo agent.
+
+This module defines the main graph structure that enables Gonzo to:
+1. Analyze current events through the lens of preventing a dystopian future
+2. Connect patterns across different domains (politics, economics, media)
+3. Educate and awaken people to manipulation and control systems
+4. Maintain the authentic voice of the original "Brown Buffalo"
+"""
+
 from typing import Dict, Any
 from langgraph.graph import StateGraph, Graph
 from ..types import GonzoState
-from ..nodes.core import AssessmentNode, AnalysisNode
+from ..nodes.core import AssessmentNode
 from ..nodes.core.analysis import MarketAnalysisNode, NarrativeAnalysisNode, CausalityAnalysisNode
 
 def create_workflow() -> Graph:
