@@ -1,7 +1,7 @@
 """Tests for pattern detection functionality."""
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from uuid import uuid4
 
 from gonzo.graph.knowledge.graph import KnowledgeGraph
@@ -42,7 +42,7 @@ def test_detect_topic_cycles_empty_graph(detector):
 def test_detect_simple_cycle(graph, detector):
     """Test detection of a simple topic cycle."""
     # Create topic sequence: crypto -> narrative -> crypto
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     
     # Create entities
     type1, props1, temporal1, valid_from1, valid_to1 = create_topic_entity("crypto", now)
@@ -79,7 +79,7 @@ def test_detect_simple_cycle(graph, detector):
 
 def test_no_cycle_different_topics(graph, detector):
     """Test with different topics that don't form a cycle."""
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     
     # Create entities
     type1, props1, temporal1, valid_from1, valid_to1 = create_topic_entity("crypto", now)
@@ -109,7 +109,7 @@ def test_no_cycle_different_topics(graph, detector):
 
 def test_cycle_outside_timeframe(graph, detector):
     """Test that cycles outside timeframe are not detected."""
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     
     # Create entities with long time gaps
     type1, props1, temporal1, valid_from1, valid_to1 = create_topic_entity("crypto", now)
