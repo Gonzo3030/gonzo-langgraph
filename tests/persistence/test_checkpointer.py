@@ -48,7 +48,7 @@ async def test_multiple_checkpoints(checkpointer):
     
     # Verify order
     assert checkpoints == [
-        f"test_thread_{i}"
+        f"checkpoint_test_thread_{i}"
         for i in range(3)
     ]
 
