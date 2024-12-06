@@ -14,18 +14,6 @@ class AnalysisNode(BaseNode):
         super().__init__(config)
         self.analysis_type = analysis_type
         
-    async def process(self, state: GonzoState) -> GonzoState:
-        """Process state according to analysis type.
-        
-        Args:
-            state: Current state with content to analyze
-            
-        Returns:
-            State updated with analysis results
-        """
-        # Implement core analysis logic
-        return state
-        
     def validate_state(self, state: GonzoState) -> bool:
         """Validate state has required content for analysis."""
         return (
@@ -45,6 +33,22 @@ class MarketAnalysisNode(AnalysisNode):
     
     def __init__(self, config: Dict[str, Any] = None):
         super().__init__('market', config)
+        
+    def _process(self, state: GonzoState) -> GonzoState:
+        """Process market-related state updates.
+        
+        Args:
+            state: Current state
+            
+        Returns:
+            Updated state with market analysis
+        """
+        # Basic implementation for testing
+        if state.get('category') == 'market':
+            state['market_analysis_completed'] = True
+            state['market_analysis_timestamp'] = datetime.now().isoformat()
+            
+        return state
 
 class NarrativeAnalysisNode(AnalysisNode):
     """Analyzes narratives for manipulation and control patterns.
@@ -58,6 +62,22 @@ class NarrativeAnalysisNode(AnalysisNode):
     
     def __init__(self, config: Dict[str, Any] = None):
         super().__init__('narrative', config)
+        
+    def _process(self, state: GonzoState) -> GonzoState:
+        """Process narrative-related state updates.
+        
+        Args:
+            state: Current state
+            
+        Returns:
+            Updated state with narrative analysis
+        """
+        # Basic implementation for testing
+        if state.get('category') == 'narrative':
+            state['narrative_analysis_completed'] = True
+            state['narrative_analysis_timestamp'] = datetime.now().isoformat()
+            
+        return state
 
 class CausalityAnalysisNode(AnalysisNode):
     """Analyzes cause-effect relationships across time periods.
@@ -71,3 +91,19 @@ class CausalityAnalysisNode(AnalysisNode):
     
     def __init__(self, config: Dict[str, Any] = None):
         super().__init__('causality', config)
+        
+    def _process(self, state: GonzoState) -> GonzoState:
+        """Process causality-related state updates.
+        
+        Args:
+            state: Current state
+            
+        Returns:
+            Updated state with causality analysis
+        """
+        # Basic implementation for testing
+        if state.get('requires_causality_analysis'):
+            state['causality_analysis_completed'] = True
+            state['causality_analysis_timestamp'] = datetime.now().isoformat()
+            
+        return state
