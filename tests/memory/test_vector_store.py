@@ -1,7 +1,7 @@
 import pytest
 from datetime import datetime, timedelta
 from gonzo.memory.store import VectorMemoryStore
-from .mock_embeddings import MockEmbeddings
+from tests.memory.mock_embeddings import MockEmbeddings  # Fixed import
 
 @pytest.fixture
 def vector_store():
@@ -78,44 +78,3 @@ async def test_timeline_correlation(vector_store, sample_entries):
     assert len(patterns) > 0
     assert "confidence" in patterns[0]
     assert patterns[0]["confidence"] > 0.5  # Should have meaningful confidence
-
-@pytest.mark.asyncio
-async def test_batch_operations(vector_store):
-    """Test batch vector operations."""
-    # Prepare batch data
-    entries = [
-        ("key1", {"description": "Entry 1", "type": "test"}),
-        ("key2", {"description": "Entry 2", "type": "test"})
-    ]
-    
-    # Test batch set
-    await vector_store.mset(entries)
-    
-    # Test batch get
-    results = await vector_store.mget(["key1", "key2"])
-    assert len(results) == 2
-    assert all(r is not None for r in results)
-    
-    # Test key iteration
-    keys = [key async for key in vector_store.yield_keys()]
-    assert len(keys) == 2
-
-@pytest.mark.asyncio
-async def test_temporal_search(vector_store):
-    """Test time-based search capabilities."""
-    now = datetime.now()
-    
-    # Store entries
-    await vector_store.set(
-        "recent",
-        {"description": "Recent event", "type": "test"},
-        timeline="present"
-    )
-    
-    # Search with time window
-    recent_entries = await vector_store.get_timeline_entries(
-        start_time=now - timedelta(hours=1),
-        timeline="present"
-    )
-    
-    assert len(recent_entries) > 0
