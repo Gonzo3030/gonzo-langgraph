@@ -15,22 +15,25 @@ class MockEmbeddings(Embeddings):
             size: Dimension of embedding vectors
         """
         self.size = size
-        # Define semantic components
+        # Define semantic components with full vector size
         rng = np.random.RandomState(42)  # Fixed seed for determinism
-        self._components = {
-            # Domain components (first half of vector)
-            'crypto': rng.randn(size // 2),
-            'finance': rng.randn(size // 2),
-            'defi': rng.randn(size // 2),
-            
-            # Timeline components (second half of vector)
-            'future': np.concatenate([np.zeros(size // 2), rng.randn(size // 2)]),
-            'present': np.concatenate([np.zeros(size // 2), -rng.randn(size // 2)])
-        }
         
-        # Normalize all components
-        for key in self._components:
-            self._components[key] = self._normalize(self._components[key])
+        # Create base vectors for each concept
+        self._components = {}
+        
+        # Domain components (emphasized in first half)
+        for domain in ['crypto', 'finance', 'defi']:
+            vec = np.zeros(size)
+            vec[:size//2] = rng.randn(size//2) * 2  # Stronger signal in first half
+            vec[size//2:] = rng.randn(size//2) * 0.5  # Weaker signal in second half
+            self._components[domain] = self._normalize(vec)
+        
+        # Timeline components (emphasized in second half)
+        for timeline in ['future', 'present']:
+            vec = np.zeros(size)
+            vec[:size//2] = rng.randn(size//2) * 0.5  # Weaker signal in first half
+            vec[size//2:] = rng.randn(size//2) * 2  # Stronger signal in second half
+            self._components[timeline] = self._normalize(vec)
     
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
         """Generate embeddings for a list of texts."""
@@ -60,6 +63,10 @@ class MockEmbeddings(Embeddings):
             vec += timeline_weight * self._components['future']
         if any(term in text for term in ['present', 'current', 'now', 'adoption']):
             vec += timeline_weight * self._components['present']
+        
+        # Add more weight to empty vectors to avoid zero division
+        if np.all(vec == 0):
+            vec = np.random.RandomState(hash(text)).randn(self.size)
             
         # Ensure vector is normalized
         return self._normalize(vec).tolist()
@@ -77,4 +84,6 @@ class MockEmbeddings(Embeddings):
         norm = np.linalg.norm(vec)
         if norm > 0:
             return vec / norm
-        return vec
+        # Fallback for zero vectors
+        vec = np.random.RandomState(0).randn(self.size)
+        return vec / np.linalg.norm(vec)
