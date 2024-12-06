@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, TypeVar, Generic
+from typing import Any, Dict, List, Optional, TypeVar, Generic, AsyncIterator
 from datetime import datetime
 from .base import GonzoBaseStore, KeyType, ValueType
 
@@ -15,7 +15,13 @@ class MemoryStore(GonzoBaseStore[KeyType, ValueType]):
     async def get(self, key: KeyType) -> Optional[ValueType]:
         """Get a value by key."""
         entry = self._data.get(key)
+        if entry:
+            entry["last_accessed"] = datetime.now().isoformat()
         return entry["value"] if entry else None
+
+    async def mget(self, keys: List[KeyType]) -> List[Optional[ValueType]]:
+        """Get multiple values by keys."""
+        return [await self.get(key) for key in keys]
     
     async def set(self, key: KeyType, value: ValueType, timeline: str = "present") -> None:
         """Set a value with timeline metadata.
@@ -33,6 +39,11 @@ class MemoryStore(GonzoBaseStore[KeyType, ValueType]):
         }
         self.metadata["total_entries"] = len(self._data)
         await self.update_metadata({"last_updated": datetime.now().isoformat()})
+
+    async def mset(self, key_value_pairs: List[tuple[KeyType, ValueType]]) -> None:
+        """Set multiple key-value pairs."""
+        for key, value in key_value_pairs:
+            await self.set(key, value)
     
     async def delete(self, key: KeyType) -> None:
         """Delete a value by key."""
@@ -40,6 +51,11 @@ class MemoryStore(GonzoBaseStore[KeyType, ValueType]):
             del self._data[key]
             self.metadata["total_entries"] = len(self._data)
             await self.update_metadata({"last_updated": datetime.now().isoformat()})
+
+    async def mdelete(self, keys: List[KeyType]) -> None:
+        """Delete multiple values by keys."""
+        for key in keys:
+            await self.delete(key)
     
     async def exists(self, key: KeyType) -> bool:
         """Check if a key exists."""
@@ -48,6 +64,11 @@ class MemoryStore(GonzoBaseStore[KeyType, ValueType]):
     async def list(self) -> List[KeyType]:
         """List all keys."""
         return list(self._data.keys())
+
+    async def yield_keys(self) -> AsyncIterator[KeyType]:
+        """Yield all keys."""
+        for key in self._data.keys():
+            yield key
     
     async def get_timeline_entries(
         self,
