@@ -1,12 +1,16 @@
 import pytest
+from gonzo.types import create_initial_state
+from gonzo.graph.workflow import create_workflow
+from langchain_core.messages import HumanMessage
 
-# Configure all tests to use asyncio by default
-pytest_plugins = ['pytest_asyncio']
+@pytest.fixture
+def workflow():
+    """Create test workflow instance."""
+    return create_workflow()
 
-@pytest.fixture(scope='session')
-def event_loop():
-    """Create an instance of the default event loop for each test case."""
-    import asyncio
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+@pytest.fixture
+def initial_state():
+    """Create test initial state."""
+    return create_initial_state(
+        HumanMessage(content="What's happening with Bitcoin today?")
+    )
