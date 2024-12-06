@@ -1,9 +1,8 @@
 from typing import Optional, Dict, Any
 from datetime import datetime
-from langgraph.checkpoint import BaseCheckpointer
 from .store import PersistentStore
 
-class GonzoCheckpointer(BaseCheckpointer):
+class GonzoCheckpointer:
     """Custom checkpointer for Gonzo state persistence.
     
     Provides:
@@ -23,7 +22,6 @@ class GonzoCheckpointer(BaseCheckpointer):
             store: Backend storage implementation
             thread_id: Optional thread identifier
         """
-        super().__init__()
         self.store = store
         self.thread_id = thread_id or datetime.now().isoformat()
         self.metadata: Dict[str, Any] = {
@@ -87,9 +85,9 @@ class GonzoCheckpointer(BaseCheckpointer):
     async def list_checkpoints(self) -> list[str]:
         """List available checkpoints for this thread."""
         prefix = f"{self.thread_id}_"
-        all_keys = await self.store.list()
+        all_keys = await self.store.list(prefix=prefix)
         return sorted(
-            [k for k in all_keys if k.startswith(prefix)],
+            all_keys,
             key=lambda k: int(k.split('_')[1])
         )
     
@@ -101,5 +99,4 @@ class GonzoCheckpointer(BaseCheckpointer):
     async def clear(self) -> None:
         """Clear all checkpoints for this thread."""
         checkpoints = await self.list_checkpoints()
-        for key in checkpoints:
-            await self.store.delete(key)
+        await self.store.mdelete(checkpoints)
