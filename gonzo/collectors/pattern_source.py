@@ -1,6 +1,6 @@
 """Pattern source collector and manager."""
 
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Tuple
 from datetime import datetime, UTC
 import logging
 from .youtube import YouTubeCollector
@@ -44,6 +44,47 @@ class PatternSourceManager:
             
         return patterns
         
+    def _detect_pattern_type(self, text: str) -> Optional[Tuple[str, float]]:
+        """Detect pattern type from text with confidence score.
+        
+        Args:
+            text: Text to analyze
+            
+        Returns:
+            Tuple of (pattern_type, confidence) if found, None otherwise
+        """
+        pattern_indicators = {
+            "fear_tactics": [
+                "fear", "panic", "threat", "danger", "crisis",
+                "emergency", "catastrophe", "disaster"
+            ],
+            "economic_manipulation": [
+                "inflation", "economy", "economic", "transitory",
+                "market", "financial", "cost", "price"
+            ],
+            "soft_propaganda": [
+                "manipulation", "propaganda", "narrative",
+                "mainstream media", "corporate media", "deep state",
+                "legacy media"
+            ]
+        }
+        
+        # Score each pattern type
+        scores = {}
+        text = text.lower()
+        
+        for pattern_type, indicators in pattern_indicators.items():
+            count = sum(1 for indicator in indicators if indicator in text)
+            if count > 0:
+                scores[pattern_type] = count / len(indicators)
+        
+        if scores:
+            # Return the highest scoring pattern type
+            best_type = max(scores.items(), key=lambda x: x[1])
+            return best_type[0], best_type[1]
+        
+        return None
+        
     def _process_patterns(self, transcript: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Process transcript to extract manipulation patterns.
         
@@ -55,79 +96,70 @@ class PatternSourceManager:
         """
         patterns = []
         current_segment = []
-        
-        # Look for key phrases indicating pattern description
-        pattern_indicators = {
-            "soft_propaganda": [
-                "manipulation", "propaganda", "narrative",
-                "mainstream media", "corporate media", "deep state",
-                "legacy media", "pattern", "technique", "tactic"
-            ],
-            "fear_tactics": [
-                "fear", "panic", "threat", "danger", "crisis",
-                "emergency", "catastrophe", "disaster"
-            ],
-            "economic_manipulation": [
-                "inflation", "economy", "economic", "transitory",
-                "market", "financial", "cost", "price", "crisis"
-            ]
-        }
+        current_type = None
         
         for segment in transcript:
-            text = segment["text"].lower()
-            pattern_found = False
+            text = segment["text"]
+            pattern_info = self._detect_pattern_type(text)
             
-            # Check for pattern indicators by category
-            for pattern_type, indicators in pattern_indicators.items():
-                if any(indicator in text for indicator in indicators):
-                    if not current_segment:
-                        current_segment.append({"type": pattern_type})
+            if pattern_info:
+                pattern_type, confidence = pattern_info
+                if not current_segment:
+                    # Start new segment
+                    current_type = pattern_type
+                    current_segment = [segment]
+                elif pattern_type == current_type:
+                    # Continue current segment
                     current_segment.append(segment)
-                    pattern_found = True
-                    break
-            
-            if not pattern_found and current_segment:
+                else:
+                    # Process current segment and start new one
+                    pattern = self._extract_pattern_from_segment(current_segment, current_type)
+                    if pattern:
+                        patterns.append(pattern)
+                    current_type = pattern_type
+                    current_segment = [segment]
+            elif current_segment:
                 # Process completed segment
-                pattern = self._extract_pattern_from_segment(current_segment)
+                pattern = self._extract_pattern_from_segment(current_segment, current_type)
                 if pattern:
                     patterns.append(pattern)
                 current_segment = []
+                current_type = None
         
         # Process any remaining segment
         if current_segment:
-            pattern = self._extract_pattern_from_segment(current_segment)
+            pattern = self._extract_pattern_from_segment(current_segment, current_type)
             if pattern:
                 patterns.append(pattern)
         
         return patterns
         
     def _extract_pattern_from_segment(self, 
-        segment: List[Dict[str, Any]]
+        segment: List[Dict[str, Any]],
+        pattern_type: str
     ) -> Optional[Dict[str, Any]]:
         """Extract pattern information from transcript segment.
         
         Args:
             segment: List of transcript segments describing a pattern
+            pattern_type: Type of pattern detected
             
         Returns:
             Pattern metadata if identified, None otherwise
         """
-        if len(segment) < 2:  # Need type info and at least one content segment
+        if not segment:
             return None
             
-        pattern_type = segment[0]["type"]
-        content_segments = segment[1:]  # Skip the type info
-        
         # Combine segment text
-        text = " ".join(s["text"] for s in content_segments)
+        text = " ".join(s["text"] for s in segment)
         
         return {
             "type": "manipulation_pattern",
             "pattern_category": pattern_type,
             "description": text,
-            "timestamp_start": content_segments[0]["start"],
-            "timestamp_end": content_segments[-1]["start"] + content_segments[-1]["duration"],
-            "confidence": 0.7  # TODO: Implement proper confidence scoring
+            "timestamp_start": segment[0]["start"],
+            "timestamp_end": segment[-1]["start"] + segment[-1]["duration"],
+            "confidence": 0.7  # TODO: Implement better confidence scoring
         }
         
     def get_cached_patterns(self) -> Dict[str, Dict[str, Any]]:
