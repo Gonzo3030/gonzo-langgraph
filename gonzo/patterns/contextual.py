@@ -1,163 +1,155 @@
 
-class PowerStructure:
-    """Tracks power relationships between entities."""
+class ContextualPatternDetector:
+    """Detects manipulation patterns using contextual awareness."""
     
-    def __init__(self):
-        self.entities: Dict[str, Entity] = {}
-        self.influence_networks: Dict[str, Dict[str, float]] = {}
-        self.financial_relationships: Dict[str, Dict[str, KnowledgeClaim]] = {}
-        self.policy_alignments: Dict[str, Dict[str, float]] = {}
+    def __init__(self, state: Optional[APIState] = None):
+        self.power_structure = PowerStructure()
+        self.vector_memory = VectorStoreMemory()
+        self.timeline = Timeline()
+        self.checkpointer = Checkpointer()
+        self.store = Store()
+        self.state = state or APIState()
+
+    def learn_from_source(self,
+        source_type: str,
+        content: Dict[str, Any],
+        confidence: float
+    ) -> None:
+        """Learn new information from a data source."""
+        # Extract entities and store in vector memory
+        if "entities" in content:
+            for entity_data in content["entities"]:
+                entity_id = entity_data.get("id")
+                if entity_id:
+                    # Create or update entity
+                    properties = {}
+                    for key, value in entity_data.get("properties", {}).items():
+                        claim = KnowledgeClaim(
+                            value=value,
+                            source=source_type,
+                            confidence=confidence
+                        )
+                        properties[key] = claim
+                        
+                        # Store in vector memory for semantic search
+                        self.vector_memory.add_memory(
+                            **claim.to_memory_entry()
+                        )
+                    
+                    if entity_id not in self.power_structure.entities:
+                        # New entity
+                        entity = self.power_structure.add_entity(
+                            id=entity_id,
+                            name=entity_data.get("name", entity_id),
+                            entity_type=entity_data.get("type", "unknown"),
+                            properties=properties
+                        )
+                        
+                        # Add to timeline
+                        self.timeline.add_event({
+                            "type": "entity_created",
+                            "entity_id": entity_id,
+                            "timestamp": datetime.now(UTC)
+                        })
+                    else:
+                        # Update existing entity
+                        entity = self.power_structure.entities[entity_id]
+                        for key, value in properties.items():
+                            entity.update_property(
+                                key=key,
+                                value=value.value,
+                                source=source_type,
+                                confidence=confidence
+                            )
+                            
+                            # Add update to timeline
+                            self.timeline.add_event({
+                                "type": "entity_updated",
+                                "entity_id": entity_id,
+                                "property": key,
+                                "timestamp": datetime.now(UTC)
+                            })
         
-        self.entity_types = {
-            "individual": {
-                "properties": ["role", "affiliation", "platform", "net_worth", "connections"]
-            },
-            "organization": {
-                "properties": ["industry", "type", "market_cap", "funding_sources", "political_donations"]
-            },
-            "media_outlet": {
-                "properties": ["type", "parent_company", "bias", "advertisers", "reach"]
-            },
-            "government": {
-                "properties": ["level", "jurisdiction", "party", "donors", "voting_record"]
-            }
-        }
+        # Process relationships
+        if "relationships" in content:
+            for rel in content["relationships"]:
+                self._process_relationship(rel, source_type, confidence)
+        
+        # Save checkpoint
+        self._save_checkpoint()
     
-    def add_entity(self, 
-        id: str,
-        name: str,
-        entity_type: str,
-        properties: Dict[str, Any] = None
-    ) -> Optional[Entity]:
-        """Add a new entity to the power structure."""
-        if entity_type not in self.entity_types:
-            logger.error(f"Invalid entity type: {entity_type}")
-            return None
-            
-        # Convert regular properties to KnowledgeClaims if needed
-        property_claims = {}
-        if properties:
-            for key, value in properties.items():
-                if isinstance(value, KnowledgeClaim):
-                    property_claims[key] = value
-                else:
-                    property_claims[key] = KnowledgeClaim(
-                        value=value,
-                        source="initial_data",
-                        confidence=ConfidenceLevel.MEDIUM
-                    )
+    def _process_relationship(self,
+        rel: Dict[str, Any],
+        source_type: str,
+        confidence: float
+    ) -> None:
+        """Process a relationship update."""
+        source_id = rel.get("source")
+        target_id = rel.get("target")
+        rel_type = rel.get("type")
         
-        entity = Entity(id, name, entity_type, property_claims)
-        self.entities[id] = entity
-        return entity
-    
-    def learn_relationship(
-        self,
-        source_id: str,
-        target_id: str,
-        relationship_type: str,
-        confidence: float,
-        info_source: str
-    ) -> bool:
-        """Learn or update a relationship between entities."""
-        if source_id not in self.entities or target_id not in self.entities:
-            return False
-            
-        source_entity = self.entities[source_id]
-        
-        if relationship_type not in source_entity.relationships:
-            logger.warning(f"Unknown relationship type: {relationship_type}")
-            return False
-            
-        relationships = source_entity.relationships[relationship_type]
-        
-        if target_id in relationships:
-            # Update existing relationship
-            existing = relationships[target_id]
-            if confidence > existing.confidence:
-                relationships[target_id] = KnowledgeClaim(
-                    value=True,
-                    source=info_source,
-                    confidence=confidence
-                )
-            else:
-                existing.add_corroboration(info_source, confidence)
-        else:
-            # New relationship
-            relationships[target_id] = KnowledgeClaim(
-                value=True,
-                source=info_source,
-                confidence=confidence
+        if all([source_id, target_id, rel_type]):
+            # Learn basic relationship
+            self.power_structure.learn_relationship(
+                source_id,
+                target_id,
+                rel_type,
+                confidence,
+                source_type
             )
-        
-        return True
-    
-    def learn_influence_relationship(
-        self,
-        source_id: str,
-        target_id: str,
-        influence_strength: float,
-        evidence: str,
-        confidence: float
-    ) -> None:
-        """Learn about influence relationships between entities."""
-        if source_id not in self.influence_networks:
-            self.influence_networks[source_id] = {}
-        
-        # Weight the influence by confidence
-        adjusted_influence = influence_strength * confidence
-        self.influence_networks[source_id][target_id] = adjusted_influence
-        
-        # Record the evidence
-        self.learn_relationship(
-            source_id,
-            target_id,
-            "influences",
-            confidence,
-            evidence
-        )
-    
-    def learn_financial_relationship(
-        self,
-        source_id: str,
-        target_id: str,
-        relationship_details: Dict[str, Any],
-        source: str,
-        confidence: float
-    ) -> None:
-        """Learn about financial relationships between entities."""
-        if source_id not in self.financial_relationships:
-            self.financial_relationships[source_id] = {}
             
-        self.financial_relationships[source_id][target_id] = KnowledgeClaim(
-            value=relationship_details,
-            source=source,
-            confidence=confidence
-        )
-    
-    def learn_policy_alignment(
-        self,
-        entity1_id: str,
-        entity2_id: str,
-        alignment_score: float,
-        topics: List[str]
-    ) -> None:
-        """Learn about policy alignment between entities."""
-        if entity1_id not in self.policy_alignments:
-            self.policy_alignments[entity1_id] = {}
+            # Add to timeline
+            self.timeline.add_event({
+                "type": "relationship_created",
+                "source": source_id,
+                "target": target_id,
+                "relationship_type": rel_type,
+                "timestamp": datetime.now(UTC)
+            })
             
-        self.policy_alignments[entity1_id][entity2_id] = alignment_score
-        
-        # Also store the reverse relationship
-        if entity2_id not in self.policy_alignments:
-            self.policy_alignments[entity2_id] = {}
-        self.policy_alignments[entity2_id][entity1_id] = alignment_score
-        
-    def to_checkpoint(self) -> Dict[str, Any]:
-        """Convert to checkpoint format."""
-        return {
-            "entities": {id: vars(entity) for id, entity in self.entities.items()},
-            "influence_networks": self.influence_networks,
-            "financial_relationships": self.financial_relationships,
-            "policy_alignments": self.policy_alignments
+            # Process specific relationship types
+            if "influence" in rel:
+                self.power_structure.learn_influence_relationship(
+                    source_id,
+                    target_id,
+                    rel["influence"].get("strength", 0.5),
+                    source_type,
+                    confidence
+                )
+            
+            if "financial" in rel:
+                self.power_structure.learn_financial_relationship(
+                    source_id,
+                    target_id,
+                    rel["financial"],
+                    source_type,
+                    confidence
+                )
+            
+            if "policy_alignment" in rel:
+                self.power_structure.learn_policy_alignment(
+                    source_id,
+                    target_id,
+                    rel["policy_alignment"].get("score", 0.5),
+                    rel["policy_alignment"].get("topics", [])
+                )
+    
+    def _save_checkpoint(self) -> None:
+        """Save current state to checkpoint."""
+        checkpoint_data = {
+            "power_structure": self.power_structure.to_checkpoint(),
+            "timeline": self.timeline.to_checkpoint(),
+            "state": self.state.to_dict()
         }
+        self.checkpointer.save(checkpoint_data)
+    
+    def load_checkpoint(self) -> None:
+        """Load state from checkpoint."""
+        checkpoint_data = self.checkpointer.load()
+        if checkpoint_data:
+            # TODO: Implement state restoration
+            pass
+    
+    def search_patterns(self, query: str, k: int = 3) -> List[Dict[str, Any]]:
+        """Search for patterns using semantic similarity."""
+        return self.vector_memory.get_relevant_memories(query, k)
