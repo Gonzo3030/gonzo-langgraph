@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class PatternSourceManager:
     """Manages sources for propaganda and manipulation patterns."""
     
-    # Pattern indicators with their priorities (higher number = higher priority)
+    # Pattern indicators with their priorities and required matches
     PATTERN_INDICATORS = {
         "fear_tactics": {
             "words": [
@@ -20,15 +20,18 @@ class PatternSourceManager:
                 "emergency", "catastrophe", "disaster", "pandemic",
                 "experimental", "risk", "unsafe"
             ],
-            "priority": 3
+            "priority": 3,
+            "required_matches": 1  # Need at least one fear-related word
         },
         "economic_manipulation": {
             "words": [
                 "inflation", "economy", "economic", "transitory",
                 "market", "financial", "cost", "price", "currency",
-                "dollar", "money", "recession"
+                "dollar", "money", "recession", "wages", "markets",
+                "prices", "costs", "economic indicators"
             ],
-            "priority": 2
+            "priority": 2,
+            "required_matches": 2  # Need at least two economic terms
         },
         "soft_propaganda": {
             "words": [
@@ -36,7 +39,8 @@ class PatternSourceManager:
                 "mainstream media", "corporate media", "deep state",
                 "legacy media", "media", "coverage"
             ],
-            "priority": 1
+            "priority": 1,
+            "required_matches": 1
         }
     }
     
@@ -88,8 +92,11 @@ class PatternSourceManager:
         
         # Count matches for each pattern type
         for pattern_type, info in self.PATTERN_INDICATORS.items():
-            word_matches = sum(word.lower() in text for word in info["words"])
-            if word_matches > 0:
+            # Count how many unique words match
+            word_matches = sum(1 for word in info["words"] if word.lower() in text)
+            
+            # Only consider patterns that meet minimum required matches
+            if word_matches >= info["required_matches"]:
                 # Calculate score based on matches and priority
                 base_score = word_matches / len(info["words"])
                 priority_multiplier = info["priority"]
