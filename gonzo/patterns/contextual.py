@@ -1,30 +1,27 @@
 
-    def _process_relationship(
-        self,
-        rel: Dict[str, Any],
-        source_type: str,
-        confidence: float
-    ) -> None:
-        """Process a relationship update."""
-        source_id = rel.get("source")
-        target_id = rel.get("target")
-        rel_type = rel.get("type")
-        
-        if all([source_id, target_id, rel_type]):
-            # Learn basic relationship
-            self.power_structure.learn_relationship(
-                source_id,
-                target_id,
-                rel_type,
-                confidence,
-                source_type
-            )
+            # Process specific relationship types
+            if "influence" in rel:
+                self.power_structure.learn_influence_relationship(
+                    source_id,
+                    target_id,
+                    rel["influence"].get("strength", 0.5),
+                    source_type,
+                    confidence
+                )
             
-            # Add to timeline
-            self.timeline.add_event({
-                "type": "relationship_created",
-                "source": source_id,
-                "target": target_id,
-                "relationship_type": rel_type,
-                "timestamp": datetime.now(UTC)
-            })
+            if "financial" in rel:
+                self.power_structure.learn_financial_relationship(
+                    source_id,
+                    target_id,
+                    rel["financial"],
+                    source_type,
+                    confidence
+                )
+            
+            if "policy_alignment" in rel:
+                self.power_structure.learn_policy_alignment(
+                    source_id,
+                    target_id,
+                    rel["policy_alignment"].get("score", 0.5),
+                    rel["policy_alignment"].get("topics", [])
+                )
