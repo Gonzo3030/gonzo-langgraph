@@ -1,7 +1,7 @@
 """Pattern source collector and manager."""
 
 from typing import List, Dict, Optional, Any
-from datetime import datetime
+from datetime import datetime, UTC
 import logging
 from .youtube import YouTubeCollector
 
@@ -39,7 +39,7 @@ class PatternSourceManager:
             self.pattern_cache[video_id] = {
                 'url': video_url,
                 'patterns': patterns,
-                'extracted_at': datetime.utcnow()
+                'extracted_at': datetime.now(UTC)
             }
             
         return patterns
@@ -57,24 +57,47 @@ class PatternSourceManager:
         current_segment = []
         
         # Look for key phrases indicating pattern description
-        pattern_indicators = [
-            "manipulation", "propaganda", "narrative",
-            "mainstream media", "corporate media", "deep state",
-            "pattern", "technique", "tactic"
-        ]
+        pattern_indicators = {
+            "soft_propaganda": [
+                "manipulation", "propaganda", "narrative",
+                "mainstream media", "corporate media", "deep state",
+                "legacy media", "pattern", "technique", "tactic"
+            ],
+            "fear_tactics": [
+                "fear", "panic", "threat", "danger", "crisis",
+                "emergency", "catastrophe", "disaster"
+            ],
+            "economic_manipulation": [
+                "inflation", "economy", "economic", "transitory",
+                "market", "financial", "cost", "price", "crisis"
+            ]
+        }
         
         for segment in transcript:
             text = segment["text"].lower()
+            pattern_found = False
             
-            # Check for pattern indicators
-            if any(indicator in text for indicator in pattern_indicators):
-                current_segment.append(segment)
-            elif current_segment:
+            # Check for pattern indicators by category
+            for pattern_type, indicators in pattern_indicators.items():
+                if any(indicator in text for indicator in indicators):
+                    if not current_segment:
+                        current_segment.append({"type": pattern_type})
+                    current_segment.append(segment)
+                    pattern_found = True
+                    break
+            
+            if not pattern_found and current_segment:
                 # Process completed segment
                 pattern = self._extract_pattern_from_segment(current_segment)
                 if pattern:
                     patterns.append(pattern)
                 current_segment = []
+        
+        # Process any remaining segment
+        if current_segment:
+            pattern = self._extract_pattern_from_segment(current_segment)
+            if pattern:
+                patterns.append(pattern)
         
         return patterns
         
@@ -89,16 +112,21 @@ class PatternSourceManager:
         Returns:
             Pattern metadata if identified, None otherwise
         """
-        # Combine segment text
-        text = " ".join(s["text"] for s in segment)
+        if len(segment) < 2:  # Need type info and at least one content segment
+            return None
+            
+        pattern_type = segment[0]["type"]
+        content_segments = segment[1:]  # Skip the type info
         
-        # Basic pattern extraction
-        # TODO: Enhance with NLP for better pattern identification
+        # Combine segment text
+        text = " ".join(s["text"] for s in content_segments)
+        
         return {
             "type": "manipulation_pattern",
+            "pattern_category": pattern_type,
             "description": text,
-            "timestamp_start": segment[0]["start"],
-            "timestamp_end": segment[-1]["start"] + segment[-1]["duration"],
+            "timestamp_start": content_segments[0]["start"],
+            "timestamp_end": content_segments[-1]["start"] + content_segments[-1]["duration"],
             "confidence": 0.7  # TODO: Implement proper confidence scoring
         }
         
