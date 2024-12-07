@@ -7,7 +7,7 @@ from datetime import datetime
 from gonzo.collectors.pattern_source import PatternSourceManager
 
 @pytest.fixture
-def mock_transcript_data():
+def mock_propaganda_transcript():
     """Sample transcript data for testing."""
     return [
         {
@@ -33,7 +33,7 @@ def mock_transcript_data():
     ]
 
 @pytest.fixture
-def mock_fear_transcript_data():
+def mock_fear_transcript():
     """Sample transcript data for fear tactics."""
     return [
         {
@@ -54,7 +54,7 @@ def mock_fear_transcript_data():
     ]
 
 @pytest.fixture
-def mock_economic_transcript_data():
+def mock_economic_transcript():
     """Sample transcript data for economic manipulation."""
     return [
         {
@@ -74,52 +74,52 @@ def mock_economic_transcript_data():
         }
     ]
 
-def test_extract_soft_propaganda_pattern(mock_transcript_data):
+def test_extract_soft_propaganda_pattern(mock_propaganda_transcript):
     """Test detection of soft propaganda patterns in media."""
     manager = PatternSourceManager()
     
     with patch('gonzo.collectors.youtube.YouTubeCollector.get_video_transcript') as mock_get:
-        mock_get.return_value = mock_transcript_data
+        mock_get.return_value = mock_propaganda_transcript
         patterns = manager.extract_patterns_from_video("https://youtube.com/watch?v=test")
         
         assert len(patterns) > 0
         pattern = patterns[0]
         assert pattern["type"] == "manipulation_pattern"
+        assert pattern["pattern_category"] == "soft_propaganda"
         assert "mainstream media" in pattern["description"].lower()
-        assert "propaganda" in pattern["description"].lower()
 
-def test_extract_fear_tactics_pattern(mock_fear_transcript_data):
+def test_extract_fear_tactics_pattern(mock_fear_transcript):
     """Test detection of fear manipulation patterns."""
     manager = PatternSourceManager()
     
     with patch('gonzo.collectors.youtube.YouTubeCollector.get_video_transcript') as mock_get:
-        mock_get.return_value = mock_fear_transcript_data
+        mock_get.return_value = mock_fear_transcript
         patterns = manager.extract_patterns_from_video("https://youtube.com/watch?v=test")
         
         assert len(patterns) > 0
         pattern = patterns[0]
+        assert pattern["pattern_category"] == "fear_tactics"
         assert "fear" in pattern["description"].lower()
-        assert "deep state" in pattern["description"].lower()
 
-def test_extract_economic_manipulation_pattern(mock_economic_transcript_data):
+def test_extract_economic_manipulation_pattern(mock_economic_transcript):
     """Test detection of economic narrative manipulation."""
     manager = PatternSourceManager()
     
     with patch('gonzo.collectors.youtube.YouTubeCollector.get_video_transcript') as mock_get:
-        mock_get.return_value = mock_economic_transcript_data
+        mock_get.return_value = mock_economic_transcript
         patterns = manager.extract_patterns_from_video("https://youtube.com/watch?v=test")
         
         assert len(patterns) > 0
         pattern = patterns[0]
-        assert "economic" in pattern["description"].lower()
-        assert "manipulation" in pattern["description"].lower()
+        assert pattern["pattern_category"] == "economic_manipulation"
+        assert "inflation" in pattern["description"].lower()
 
-def test_pattern_caching():
+def test_pattern_caching(mock_propaganda_transcript):
     """Test that patterns are properly cached."""
     manager = PatternSourceManager()
     
     with patch('gonzo.collectors.youtube.YouTubeCollector.get_video_transcript') as mock_get:
-        mock_get.return_value = mock_transcript_data()
+        mock_get.return_value = mock_propaganda_transcript
         video_url = "https://youtube.com/watch?v=test"
         
         # Extract patterns
