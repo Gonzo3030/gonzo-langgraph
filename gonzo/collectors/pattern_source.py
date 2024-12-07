@@ -3,12 +3,42 @@
 from typing import List, Dict, Optional, Any, Tuple
 from datetime import datetime, UTC
 import logging
+from collections import Counter
+
 from .youtube import YouTubeCollector
 
 logger = logging.getLogger(__name__)
 
 class PatternSourceManager:
     """Manages sources for propaganda and manipulation patterns."""
+    
+    # Pattern indicators with their priorities (higher number = higher priority)
+    PATTERN_INDICATORS = {
+        "fear_tactics": {
+            "words": [
+                "fear", "panic", "threat", "danger", "crisis",
+                "emergency", "catastrophe", "disaster", "pandemic",
+                "experimental", "risk", "unsafe"
+            ],
+            "priority": 3
+        },
+        "economic_manipulation": {
+            "words": [
+                "inflation", "economy", "economic", "transitory",
+                "market", "financial", "cost", "price", "currency",
+                "dollar", "money", "recession"
+            ],
+            "priority": 2
+        },
+        "soft_propaganda": {
+            "words": [
+                "manipulation", "propaganda", "narrative",
+                "mainstream media", "corporate media", "deep state",
+                "legacy media", "media", "coverage"
+            ],
+            "priority": 1
+        }
+    }
     
     def __init__(self):
         self.youtube_collector = YouTubeCollector()
@@ -53,37 +83,24 @@ class PatternSourceManager:
         Returns:
             Tuple of (pattern_type, confidence) if found, None otherwise
         """
-        pattern_indicators = {
-            "fear_tactics": [
-                "fear", "panic", "threat", "danger", "crisis",
-                "emergency", "catastrophe", "disaster"
-            ],
-            "economic_manipulation": [
-                "inflation", "economy", "economic", "transitory",
-                "market", "financial", "cost", "price"
-            ],
-            "soft_propaganda": [
-                "manipulation", "propaganda", "narrative",
-                "mainstream media", "corporate media", "deep state",
-                "legacy media"
-            ]
-        }
-        
-        # Score each pattern type
-        scores = {}
         text = text.lower()
+        scores = {}
         
-        for pattern_type, indicators in pattern_indicators.items():
-            count = sum(1 for indicator in indicators if indicator in text)
-            if count > 0:
-                scores[pattern_type] = count / len(indicators)
+        # Count matches for each pattern type
+        for pattern_type, info in self.PATTERN_INDICATORS.items():
+            word_matches = sum(word.lower() in text for word in info["words"])
+            if word_matches > 0:
+                # Calculate score based on matches and priority
+                base_score = word_matches / len(info["words"])
+                priority_multiplier = info["priority"]
+                scores[pattern_type] = base_score * priority_multiplier
         
-        if scores:
-            # Return the highest scoring pattern type
-            best_type = max(scores.items(), key=lambda x: x[1])
-            return best_type[0], best_type[1]
-        
-        return None
+        if not scores:
+            return None
+            
+        # Get the pattern type with highest score
+        best_type = max(scores.items(), key=lambda x: x[1])
+        return best_type[0], min(1.0, best_type[1])  # Cap confidence at 1.0
         
     def _process_patterns(self, transcript: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Process transcript to extract manipulation patterns.
@@ -98,39 +115,35 @@ class PatternSourceManager:
         current_segment = []
         current_type = None
         
+        def process_current_segment():
+            if current_segment and current_type:
+                pattern = self._extract_pattern_from_segment(current_segment, current_type)
+                if pattern:
+                    patterns.append(pattern)
+            return [], None
+        
         for segment in transcript:
             text = segment["text"]
             pattern_info = self._detect_pattern_type(text)
             
             if pattern_info:
                 pattern_type, confidence = pattern_info
-                if not current_segment:
-                    # Start new segment
+                if not current_segment or pattern_type == current_type:
+                    # Continue or start new segment
                     current_type = pattern_type
-                    current_segment = [segment]
-                elif pattern_type == current_type:
-                    # Continue current segment
                     current_segment.append(segment)
                 else:
-                    # Process current segment and start new one
-                    pattern = self._extract_pattern_from_segment(current_segment, current_type)
-                    if pattern:
-                        patterns.append(pattern)
+                    # Different pattern type found, process current segment
+                    current_segment, current_type = process_current_segment()
                     current_type = pattern_type
                     current_segment = [segment]
             elif current_segment:
-                # Process completed segment
-                pattern = self._extract_pattern_from_segment(current_segment, current_type)
-                if pattern:
-                    patterns.append(pattern)
-                current_segment = []
-                current_type = None
+                # No pattern found, process any existing segment
+                current_segment, current_type = process_current_segment()
         
         # Process any remaining segment
         if current_segment:
-            pattern = self._extract_pattern_from_segment(current_segment, current_type)
-            if pattern:
-                patterns.append(pattern)
+            process_current_segment()
         
         return patterns
         
