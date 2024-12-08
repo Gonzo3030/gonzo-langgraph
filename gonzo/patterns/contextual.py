@@ -1,5 +1,6 @@
 from datetime import datetime, UTC
 from typing import Dict, Any, List, Optional
+import copy
 
 from .power_structure import PowerStructure
 from ..memory.vector_store import VectorStoreMemory
@@ -18,6 +19,9 @@ class ContextualPatternDetector:
 
     def learn_from_source(self, source_type: str, content: Dict[str, Any], confidence: float) -> None:
         """Learn patterns from a source."""
+        # Store initial state
+        initial_state = copy.deepcopy(self.state.to_dict())
+        
         # Process relationships
         if "relationships" in content:
             for rel in content["relationships"]:
@@ -36,7 +40,8 @@ class ContextualPatternDetector:
             "metadata": {
                 "entities": len(content.get("entities", [])),
                 "relationships": len(content.get("relationships", [])),
-                "confidence": confidence
+                "confidence": confidence,
+                "initial_state": initial_state
             }
         })
         
@@ -47,15 +52,19 @@ class ContextualPatternDetector:
         """Process an entity update."""
         entity_id = entity.get("id")
         entity_type = entity.get("type")
+        entity_name = entity.get("name")
         properties = entity.get("properties", {})
 
         if entity_id and entity_type:
             # Add to power structure with confidence
             self.power_structure.add_entity(entity_id, entity_type, properties, confidence)
 
+            # Create memory text combining name and properties
+            memory_text = f"{entity_name or entity_id}: {properties}"
+            
             # Add to vector memory
             self.vector_memory.add_memory(
-                text=str(properties),
+                text=memory_text,
                 metadata={
                     "entity_id": entity_id,
                     "type": entity_type,
