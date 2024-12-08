@@ -1,7 +1,7 @@
 """Manipulation and propaganda pattern detection."""
 
 import logging
-from datetime import datetime, UTC
+from datetime import datetime, UTC, timedelta
 from typing import List, Dict, Optional, Set, Tuple
 from uuid import UUID
 
@@ -100,17 +100,31 @@ class ManipulationDetector(PatternDetector):
         if len(related) < 2:
             return None
             
-        # TODO: Implement similarity analysis between topic contents
-        # For now, just detect basic repetition
+        # Simple similarity analysis based on properties
+        base_content = self._get_topic_content(topic)
+        similar_topics = []
+        similarity_scores = []
+        
+        for rel_topic in related:
+            rel_content = self._get_topic_content(rel_topic)
+            similarity = self._calculate_content_similarity(base_content, rel_content)
+            if similarity > 0.5:  # Threshold for similarity
+                similar_topics.append(rel_topic)
+                similarity_scores.append(similarity)
+        
+        if not similar_topics:
+            return None
+            
         return {
             "pattern_type": "narrative_repetition",
             "category": category,
-            "topic_count": len(related) + 1,  # Include base topic in count
-            "confidence": 0.7,
+            "topic_count": len(similar_topics) + 1,
+            "confidence": sum(similarity_scores) / len(similarity_scores),
             "timeframe": timeframe,
             "metadata": {
                 "base_topic_id": str(topic.id),
-                "related_topic_ids": [str(t.id) for t in related]
+                "related_topic_ids": [str(t.id) for t in similar_topics],
+                "similarity_scores": similarity_scores
             }
         }
         
@@ -121,6 +135,11 @@ class ManipulationDetector(PatternDetector):
     ) -> Optional[Dict]:
         """Detect coordinated topic shifts indicating manipulation.
         
+        Looks for:
+        1. Sudden shifts in narrative across multiple sources
+        2. Synchronized timing of shifts
+        3. Similar direction/content in shifts
+        
         Args:
             topic: Topic to analyze
             timeframe: Analysis time window
@@ -128,9 +147,72 @@ class ManipulationDetector(PatternDetector):
         Returns:
             Pattern metadata if detected, None otherwise
         """
-        # TODO: Implement detection of sudden coordinated narrative shifts
-        # This will require analyzing topic transition timing and patterns
-        return None
+        # Get all recent transitions for this topic
+        transitions = self.graph.get_relationships_by_type(
+            "topic_transition",
+            source_id=topic.id
+        )
+        
+        if not transitions:
+            return None
+            
+        # Group transitions by time windows
+        window_size = timeframe / 6  # Look for clusters within timeframe
+        transition_windows = self._group_transitions_by_time(transitions, window_size)
+        
+        # Look for coordinated clusters
+        coordinated_clusters = []
+        for window_start, window_transitions in transition_windows.items():
+            if len(window_transitions) < 3:  # Need multiple transitions to be coordinated
+                continue
+                
+            # Check if transitions are related
+            sources = self._get_unique_sources(window_transitions)
+            if len(sources) < 2:  # Need multiple sources
+                continue
+                
+            # Check if transitions share direction
+            shared_targets = self._get_shared_targets(window_transitions)
+            if not shared_targets:
+                continue
+                
+            coordinated_clusters.append({
+                "window_start": window_start,
+                "transitions": window_transitions,
+                "sources": list(sources),
+                "shared_targets": list(shared_targets)
+            })
+        
+        if not coordinated_clusters:
+            return None
+            
+        # Calculate overall confidence based on patterns
+        cluster_confidences = []
+        for cluster in coordinated_clusters:
+            source_diversity = len(cluster["sources"]) / 10  # Normalize
+            target_alignment = len(cluster["shared_targets"]) / len(cluster["transitions"])
+            timing_density = len(cluster["transitions"]) / (window_size / 300)  # Transitions per 5 minutes
+            
+            confidence = (source_diversity + target_alignment + timing_density) / 3
+            cluster_confidences.append(min(confidence, 0.95))  # Cap at 0.95
+            
+        return {
+            "pattern_type": "coordinated_shift",
+            "topic_id": str(topic.id),
+            "timeframe": timeframe,
+            "confidence": max(cluster_confidences),
+            "metadata": {
+                "clusters": [
+                    {
+                        "window_start": c["window_start"].isoformat(),
+                        "source_count": len(c["sources"]),
+                        "transition_count": len(c["transitions"]),
+                        "shared_target_count": len(c["shared_targets"])
+                    }
+                    for c in coordinated_clusters
+                ]
+            }
+        }
         
     def _detect_emotional_manipulation(
         self,
@@ -139,6 +221,11 @@ class ManipulationDetector(PatternDetector):
     ) -> Optional[Dict]:
         """Detect patterns of emotional manipulation.
         
+        Looks for:
+        1. High emotional content
+        2. Emotional escalation patterns
+        3. Fear/anger amplification
+        
         Args:
             topic: Topic to analyze
             timeframe: Analysis time window
@@ -146,10 +233,149 @@ class ManipulationDetector(PatternDetector):
         Returns:
             Pattern metadata if detected, None otherwise
         """
-        # TODO: Implement emotional content analysis
-        # This will require NLP-based sentiment and emotion detection
-        return None
+        # Get topic content and analyze emotion patterns
+        content = self._get_topic_content(topic)
+        emotions = self._analyze_emotions(content)
         
+        if not emotions:
+            return None
+            
+        # Get recent related topics for trend analysis
+        related = self._get_related_topics(topic, topic.properties["category"].value, timeframe)
+        emotion_trends = []
+        
+        for rel_topic in related:
+            rel_content = self._get_topic_content(rel_topic)
+            rel_emotions = self._analyze_emotions(rel_content)
+            if rel_emotions:
+                emotion_trends.append(rel_emotions)
+        
+        # Analyze patterns
+        base_intensity = emotions.get("intensity", 0)
+        fear_level = emotions.get("fear", 0)
+        anger_level = emotions.get("anger", 0)
+        
+        # Track emotion escalation
+        escalation = []
+        for trend in emotion_trends:
+            if trend["intensity"] > base_intensity:
+                escalation.append(trend["intensity"] - base_intensity)
+        
+        if not escalation:
+            return None
+            
+        # Calculate manipulation confidence
+        intensity_factor = base_intensity * 0.4
+        escalation_factor = (sum(escalation) / len(escalation)) * 0.3
+        emotion_mix_factor = (fear_level + anger_level) * 0.3
+        
+        confidence = intensity_factor + escalation_factor + emotion_mix_factor
+        
+        if confidence < 0.6:  # Threshold for reporting
+            return None
+            
+        return {
+            "pattern_type": "emotional_manipulation",
+            "topic_id": str(topic.id),
+            "timeframe": timeframe,
+            "confidence": confidence,
+            "metadata": {
+                "base_emotions": emotions,
+                "escalation_count": len(escalation),
+                "max_escalation": max(escalation),
+                "fear_level": fear_level,
+                "anger_level": anger_level
+            }
+        }
+    
+    def _get_topic_content(self, topic: TimeAwareEntity) -> Dict:
+        """Extract analyzable content from topic."""
+        return {
+            "title": topic.properties.get("title", Property("")).value,
+            "content": topic.properties.get("content", Property("")).value,
+            "sentiment": topic.properties.get("sentiment", Property({})).value,
+            "keywords": topic.properties.get("keywords", Property([])).value
+        }
+    
+    def _calculate_content_similarity(self, content1: Dict, content2: Dict) -> float:
+        """Calculate similarity between topic contents."""
+        # Simple keyword overlap for now
+        keywords1 = set(content1.get("keywords", []))
+        keywords2 = set(content2.get("keywords", []))
+        
+        if not keywords1 or not keywords2:
+            return 0.0
+            
+        overlap = len(keywords1.intersection(keywords2))
+        total = len(keywords1.union(keywords2))
+        
+        return overlap / total if total > 0 else 0.0
+    
+    def _group_transitions_by_time(
+        self,
+        transitions: List[Relationship],
+        window_size: float
+    ) -> Dict[datetime, List[Relationship]]:
+        """Group transitions into time windows."""
+        windows = {}
+        
+        for trans in transitions:
+            window_start = trans.valid_from.replace(
+                minute=trans.valid_from.minute // 5 * 5,
+                second=0,
+                microsecond=0
+            )
+            
+            if window_start not in windows:
+                windows[window_start] = []
+            windows[window_start].append(trans)
+            
+        return windows
+    
+    def _get_unique_sources(self, transitions: List[Relationship]) -> Set[UUID]:
+        """Get unique source entities from transitions."""
+        return {
+            self.graph.get_entity(t.metadata.get("source_entity_id")).id
+            for t in transitions
+            if "source_entity_id" in t.metadata
+        }
+    
+    def _get_shared_targets(self, transitions: List[Relationship]) -> Set[UUID]:
+        """Find target topics shared by multiple transitions."""
+        target_counts = {}
+        for trans in transitions:
+            target_id = trans.target_id
+            target_counts[target_id] = target_counts.get(target_id, 0) + 1
+            
+        return {
+            target_id
+            for target_id, count in target_counts.items()
+            if count > 1
+        }
+    
+    def _analyze_emotions(self, content: Dict) -> Optional[Dict[str, float]]:
+        """Analyze emotional content of topic.
+        
+        Returns dict with emotion scores or None if analysis fails.
+        """
+        text = f"{content.get('title', '')} {content.get('content', '')}"
+        if not text.strip():
+            return None
+            
+        # Get sentiment if available
+        sentiment = content.get("sentiment", {})
+        if not sentiment:
+            return None
+            
+        # Extract emotion scores
+        return {
+            "intensity": sentiment.get("intensity", 0.0),
+            "fear": sentiment.get("fear", 0.0),
+            "anger": sentiment.get("anger", 0.0),
+            "joy": sentiment.get("joy", 0.0),
+            "sadness": sentiment.get("sadness", 0.0)
+        }
+    
     def _get_related_topics(
         self,
         topic: TimeAwareEntity,
