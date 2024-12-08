@@ -44,3 +44,44 @@ class ManipulationDetector(PatternDetector):
             topic for topic in topics 
             if not self._is_outside_timeframe(topic, now, timeframe)
         ]
+
+    def _detect_narrative_repetition(self, topic: TimeAwareEntity, timeframe: float) -> Optional[Dict]:
+        category = topic.properties["category"].value
+        related = self._get_related_topics(topic, category, timeframe)
+
+        if len(related) < 2:
+            return None
+
+        base_content = self._get_topic_content(topic)
+        similar_topics = []
+        similarity_scores = []
+
+        for rel_topic in related:
+            rel_content = self._get_topic_content(rel_topic)
+            similarity = self._calculate_content_similarity(base_content, rel_content)
+            if similarity > 0.5:
+                similar_topics.append(rel_topic)
+                similarity_scores.append(similarity)
+
+        if not similar_topics:
+            return None
+
+        return {
+            "pattern_type": "narrative_repetition",
+            "category": category,
+            "topic_count": len(similar_topics) + 1,
+            "confidence": sum(similarity_scores) / len(similarity_scores),
+            "metadata": {
+                "base_topic_id": str(topic.id),
+                "related_topic_ids": [str(t.id) for t in similar_topics],
+                "similarity_scores": similarity_scores
+            }
+        }
+
+    def _get_topic_content(self, topic: TimeAwareEntity) -> Dict:
+        return {
+            "title": topic.properties.get("title", Property(key="title", value="")).value,
+            "content": topic.properties.get("content", Property(key="content", value="")).value,
+            "sentiment": topic.properties.get("sentiment", Property(key="sentiment", value={})).value,
+            "keywords": topic.properties.get("keywords", Property(key="keywords", value=[])).value
+        }
