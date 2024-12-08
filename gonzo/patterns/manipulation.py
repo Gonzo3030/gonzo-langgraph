@@ -83,7 +83,9 @@ class ManipulationDetector(PatternDetector):
 
     def _detect_emotional_manipulation(self, topic: TimeAwareEntity, timeframe: float) -> Optional[Dict]:
         content = self._get_topic_content(topic)
-        if not content["sentiment"]:
+        sentiment_data = content["sentiment"]
+        
+        if not sentiment_data or not isinstance(sentiment_data, dict):
             return None
 
         related = self._get_related_topics(topic, topic.properties["category"].value, timeframe)
@@ -91,18 +93,18 @@ class ManipulationDetector(PatternDetector):
 
         for rel_topic in related:
             rel_content = self._get_topic_content(rel_topic)
-            if rel_content["sentiment"]:
-                emotion_trends.append(rel_content["sentiment"])
+            rel_sentiment = rel_content["sentiment"]
+            if rel_sentiment and isinstance(rel_sentiment, dict):
+                emotion_trends.append(rel_sentiment)
 
-        sentiment_dict = content["sentiment"]
-        base_intensity = sentiment_dict.get("intensity", 0.0)
-        fear_level = sentiment_dict.get("fear", 0.0)
-        anger_level = sentiment_dict.get("anger", 0.0)
+        base_intensity = float(sentiment_data.get("intensity", 0.0))
+        fear_level = float(sentiment_data.get("fear", 0.0))
+        anger_level = float(sentiment_data.get("anger", 0.0))
 
         escalation = [
-            trend.get("intensity", 0.0) - base_intensity
+            float(trend.get("intensity", 0.0)) - base_intensity
             for trend in emotion_trends
-            if trend.get("intensity", 0.0) > base_intensity
+            if float(trend.get("intensity", 0.0)) > base_intensity
         ]
 
         if not escalation:
@@ -123,7 +125,7 @@ class ManipulationDetector(PatternDetector):
             "timeframe": timeframe,
             "confidence": confidence,
             "metadata": {
-                "base_emotions": sentiment_dict,
+                "base_emotions": sentiment_data,
                 "escalation_count": len(escalation),
                 "max_escalation": max(escalation),
                 "fear_level": fear_level,
