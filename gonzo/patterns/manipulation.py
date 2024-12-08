@@ -94,10 +94,10 @@ class ManipulationDetector(PatternDetector):
             if rel_content["sentiment"]:
                 emotion_trends.append(rel_content["sentiment"])
 
-        sentiment = content["sentiment"]
-        base_intensity = sentiment.get("intensity", 0.0)
-        fear_level = sentiment.get("fear", 0.0)
-        anger_level = sentiment.get("anger", 0.0)
+        sentiment_dict = content["sentiment"]
+        base_intensity = sentiment_dict.get("intensity", 0.0)
+        fear_level = sentiment_dict.get("fear", 0.0)
+        anger_level = sentiment_dict.get("anger", 0.0)
 
         escalation = [
             trend.get("intensity", 0.0) - base_intensity
@@ -123,7 +123,7 @@ class ManipulationDetector(PatternDetector):
             "timeframe": timeframe,
             "confidence": confidence,
             "metadata": {
-                "base_emotions": sentiment,
+                "base_emotions": sentiment_dict,
                 "escalation_count": len(escalation),
                 "max_escalation": max(escalation),
                 "fear_level": fear_level,
