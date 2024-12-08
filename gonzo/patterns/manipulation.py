@@ -46,6 +46,9 @@ class ManipulationDetector(PatternDetector):
         ]
 
     def _detect_narrative_repetition(self, topic: TimeAwareEntity, timeframe: float) -> Optional[Dict]:
+        if "category" not in topic.properties:
+            return None
+            
         category = topic.properties["category"].value
         related = self._get_related_topics(topic, category, timeframe)
 
@@ -80,7 +83,7 @@ class ManipulationDetector(PatternDetector):
 
     def _detect_emotional_manipulation(self, topic: TimeAwareEntity, timeframe: float) -> Optional[Dict]:
         content = self._get_topic_content(topic)
-        sentiment = content["sentiment"]
+        sentiment = content.get("sentiment", {})
         if not sentiment:
             return None
 
@@ -89,18 +92,18 @@ class ManipulationDetector(PatternDetector):
 
         for rel_topic in related:
             rel_content = self._get_topic_content(rel_topic)
-            rel_sentiment = rel_content["sentiment"]
+            rel_sentiment = rel_content.get("sentiment", {})
             if rel_sentiment:
                 emotion_trends.append(rel_sentiment)
 
-        base_intensity = sentiment["intensity"]
-        fear_level = sentiment["fear"]
-        anger_level = sentiment["anger"]
+        base_intensity = sentiment.get("intensity", 0.0)
+        fear_level = sentiment.get("fear", 0.0)
+        anger_level = sentiment.get("anger", 0.0)
 
         escalation = [
-            trend["intensity"] - base_intensity
+            trend.get("intensity", 0.0) - base_intensity
             for trend in emotion_trends
-            if trend["intensity"] > base_intensity
+            if trend.get("intensity", 0.0) > base_intensity
         ]
 
         if not escalation:
@@ -200,16 +203,23 @@ class ManipulationDetector(PatternDetector):
         }
 
     def _get_topic_content(self, topic: TimeAwareEntity) -> Dict:
+        default_props = {
+            "title": Property(key="title", value=""),
+            "content": Property(key="content", value=""),
+            "sentiment": Property(key="sentiment", value={}),
+            "keywords": Property(key="keywords", value=[])
+        }
+        
         return {
-            "title": topic.properties["title"].value,
-            "content": topic.properties["content"].value,
-            "sentiment": topic.properties["sentiment"].value,
-            "keywords": topic.properties["keywords"].value
+            "title": topic.properties.get("title", default_props["title"]).value,
+            "content": topic.properties.get("content", default_props["content"]).value,
+            "sentiment": topic.properties.get("sentiment", default_props["sentiment"]).value,
+            "keywords": topic.properties.get("keywords", default_props["keywords"]).value
         }
 
     def _calculate_content_similarity(self, content1: Dict, content2: Dict) -> float:
-        keywords1 = set(content1["keywords"])
-        keywords2 = set(content2["keywords"])
+        keywords1 = set(content1.get("keywords", []))
+        keywords2 = set(content2.get("keywords", []))
 
         if not keywords1 or not keywords2:
             return 0.0
@@ -245,6 +255,7 @@ class ManipulationDetector(PatternDetector):
         return [
             t for t in topics
             if (t.id != topic.id and
+                "category" in t.properties and
                 t.properties["category"].value == category and
                 not self._is_outside_timeframe(t, now, timeframe))
         ]
