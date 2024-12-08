@@ -1,16 +1,63 @@
 from datetime import datetime, UTC
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+
+from .power_structure import PowerStructure
+from ..memory.vector_store import VectorStoreMemory
+from ..memory.timeline import Timeline
+from ..persistence.checkpointer import Checkpointer
+from ..state_management.api_state import APIState
 
 class ContextualPatternDetector:
+    def __init__(self):
+        """Initialize detector with dependencies."""
+        self.power_structure = PowerStructure()
+        self.vector_memory = VectorStoreMemory()
+        self.timeline = Timeline()
+        self.state = APIState()
+        self.checkpointer = None  # Will be injected by test fixture
+
     def learn_from_source(self, source_type: str, content: Dict[str, Any], confidence: float) -> None:
         """Learn patterns from a source."""
         # Process relationships
         if "relationships" in content:
             for rel in content["relationships"]:
                 self._process_relationship(rel, source_type, confidence)
+
+        # Process entities
+        if "entities" in content:
+            for entity in content["entities"]:
+                self._process_entity(entity, source_type, confidence)
         
         # Save checkpoint
         self._save_checkpoint()
+
+    def _process_entity(self, entity: Dict[str, Any], source_type: str, confidence: float) -> None:
+        """Process an entity update."""
+        entity_id = entity.get("id")
+        entity_type = entity.get("type")
+        properties = entity.get("properties", {})
+
+        if entity_id and entity_type:
+            # Add to power structure
+            self.power_structure.add_entity(entity_id, entity_type, properties)
+
+            # Add to vector memory
+            self.vector_memory.add_memory(
+                text=str(properties),
+                metadata={
+                    "entity_id": entity_id,
+                    "type": entity_type,
+                    "source_type": source_type
+                }
+            )
+
+            # Add to timeline
+            self.timeline.add_event({
+                "type": "entity_created",
+                "entity_id": entity_id,
+                "entity_type": entity_type,
+                "timestamp": datetime.now(UTC)
+            })
 
     def _process_relationship(
         self,
@@ -76,14 +123,16 @@ class ContextualPatternDetector:
             "timeline": self.timeline.to_checkpoint(),
             "state": self.state.to_dict()
         }
-        self.checkpointer.save(checkpoint_data)
+        if self.checkpointer:
+            self.checkpointer.save(checkpoint_data)
     
     def load_checkpoint(self) -> None:
         """Load state from checkpoint."""
-        checkpoint_data = self.checkpointer.load()
-        if checkpoint_data:
-            # TODO: Implement state restoration
-            pass
+        if self.checkpointer:
+            checkpoint_data = self.checkpointer.load()
+            if checkpoint_data:
+                # TODO: Implement state restoration
+                pass
     
     def search_patterns(self, query: str, k: int = 3) -> List[Dict[str, Any]]:
         """Search for patterns using semantic similarity."""
