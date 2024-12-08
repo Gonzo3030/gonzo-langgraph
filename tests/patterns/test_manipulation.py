@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from gonzo.graph.knowledge.graph import KnowledgeGraph
 from gonzo.patterns.manipulation import ManipulationDetector
-from gonzo.types import TimeAwareEntity, Property, Relationship
+from gonzo.types import TimeAwareEntity, Property
 
 def test_detect_narrative_manipulation_empty_graph():
     """Test manipulation detection with empty graph."""
@@ -29,15 +29,15 @@ def test_detect_narrative_repetition():
     for i in range(3):
         topic_time = base_time + timedelta(minutes=i*10)
         props = {
-            "category": "crypto",
-            "content": f"Crypto market manipulation warning {i}",
-            "title": "Market Warning",
-            "keywords": ["crypto", "market", "manipulation", "warning"],
-            "sentiment": {
+            "category": Property(key="category", value="crypto"),
+            "content": Property(key="content", value=f"Crypto market manipulation warning {i}"),
+            "title": Property(key="title", value="Market Warning"),
+            "keywords": Property(key="keywords", value=["crypto", "market", "manipulation", "warning"]),
+            "sentiment": Property(key="sentiment", value={
                 "intensity": 0.7,
                 "fear": 0.6,
                 "anger": 0.3
-            }
+            })
         }
         topic = graph.add_entity(
             entity_type="topic",
@@ -68,8 +68,8 @@ def test_detect_coordinated_shifts():
     sources = []
     for i in range(3):
         props = {
-            "name": f"News Source {i}",
-            "type": "media"
+            "name": Property(key="name", value=f"News Source {i}"),
+            "type": Property(key="type", value="media")
         }
         source = graph.add_entity(
             entity_type="media_outlet",
@@ -81,15 +81,15 @@ def test_detect_coordinated_shifts():
     now = datetime.now(UTC)
     base_time = now - timedelta(minutes=30)
     base_props = {
-        "category": "politics",
-        "title": "Initial Political Discussion",
-        "content": "Starting point for political narrative",
-        "keywords": ["politics", "discussion"],
-        "sentiment": {
+        "category": Property(key="category", value="politics"),
+        "title": Property(key="title", value="Initial Political Discussion"),
+        "content": Property(key="content", value="Starting point for political narrative"),
+        "keywords": Property(key="keywords", value=["politics", "discussion"]),
+        "sentiment": Property(key="sentiment", value={
             "intensity": 0.5,
             "fear": 0.2,
             "anger": 0.1
-        }
+        })
     }
     base_topic = graph.add_entity(
         entity_type="topic",
@@ -106,15 +106,15 @@ def test_detect_coordinated_shifts():
     # Create shift target topics
     for i in range(2):
         props = {
-            "category": "politics",
-            "title": f"Shifted Narrative {i}",
-            "content": "New direction in political discussion",
-            "keywords": ["politics", "crisis", "urgent"],
-            "sentiment": {
+            "category": Property(key="category", value="politics"),
+            "title": Property(key="title", value=f"Shifted Narrative {i}"),
+            "content": Property(key="content", value="New direction in political discussion"),
+            "keywords": Property(key="keywords", value=["politics", "crisis", "urgent"]),
+            "sentiment": Property(key="sentiment", value={
                 "intensity": 0.8,
                 "fear": 0.7,
                 "anger": 0.6
-            }
+            })
         }
         target = graph.add_entity(
             entity_type="topic",
@@ -128,10 +128,10 @@ def test_detect_coordinated_shifts():
     for i, source in enumerate(sources):
         target = target_topics[i % len(target_topics)]
         trans = graph.add_relationship(
+            relationship_type="topic_transition",
             source_id=base_topic.id,
             target_id=target.id,
-            rel_type="topic_transition",
-            metadata={"source_entity_id": source.id},
+            properties={"source_entity_id": source.id},
             temporal=True,
             valid_from=shift_time + timedelta(seconds=i*30)  # Slightly staggered but coordinated
         )
@@ -171,17 +171,17 @@ def test_detect_emotional_manipulation():
         anger = 0.2 + (i * 0.2)
         
         props = {
-            "category": "health",
-            "title": f"Health Crisis Update {i}",
-            "content": f"Escalating health situation report {i}",
-            "keywords": ["health", "crisis", "urgent", "warning"],
-            "sentiment": {
+            "category": Property(key="category", value="health"),
+            "title": Property(key="title", value=f"Health Crisis Update {i}"),
+            "content": Property(key="content", value=f"Escalating health situation report {i}"),
+            "keywords": Property(key="keywords", value=["health", "crisis", "urgent", "warning"]),
+            "sentiment": Property(key="sentiment", value={
                 "intensity": intensity,
                 "fear": fear,
                 "anger": anger,
                 "joy": 0.1,
                 "sadness": 0.4
-            }
+            })
         }
         
         topic = graph.add_entity(
@@ -220,17 +220,17 @@ def test_no_emotional_manipulation_stable_content():
     
     for i in range(3):
         props = {
-            "category": "tech",
-            "title": f"Technology Update {i}",
-            "content": "Regular technology news update",
-            "keywords": ["technology", "update", "news"],
-            "sentiment": {
+            "category": Property(key="category", value="tech"),
+            "title": Property(key="title", value=f"Technology Update {i}"),
+            "content": Property(key="content", value="Regular technology news update"),
+            "keywords": Property(key="keywords", value=["technology", "update", "news"]),
+            "sentiment": Property(key="sentiment", value={
                 "intensity": 0.4,
                 "fear": 0.2,
                 "anger": 0.1,
                 "joy": 0.3,
                 "sadness": 0.1
-            }
+            })
         }
         
         graph.add_entity(
@@ -256,10 +256,10 @@ def test_no_coordinated_shifts_random_transitions():
     now = datetime.now(UTC)
     base_time = now - timedelta(minutes=30)
     base_props = {
-        "category": "tech",
-        "title": "Tech Discussion",
-        "content": "Technology discussion base",
-        "keywords": ["technology", "discussion"]
+        "category": Property(key="category", value="tech"),
+        "title": Property(key="title", value="Tech Discussion"),
+        "content": Property(key="content", value="Technology discussion base"),
+        "keywords": Property(key="keywords", value=["technology", "discussion"])
     }
     base_topic = graph.add_entity(
         entity_type="topic",
@@ -275,10 +275,10 @@ def test_no_coordinated_shifts_random_transitions():
         
         # Create target topic
         target_props = {
-            "category": "tech",
-            "title": f"New Tech Topic {i}",
-            "content": "Technology discussion continuation",
-            "keywords": ["technology", "discussion", str(i)]
+            "category": Property(key="category", value="tech"),
+            "title": Property(key="title", value=f"New Tech Topic {i}"),
+            "content": Property(key="content", value="Technology discussion continuation"),
+            "keywords": Property(key="keywords", value=["technology", "discussion", str(i)])
         }
         target = graph.add_entity(
             entity_type="topic",
@@ -289,9 +289,9 @@ def test_no_coordinated_shifts_random_transitions():
         
         # Create transition
         graph.add_relationship(
+            relationship_type="topic_transition",
             source_id=base_topic.id,
             target_id=target.id,
-            rel_type="topic_transition",
             temporal=True,
             valid_from=shift_time
         )
@@ -313,13 +313,13 @@ def test_topics_outside_timeframe():
     old_time = now - timedelta(hours=2)
     
     props = {
-        "category": "crypto",
-        "content": "Old crypto content",
-        "sentiment": {
+        "category": Property(key="category", value="crypto"),
+        "content": Property(key="content", value="Old crypto content"),
+        "sentiment": Property(key="sentiment", value={
             "intensity": 0.8,
             "fear": 0.7,
             "anger": 0.6
-        }
+        })
     }
     graph.add_entity(
         entity_type="topic",
