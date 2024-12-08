@@ -2,13 +2,13 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime, UTC
 
 class Entity:
-    def __init__(self, id: str, type: str, properties: Dict[str, Any] = None):
+    def __init__(self, id: str, type: str, properties: Dict[str, Any] = None, confidence: float = 1.0):
         self.id = id
         self.type = type
         self.properties = {}
         if properties:
             for k, v in properties.items():
-                self.properties[k] = Property(v, 1.0)
+                self.properties[k] = Property(v, confidence)
 
 class Property:
     def __init__(self, value: Any, confidence: float = 1.0):
@@ -78,10 +78,10 @@ class PowerStructure:
             self.policy_alignments[entity1_id] = {}
         self.policy_alignments[entity1_id][entity2_id] = score
 
-    def add_entity(self, entity_id: str, type: str, properties: Dict[str, Any] = None) -> None:
+    def add_entity(self, entity_id: str, type: str, properties: Dict[str, Any] = None, confidence: float = 1.0) -> None:
         """Add a new entity to the structure."""
         if entity_id not in self.entities:
-            self.entities[entity_id] = Entity(entity_id, type, properties)
+            self.entities[entity_id] = Entity(entity_id, type, properties, confidence)
 
     def to_checkpoint(self) -> Dict[str, Any]:
         """Convert state to checkpoint format."""
