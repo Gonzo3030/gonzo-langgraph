@@ -1,3 +1,6 @@
+"""Manipulation and propaganda pattern detection."""
+
+import logging
 from datetime import datetime, UTC
 from typing import List, Dict, Optional, Set
 from uuid import UUID
@@ -5,6 +8,8 @@ from uuid import UUID
 from ..patterns.detector import PatternDetector
 from ..graph.knowledge.graph import KnowledgeGraph
 from ..types import TimeAwareEntity, Relationship, Property
+
+logger = logging.getLogger(__name__)
 
 class ManipulationDetector(PatternDetector):
     def __init__(self, graph: KnowledgeGraph):
@@ -210,8 +215,8 @@ class ManipulationDetector(PatternDetector):
         windows = {}
 
         for trans in transitions:
-            window_start = trans.valid_from.replace(
-                minute=trans.valid_from.minute // 5 * 5,
+            window_start = trans.created_at.replace(
+                minute=trans.created_at.minute // 5 * 5,
                 second=0,
                 microsecond=0
             )
@@ -242,18 +247,14 @@ class ManipulationDetector(PatternDetector):
         }
 
     def _analyze_emotions(self, content: Dict) -> Optional[Dict[str, float]]:
-        text = f"{content.get('title', '')} {content.get('content', '')}"
-        if not text.strip():
-            return None
-
-        sentiment = content.get("sentiment", {})
+        sentiment = content["sentiment"]
         if not sentiment:
             return None
 
         return {
-            "intensity": sentiment.get("intensity", 0.0),
-            "fear": sentiment.get("fear", 0.0),
-            "anger": sentiment.get("anger", 0.0),
+            "intensity": sentiment["intensity"],
+            "fear": sentiment["fear"],
+            "anger": sentiment["anger"],
             "joy": sentiment.get("joy", 0.0),
             "sadness": sentiment.get("sadness", 0.0)
         }
