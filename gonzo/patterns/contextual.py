@@ -19,31 +19,26 @@ class ContextualPatternDetector:
 
     def learn_from_source(self, source_type: str, content: Dict[str, Any], confidence: float) -> None:
         """Learn patterns from a source."""
-        # Store initial state
-        initial_state = copy.deepcopy(self.state.to_dict())
-        
+        # Process entities first (so they appear first in vector memory)
+        if "entities" in content:
+            for entity in content["entities"]:
+                self._process_entity(entity, source_type, confidence)
+
         # Process relationships
         if "relationships" in content:
             for rel in content["relationships"]:
                 self._process_relationship(rel, source_type, confidence)
-
-        # Process entities
-        if "entities" in content:
-            for entity in content["entities"]:
-                self._process_entity(entity, source_type, confidence)
         
-        # Update state
-        self.state.request_history.append({
-            "type": "learn_from_source",
-            "source_type": source_type,
-            "timestamp": datetime.now(UTC).isoformat(),
-            "metadata": {
-                "entities": len(content.get("entities", [])),
-                "relationships": len(content.get("relationships", [])),
-                "confidence": confidence,
-                "initial_state": initial_state
-            }
-        })
+        # Update state tracking
+        timestamp = datetime.now(UTC).isoformat()
+        self.state.track_operation(
+            operation_type="learn_from_source",
+            source_type=source_type,
+            entities_count=len(content.get("entities", [])),
+            relationships_count=len(content.get("relationships", [])),
+            confidence=confidence,
+            timestamp=timestamp
+        )
         
         # Save checkpoint
         self._save_checkpoint()
@@ -60,7 +55,7 @@ class ContextualPatternDetector:
             self.power_structure.add_entity(entity_id, entity_type, properties, confidence)
 
             # Create memory text combining name and properties
-            memory_text = f"{entity_name or entity_id}: {properties}"
+            memory_text = f"{entity_name or entity_id} - Type: {entity_type}, Properties: {properties}"
             
             # Add to vector memory
             self.vector_memory.add_memory(
