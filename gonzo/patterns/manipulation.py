@@ -78,6 +78,57 @@ class ManipulationDetector(PatternDetector):
             }
         }
 
+    def _detect_emotional_manipulation(self, topic: TimeAwareEntity, timeframe: float) -> Optional[Dict]:
+        content = self._get_topic_content(topic)
+        sentiment = content["sentiment"]
+        if not sentiment:
+            return None
+
+        related = self._get_related_topics(topic, topic.properties["category"].value, timeframe)
+        emotion_trends = []
+
+        for rel_topic in related:
+            rel_content = self._get_topic_content(rel_topic)
+            rel_sentiment = rel_content["sentiment"]
+            if rel_sentiment:
+                emotion_trends.append(rel_sentiment)
+
+        base_intensity = sentiment["intensity"]
+        fear_level = sentiment["fear"]
+        anger_level = sentiment["anger"]
+
+        escalation = [
+            trend["intensity"] - base_intensity
+            for trend in emotion_trends
+            if trend["intensity"] > base_intensity
+        ]
+
+        if not escalation:
+            return None
+
+        intensity_factor = base_intensity * 0.4
+        escalation_factor = (sum(escalation) / len(escalation)) * 0.3
+        emotion_mix_factor = (fear_level + anger_level) * 0.3
+
+        confidence = intensity_factor + escalation_factor + emotion_mix_factor
+
+        if confidence < 0.6:
+            return None
+
+        return {
+            "pattern_type": "emotional_manipulation",
+            "topic_id": str(topic.id),
+            "timeframe": timeframe,
+            "confidence": confidence,
+            "metadata": {
+                "base_emotions": sentiment,
+                "escalation_count": len(escalation),
+                "max_escalation": max(escalation),
+                "fear_level": fear_level,
+                "anger_level": anger_level
+            }
+        }
+
     def _get_topic_content(self, topic: TimeAwareEntity) -> Dict:
         return {
             "title": topic.properties.get("title", Property(key="title", value="")).value,
