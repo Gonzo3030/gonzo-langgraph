@@ -28,6 +28,18 @@ class ContextualPatternDetector:
             for entity in content["entities"]:
                 self._process_entity(entity, source_type, confidence)
         
+        # Update state
+        self.state.request_history.append({
+            "type": "learn_from_source",
+            "source_type": source_type,
+            "timestamp": datetime.now(UTC).isoformat(),
+            "metadata": {
+                "entities": len(content.get("entities", [])),
+                "relationships": len(content.get("relationships", [])),
+                "confidence": confidence
+            }
+        })
+        
         # Save checkpoint
         self._save_checkpoint()
 
@@ -38,8 +50,8 @@ class ContextualPatternDetector:
         properties = entity.get("properties", {})
 
         if entity_id and entity_type:
-            # Add to power structure
-            self.power_structure.add_entity(entity_id, entity_type, properties)
+            # Add to power structure with confidence
+            self.power_structure.add_entity(entity_id, entity_type, properties, confidence)
 
             # Add to vector memory
             self.vector_memory.add_memory(
@@ -47,7 +59,8 @@ class ContextualPatternDetector:
                 metadata={
                     "entity_id": entity_id,
                     "type": entity_type,
-                    "source_type": source_type
+                    "source_type": source_type,
+                    "confidence": confidence
                 }
             )
 
