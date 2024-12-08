@@ -83,8 +83,7 @@ class ManipulationDetector(PatternDetector):
 
     def _detect_emotional_manipulation(self, topic: TimeAwareEntity, timeframe: float) -> Optional[Dict]:
         content = self._get_topic_content(topic)
-        sentiment = content.get("sentiment", {})
-        if not sentiment:
+        if not content["sentiment"]:
             return None
 
         related = self._get_related_topics(topic, topic.properties["category"].value, timeframe)
@@ -92,10 +91,10 @@ class ManipulationDetector(PatternDetector):
 
         for rel_topic in related:
             rel_content = self._get_topic_content(rel_topic)
-            rel_sentiment = rel_content.get("sentiment", {})
-            if rel_sentiment:
-                emotion_trends.append(rel_sentiment)
+            if rel_content["sentiment"]:
+                emotion_trends.append(rel_content["sentiment"])
 
+        sentiment = content["sentiment"]
         base_intensity = sentiment.get("intensity", 0.0)
         fear_level = sentiment.get("fear", 0.0)
         anger_level = sentiment.get("anger", 0.0)
@@ -203,19 +202,22 @@ class ManipulationDetector(PatternDetector):
         }
 
     def _get_topic_content(self, topic: TimeAwareEntity) -> Dict:
-        default_props = {
-            "title": Property(key="title", value=""),
-            "content": Property(key="content", value=""),
-            "sentiment": Property(key="sentiment", value={}),
-            "keywords": Property(key="keywords", value=[])
-        }
+        result = {}
+        props = topic.properties
         
-        return {
-            "title": topic.properties.get("title", default_props["title"]).value,
-            "content": topic.properties.get("content", default_props["content"]).value,
-            "sentiment": topic.properties.get("sentiment", default_props["sentiment"]).value,
-            "keywords": topic.properties.get("keywords", default_props["keywords"]).value
-        }
+        # Title
+        result["title"] = props["title"].value if "title" in props else ""
+        
+        # Content
+        result["content"] = props["content"].value if "content" in props else ""
+        
+        # Sentiment with empty dict default
+        result["sentiment"] = props["sentiment"].value if "sentiment" in props else {}
+        
+        # Keywords with empty list default
+        result["keywords"] = props["keywords"].value if "keywords" in props else []
+        
+        return result
 
     def _calculate_content_similarity(self, content1: Dict, content2: Dict) -> float:
         keywords1 = set(content1.get("keywords", []))
