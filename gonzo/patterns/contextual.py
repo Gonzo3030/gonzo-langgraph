@@ -1,4 +1,9 @@
+from datetime import datetime, UTC
+from typing import Dict, Any, List
 
+class ContextualPatternDetector:
+    def learn_from_source(self, source_type: str, content: Dict[str, Any], confidence: float) -> None:
+        """Learn patterns from a source."""
         # Process relationships
         if "relationships" in content:
             for rel in content["relationships"]:
