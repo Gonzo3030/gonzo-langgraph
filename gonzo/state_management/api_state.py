@@ -7,13 +7,20 @@ class APIState:
         self.request_history: List[Dict[str, Any]] = []
         self.rate_limits: Dict[str, int] = {}
         self.errors: List[Dict[str, Any]] = []
+
+    def track_operation(self, operation_type: str, **kwargs) -> None:
+        """Track an operation in request history."""
+        self.request_history.append({
+            "type": operation_type,
+            **kwargs
+        })
         
     def to_dict(self) -> Dict[str, Any]:
         """Convert state to dictionary for serialization."""
         return {
-            "request_history": self.request_history,
-            "rate_limits": self.rate_limits,
-            "errors": self.errors
+            "request_history": self.request_history.copy(),
+            "rate_limits": self.rate_limits.copy(),
+            "errors": self.errors.copy()
         }
 
 class APIRequestState(TypedDict):
