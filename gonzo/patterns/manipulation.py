@@ -1,5 +1,5 @@
 from typing import Dict, List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 import logging
 from uuid import uuid4
 
@@ -57,7 +57,7 @@ class ManipulationDetector:
             return None
 
     def _get_topics_in_timeframe(self, timeframe: int) -> List[TimeAwareEntity]:
-        now = datetime.now()
+        now = datetime.now(UTC)
         start_time = now - timedelta(seconds=timeframe)
         
         logger.debug(f"Getting topics after {start_time}")
@@ -165,7 +165,7 @@ class ManipulationDetector:
         }
 
     def _get_related_topics(self, topic: TimeAwareEntity, category: str, timeframe: float) -> List[TimeAwareEntity]:
-        now = datetime.now()
+        now = datetime.now(UTC)
         start_time = now - timedelta(seconds=timeframe)
         
         return self.graph.get_entities(
@@ -197,6 +197,9 @@ class ManipulationDetector:
         
         for transition in transitions:
             timestamp = transition.valid_from
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.replace(tzinfo=UTC)
+                
             window_start = timestamp.replace(minute=(timestamp.minute // 15) * 15,
                                          second=0, microsecond=0)
             
