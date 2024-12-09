@@ -1,4 +1,4 @@
-from typing import Dict, Any, TypeVar, Optional
+from typing import Dict, Any, TypeVar, Annotated, Sequence
 from langgraph.graph import StateGraph, END
 from pydantic import BaseModel
 
@@ -16,17 +16,20 @@ def create_workflow() -> StateGraph:
     workflow.add_node("assessment", enhance_assessment)
     workflow.add_node("narrative", enhance_narrative)
     
-    # Define conditional edges
-    def should_route_to_narrative(state: GonzoState) -> str:
+    # Define edge conditions
+    @workflow.conditional_edge_handler
+    def route_assessment(state: GonzoState) -> Sequence[str]:
+        """Route state after assessment."""
         if state.next_step == "narrative":
-            return "narrative"
-        elif state.next_step == "error":
-            return END
-        else:
-            return END
-
+            return ["narrative"]
+        return [END]
+    
     # Add edges
-    workflow.add_edge("assessment", should_route_to_narrative)
+    workflow.add_conditional_edges(
+        "assessment",
+        route_assessment
+    )
+    
     workflow.add_edge("narrative", END)
     
     # Set entry point
