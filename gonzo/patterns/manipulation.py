@@ -24,21 +24,34 @@ class ManipulationDetector:
         # Filter for timeframe
         now = datetime.now(UTC)
         start_time = now - timedelta(seconds=timeframe)
+        logger.debug(f"Filtering for topics after {start_time} (UTC)")
         
         valid_topics = []
         for t in all_topics:
             if not isinstance(t, TimeAwareEntity) or not t.valid_from:
+                logger.debug(f"Topic {t.id} is not time-aware or missing valid_from")
                 continue
                 
             # Ensure topic time is UTC
             topic_time = t.valid_from if t.valid_from.tzinfo else t.valid_from.replace(tzinfo=UTC)
             
+            logger.debug(f"Checking topic {t.id} with time {topic_time}")
+            logger.debug(f"Comparing {topic_time} >= {start_time}")
+            
             if topic_time >= start_time:
+                logger.debug(f"Topic {t.id} is within timeframe")
                 valid_topics.append(t)
         
         logger.debug(f"Found {len(valid_topics)} topics in timeframe")
         if not valid_topics:
             return []
+
+        # Log full details of topics for inspection
+        for topic in valid_topics:
+            logger.debug(f"Valid topic: {topic.id}")
+            logger.debug(f"  valid_from: {topic.valid_from}")
+            logger.debug(f"  valid_to: {topic.valid_to}")
+            logger.debug(f"  properties: {topic.properties}")
         
         # Detect patterns
         patterns = []
@@ -65,13 +78,18 @@ class ManipulationDetector:
         return patterns
         
     def _find_narrative_patterns(self, topics: List[TimeAwareEntity]) -> List[Dict]:
+        logger.debug(f"Checking for narrative patterns in {len(topics)} topics")
         patterns = []
         for topic in topics:
             if "category" not in topic.properties or "keywords" not in topic.properties:
+                logger.debug(f"Topic {topic.id} missing category or keywords")
                 continue
                 
             topic_category = topic.properties["category"].value
             topic_keywords = set(topic.properties["keywords"].value)
+            
+            logger.debug(f"Checking topic {topic.id} in category {topic_category}")
+            logger.debug(f"Keywords: {topic_keywords}")
             
             similar_topics = [
                 other for other in topics
@@ -83,7 +101,7 @@ class ManipulationDetector:
             ]
             
             if len(similar_topics) >= 2:
-                patterns.append({
+                pattern = {
                     "pattern_type": "narrative_repetition",
                     "category": topic_category,
                     "topic_count": len(similar_topics) + 1,
@@ -92,7 +110,9 @@ class ManipulationDetector:
                         "base_topic_id": str(topic.id),
                         "related_topic_ids": [str(t.id) for t in similar_topics]
                     }
-                })
+                }
+                patterns.append(pattern)
+                logger.debug(f"Found narrative pattern: {pattern}")
                 
         return patterns
 
@@ -121,7 +141,7 @@ class ManipulationDetector:
             # Look for multiple sources to same target
             for target, sources in by_target.items():
                 if len(sources) >= 2:
-                    patterns.append({
+                    pattern = {
                         "pattern_type": "coordinated_shift",
                         "topic_id": str(topic.id),
                         "confidence": len(sources) / len(transitions),
@@ -130,7 +150,9 @@ class ManipulationDetector:
                             "source_count": len(sources),
                             "source_ids": list(sources)
                         }
-                    })
+                    }
+                    patterns.append(pattern)
+                    logger.debug(f"Found coordinated shift: {pattern}")
                     break
         
         return patterns
