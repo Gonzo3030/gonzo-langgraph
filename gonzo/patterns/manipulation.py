@@ -20,6 +20,7 @@ class ManipulationDetector:
     def detect_narrative_manipulation(self, timeframe: int = 3600) -> List[Dict]:
         topics = self._get_topics_in_timeframe(timeframe)
         if not topics:
+            logger.debug(f"No topics found within timeframe {timeframe}")
             return []
             
         patterns = []
@@ -29,21 +30,43 @@ class ManipulationDetector:
         emotional_pattern = self._detect_emotional_manipulation(topics, timeframe)
         if emotional_pattern:
             patterns.append(emotional_pattern)
+            logger.debug(f"Detected emotional manipulation pattern: {emotional_pattern}")
         
         # Detect narrative repetition and coordinated shifts
         for topic in topics:
             repetition = self._detect_narrative_repetition(topic, timeframe)
             if repetition:
                 patterns.append(repetition)
+                logger.debug(f"Detected narrative repetition: {repetition}")
                 
             shift = self._detect_coordinated_shift(topic, timeframe)
             if shift:
                 patterns.append(shift)
+                logger.debug(f"Detected coordinated shift: {shift}")
         
         return patterns
 
     def _detect_emotional_manipulation(self, topics: List[TimeAwareEntity], timeframe: int) -> Optional[Dict]:
-        return self.emotional_detector.detect_emotional_escalation(topics, timeframe)
+        try:
+            pattern = self.emotional_detector.detect_emotional_escalation(topics, timeframe)
+            if pattern:
+                logger.debug(f"Found emotional manipulation pattern: {pattern}")
+            return pattern
+        except Exception as e:
+            logger.error(f"Error in emotional manipulation detection: {e}", exc_info=True)
+            return None
+
+    def _get_topics_in_timeframe(self, timeframe: int) -> List[TimeAwareEntity]:
+        now = datetime.now()
+        start_time = now - timedelta(seconds=timeframe)
+        
+        logger.debug(f"Getting topics after {start_time}")
+        topics = self.graph.get_entities(
+            entity_type="topic",
+            valid_from_after=start_time
+        )
+        logger.debug(f"Found {len(topics)} topics")
+        return topics
 
     def _detect_narrative_repetition(self, topic: TimeAwareEntity, timeframe: float) -> Optional[Dict]:
         if "category" not in topic.properties:
@@ -62,6 +85,7 @@ class ManipulationDetector:
         for rel_topic in related:
             rel_content = self._get_topic_content(rel_topic)
             similarity = self._calculate_content_similarity(base_content, rel_content)
+            logger.debug(f"Similarity between {topic.id} and {rel_topic.id}: {similarity}")
             
             if set(base_content["keywords"]) == set(rel_content["keywords"]):
                 similar_topics.append(rel_topic)
@@ -74,6 +98,7 @@ class ManipulationDetector:
             return None
 
         confidence = sum(similarity_scores) / len(similarity_scores)
+        logger.debug(f"Narrative repetition confidence: {confidence}")
 
         return {
             "pattern_type": "narrative_repetition",
@@ -88,7 +113,6 @@ class ManipulationDetector:
         }
 
     def _detect_coordinated_shift(self, topic: TimeAwareEntity, timeframe: float) -> Optional[Dict]:
-        # Get outgoing topic transitions
         transitions = self.graph.get_relationships(
             relationship_type="topic_transition",
             source_id=topic.id
@@ -97,13 +121,11 @@ class ManipulationDetector:
         if len(transitions) < 2:
             return None
 
-        # Group transitions by time window
         window_size = timedelta(minutes=15)
         clusters = self._cluster_transitions_by_time(transitions, window_size)
         
         pattern_clusters = []
         for window_start, cluster in clusters.items():
-            # Count unique sources and shared targets
             sources = set()
             targets = set()
             for transition in cluster:
@@ -122,13 +144,12 @@ class ManipulationDetector:
         if not pattern_clusters:
             return None
             
-        # Calculate confidence based on coordination metrics
         max_cluster = max(pattern_clusters, key=lambda c: c["source_count"])
         source_ratio = max_cluster["source_count"] / len(transitions)
         target_ratio = max_cluster["shared_target_count"] / max_cluster["source_count"]
-        confidence = (source_ratio * 0.7 + target_ratio * 0.3)
+        confidence = (source_ratio * 0.7 + target_ratio * 0.3) * (1 + 0.1 * (len(pattern_clusters) - 1))
         
-        logger.debug(f"Detected coordinated shift: {{\'pattern_type\': \'coordinated_shift\', \'topic_id\': '{topic.id}', \'timeframe\': {timeframe}, \'confidence\': {confidence}, \'metadata\': {{\'clusters\': {pattern_clusters}}}}}")
+        logger.debug(f"Coordinated shift confidence: {confidence}")
 
         if confidence < self.min_confidence:
             return None
@@ -142,15 +163,6 @@ class ManipulationDetector:
                 "clusters": pattern_clusters
             }
         }
-
-    def _get_topics_in_timeframe(self, timeframe: int) -> List[TimeAwareEntity]:
-        now = datetime.now()
-        start_time = now - timedelta(seconds=timeframe)
-        
-        return self.graph.get_entities(
-            entity_type="topic",
-            valid_from_after=start_time
-        )
 
     def _get_related_topics(self, topic: TimeAwareEntity, category: str, timeframe: float) -> List[TimeAwareEntity]:
         now = datetime.now()
