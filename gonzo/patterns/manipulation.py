@@ -20,140 +20,79 @@ class ManipulationDetector:
         # Get topics within timeframe
         now = datetime.now(UTC)
         start_time = now - timedelta(seconds=timeframe)
-        all_topics = self.graph.get_entities_by_type("topic")
         
         topics = []
-        for topic in all_topics:
-            if not isinstance(topic, TimeAwareEntity) or not topic.valid_from:
-                continue
-            topic_time = self._ensure_utc(topic.valid_from)
-            if topic_time >= start_time:
-                topics.append(topic)
+        for topic in self.graph.get_entities_by_type("topic"):
+            if isinstance(topic, TimeAwareEntity) and topic.valid_from:
+                if topic.valid_from >= start_time:
+                    topics.append(topic)
         
+        logger.debug(f"Found {len(topics)} topics in timeframe")
         if not topics:
             return []
-            
+        
         patterns = []
-        
-        # First detect emotional patterns which need all topics
-        emotional = self._detect_emotional_manipulation(topics)
-        if emotional:
-            patterns.append(emotional)
-        
-        # Then look for individual topic patterns
         for topic in topics:
-            repetition = self._detect_narrative_repetition(topic, topics)
-            if repetition:
-                patterns.append(repetition)
+            narrative = self._detect_narrative_repetition(topic, topics)
+            if narrative:
+                patterns.append(narrative)
                 
-            shift = self._detect_coordinated_shift(topic, topics)
-            if shift:
-                patterns.append(shift)
+            coordinated = self._detect_coordinated_shift(topic)
+            if coordinated:
+                patterns.append(coordinated)
+                
+            emotional = self._detect_emotional_manipulation(topics)
+            if emotional:
+                patterns.append(emotional)
+                break  # Only need one emotional pattern per timeframe
         
         return patterns
 
-    def _ensure_utc(self, dt: datetime) -> datetime:
-        return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
-
-    def _detect_emotional_manipulation(self, topics: List[TimeAwareEntity]) -> Optional[Dict]:
-        # Sort topics by time
-        sorted_topics = sorted(topics, key=lambda x: x.valid_from)
-        
-        # Track emotional changes
-        sequences = []
-        for topic in sorted_topics:
-            if "sentiment" not in topic.properties:
-                continue
-            sentiment = topic.properties["sentiment"].value
-            sequences.append(sentiment)
-            
-        if len(sequences) < 3:
-            return None
-            
-        # Calculate emotional escalation
-        first = sequences[0]
-        last = sequences[-1]
-        
-        fear_change = last["fear"] - first["fear"]
-        anger_change = last["anger"] - first["anger"]
-        intensity_change = last["intensity"] - first["intensity"]
-        
-        if fear_change < 0.2 and anger_change < 0.2:
-            return None
-            
-        confidence = (fear_change + anger_change + intensity_change) / 3
-        
-        if confidence < self.min_confidence:
-            return None
-            
-        return {
-            "pattern_type": "emotional_manipulation",
-            "topic_id": str(sorted_topics[-1].id),
-            "confidence": confidence,
-            "metadata": {
-                "escalation_count": len(sequences),
-                "max_escalation": max(fear_change, anger_change),
-                "fear_level": last["fear"],
-                "anger_level": last["anger"]
-            }
-        }
-
     def _detect_narrative_repetition(self, topic: TimeAwareEntity, all_topics: List[TimeAwareEntity]) -> Optional[Dict]:
-        if "category" not in topic.properties or "keywords" not in topic.properties:
+        # Basic property checks
+        if "category" not in topic.properties:
+            return None
+        if "keywords" not in topic.properties:
             return None
             
-        category = topic.properties["category"].value
-        base_keywords = set(topic.properties["keywords"].value)
+        topic_category = topic.properties["category"].value
+        topic_keywords = topic.properties["keywords"].value
         
+        # Find similar topics
         similar_topics = []
-        similarity_scores = []
-        
         for other in all_topics:
             if other.id == topic.id:
                 continue
                 
-            if "category" not in other.properties or "keywords" not in other.properties:
+            if "category" not in other.properties or other.properties["category"].value != topic_category:
                 continue
                 
-            if other.properties["category"].value != category:
+            if "keywords" not in other.properties:
                 continue
                 
-            other_keywords = set(other.properties["keywords"].value)
+            other_keywords = other.properties["keywords"].value
             
-            # For identical keywords, assign perfect similarity
-            if base_keywords == other_keywords:
+            # Check for keyword similarity
+            if set(topic_keywords) == set(other_keywords):
                 similar_topics.append(other)
-                similarity_scores.append(1.0)
-                continue
-                
-            # Calculate Jaccard similarity
-            intersection = len(base_keywords.intersection(other_keywords))
-            union = len(base_keywords.union(other_keywords))
-            similarity = intersection / union if union > 0 else 0
-            
-            if similarity >= 0.5:
-                similar_topics.append(other)
-                similarity_scores.append(similarity)
         
-        if len(similar_topics) < 2:
+        if len(similar_topics) < 2:  # Need at least 2 similar topics
             return None
             
-        confidence = sum(similarity_scores) / len(similarity_scores)
-        
+        # Since keywords match exactly, use max confidence
         return {
             "pattern_type": "narrative_repetition",
-            "category": category,
+            "category": topic_category,
             "topic_count": len(similar_topics) + 1,
-            "confidence": confidence,
+            "confidence": 1.0,
             "metadata": {
                 "base_topic_id": str(topic.id),
-                "related_topic_ids": [str(t.id) for t in similar_topics],
-                "similarity_scores": similarity_scores
+                "related_topic_ids": [str(t.id) for t in similar_topics]
             }
         }
 
-    def _detect_coordinated_shift(self, topic: TimeAwareEntity, all_topics: List[TimeAwareEntity]) -> Optional[Dict]:
-        # Get transitions for this topic
+    def _detect_coordinated_shift(self, topic: TimeAwareEntity) -> Optional[Dict]:
+        # Get all transitions from this topic
         transitions = self.graph.get_relationships_by_type(
             relationship_type="topic_transition",
             source_id=topic.id
@@ -162,51 +101,35 @@ class ManipulationDetector:
         if len(transitions) < 2:
             return None
         
-        # Group transitions by time window
-        windows = {}
+        # Group by target
+        target_groups = {}
         for transition in transitions:
-            # Skip if we can't determine timing
-            if not hasattr(transition, "valid_from") or not transition.valid_from:
-                continue
-                
-            # Normalize to 15-minute windows
-            time = self._ensure_utc(transition.valid_from)
-            window = time.replace(minute=(time.minute // 15) * 15,
-                                second=0, microsecond=0)
-            
-            if window not in windows:
-                windows[window] = []
-            windows[window].append(transition)
+            target_id = str(transition.target_id)
+            if target_id not in target_groups:
+                target_groups[target_id] = []
+            target_groups[target_id].append(transition)
         
-        if not windows:
-            return None
-        
-        # Look for coordinated shifts in each window
-        clusters = []
-        for window_start, transitions in windows.items():
+        # Look for coordinated shifts (multiple sources to same target)
+        coordinated_groups = []
+        for target_id, group in target_groups.items():
             sources = set()
-            targets = set()
+            for transition in group:
+                if "source_entity_id" in transition.properties:
+                    sources.add(str(transition.properties["source_entity_id"]))
             
-            for t in transitions:
-                if "source_entity_id" in t.properties:
-                    sources.add(str(t.properties["source_entity_id"]))
-                if hasattr(t, "target_id"):
-                    targets.add(str(t.target_id))
-            
-            if len(sources) >= 2 and len(targets) < len(sources):
-                clusters.append({
-                    "window_start": window_start.isoformat(),
+            if len(sources) >= 2:
+                coordinated_groups.append({
+                    "target_id": target_id,
                     "source_count": len(sources),
-                    "transition_count": len(transitions),
-                    "shared_target_count": len(targets)
+                    "source_ids": list(sources)
                 })
         
-        if not clusters:
+        if not coordinated_groups:
             return None
             
-        # Calculate confidence based on coordination metrics
-        max_cluster = max(clusters, key=lambda x: x["source_count"])
-        confidence = max_cluster["source_count"] / max_cluster["transition_count"]
+        # Calculate confidence based on coordination
+        max_group = max(coordinated_groups, key=lambda x: x["source_count"])
+        confidence = max_group["source_count"] / len(transitions)
         
         if confidence < self.min_confidence:
             return None
@@ -216,6 +139,50 @@ class ManipulationDetector:
             "topic_id": str(topic.id),
             "confidence": confidence,
             "metadata": {
-                "clusters": clusters
+                "coordinated_groups": coordinated_groups
+            }
+        }
+
+    def _detect_emotional_manipulation(self, topics: List[TimeAwareEntity]) -> Optional[Dict]:
+        if len(topics) < 3:
+            return None
+            
+        # Extract sentiment sequences
+        sequences = []
+        for topic in topics:
+            if "sentiment" not in topic.properties:
+                continue
+            sequences.append({
+                "topic_id": str(topic.id),
+                "sentiment": topic.properties["sentiment"].value,
+                "valid_from": topic.valid_from
+            })
+        
+        if len(sequences) < 3:
+            return None
+            
+        # Sort by time
+        sequences.sort(key=lambda x: x["valid_from"])
+        
+        # Calculate changes
+        fear_change = sequences[-1]["sentiment"]["fear"] - sequences[0]["sentiment"]["fear"]
+        anger_change = sequences[-1]["sentiment"]["anger"] - sequences[0]["sentiment"]["anger"]
+        
+        # Check for significant changes
+        if fear_change < 0.3 and anger_change < 0.3:
+            return None
+            
+        confidence = max(fear_change, anger_change)
+        if confidence < self.min_confidence:
+            return None
+            
+        return {
+            "pattern_type": "emotional_manipulation",
+            "topic_id": sequences[-1]["topic_id"],
+            "confidence": confidence,
+            "metadata": {
+                "fear_change": fear_change,
+                "anger_change": anger_change,
+                "sequence_length": len(sequences)
             }
         }
