@@ -9,9 +9,14 @@ from ..nodes.knowledge_enhanced_narrative import enhance_narrative
 
 StateType = TypeVar("StateType", bound=BaseModel)
 
-def should_route_to_narrative(state: GonzoState) -> bool:
-    """Determine if we should route to narrative generation."""
-    return state.next_step == "narrative"
+def create_router() -> RoutingEdge:
+    """Create a routing edge for workflow control."""
+    return RoutingEdge(
+        conditions={
+            "narrative": lambda x: x.next_step == "narrative",
+            END: lambda x: x.next_step != "narrative"
+        }
+    )
 
 def create_workflow() -> StateGraph:
     """Create the main Gonzo workflow graph."""
@@ -22,12 +27,19 @@ def create_workflow() -> StateGraph:
     workflow.add_node("assessment", enhance_assessment)
     workflow.add_node("narrative", enhance_narrative)
     
-    # Set up branching logic
-    workflow.add_edge("assessment", "narrative", should_route_to_narrative)
-    workflow.add_edge("assessment", END, lambda x: not should_route_to_narrative(x))
-    workflow.add_edge("narrative", END)
+    # Create router
+    router = create_router()
     
-    # Set the entry point
+    # Set up the workflow
+    workflow.add_node("router", router)
+    
+    # Configure edges
     workflow.set_entry_point("assessment")
+    workflow.add_edge("assessment", "router")
+    workflow.add_conditional_edges(
+        "router",
+        {"narrative": "narrative", END: END}
+    )
+    workflow.add_edge("narrative", END)
     
     return workflow.compile()
