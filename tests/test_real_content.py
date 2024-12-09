@@ -17,15 +17,15 @@ try:
 except Exception as e:
     print(f"Note: Could not load .env file: {e}")
 
-# Test videos (Russell Brand content)
+# Test videos (with known transcripts)
 TEST_VIDEOS = [
     {
-        'id': 'U1Nax7dKLr4',
-        'description': 'RB Video on Media Manipulation'
+        'id': 'XqZsoesa55w',  # Baby Shark Dance
+        'description': 'Popular children\'s video with transcript'
     },
     {
-        'id': 'LHk-Tnga9K8',
-        'description': 'RB Video on Financial System'
+        'id': 'kJQP7kiw5Fk',  # Despacito
+        'description': 'Popular music video with transcript'
     }
 ]
 
@@ -80,7 +80,7 @@ def save_results(video_id: str, results: dict, metrics: dict):
         json.dump(metrics.__dict__, f, indent=2)
 
 def test_video_analysis(collector, performance_monitor):
-    """Test analysis of Russell Brand video content."""
+    """Test analysis of video content."""
     all_metrics = []
     
     for video in TEST_VIDEOS:
