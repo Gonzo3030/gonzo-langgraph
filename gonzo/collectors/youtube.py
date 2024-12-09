@@ -5,6 +5,7 @@ from datetime import datetime, UTC
 from uuid import uuid4
 import logging
 from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound
 from urllib.parse import urlparse, parse_qs
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from ..types import EntityType, TimeAwareEntity, Property, Relationship
@@ -39,6 +40,61 @@ class YouTubeCollector:
             chunk_size=ANALYSIS_CONFIG["chunk_size"],
             chunk_overlap=ANALYSIS_CONFIG["chunk_overlap"]
         )
+
+    def get_video_transcript(self, video_id: str) -> Optional[List[Dict[str, Any]]]:
+        """Get transcript for a YouTube video.
+        
+        Args:
+            video_id: YouTube video ID
+            
+        Returns:
+            List of transcript segments or None if unavailable
+        """
+        try:
+            transcript_list = self._transcript_api.list_transcripts(video_id)
+            
+            # Try to get English transcript first
+            try:
+                transcript = transcript_list.find_transcript(['en'])
+            except NoTranscriptFound:
+                # Fallback to auto-generated English
+                try:
+                    transcript = transcript_list.find_generated_transcript(['en'])
+                except NoTranscriptFound:
+                    # Final fallback - get first available and translate
+                    transcript = transcript_list.find_manually_created_transcript()
+                    transcript = transcript.translate('en')
+            
+            return transcript.fetch()
+            
+        except (TranscriptsDisabled, NoTranscriptFound) as e:
+            logger.warning(f"No transcript available for video {video_id}: {str(e)}")
+            return None
+        except Exception as e:
+            logger.error(f"Error getting transcript for video {video_id}: {str(e)}")
+            return None
+
+    def process_transcript(self, transcript: List[Dict[str, Any]]) -> str:
+        """Process raw transcript into clean text.
+        
+        Args:
+            transcript: Raw transcript data
+            
+        Returns:
+            Processed text
+        """
+        # Combine transcript segments with timestamps
+        text_segments = []
+        for segment in transcript:
+            start_time = segment['start']
+            duration = segment.get('duration', 0)
+            text = segment['text']
+            
+            # Add timestamp and segment
+            timestamp = f"[{int(start_time)}s]"
+            text_segments.append(f"{timestamp} {text}")
+            
+        return "\n".join(text_segments)
     
     def collect_channel_transcripts(self, 
         channel_url: str,
@@ -110,6 +166,10 @@ class YouTubeCollector:
             logger.warning("No task manager available for entity extraction")
             return []
             
+        if not transcript:
+            logger.warning("No transcript provided for entity extraction")
+            return []
+
         # Process transcript into chunks
         text = self.process_transcript(transcript)
         chunks = self.text_splitter.split_text(text)
@@ -135,6 +195,23 @@ class YouTubeCollector:
                 entities.extend(chunk_entities)
             
         return entities
+
+    def _process_agent_entities(self, result: Dict[str, Any]) -> List[TimeAwareEntity]:
+        """Process entities from agent result."""
+        entities = []
+        if "entities" in result:
+            for entity_data in result["entities"]:
+                entity = TimeAwareEntity(
+                    type=entity_data.get("type", EntityType.UNKNOWN),
+                    id=uuid4(),
+                    properties={
+                        "text": Property(key="text", value=entity_data.get("text", "")),
+                        "confidence": Property(key="confidence", value=entity_data.get("confidence", 0.0))
+                    },
+                    valid_from=datetime.now(UTC)
+                )
+                entities.append(entity)
+        return entities
     
     def segment_by_topic(self, transcript: List[Dict[str, Any]]) -> List[TimeAwareEntity]:
         """Segment transcript into topics using OpenAI agent.
@@ -147,6 +224,10 @@ class YouTubeCollector:
         """
         if not self.task_manager:
             logger.warning("No task manager available for topic segmentation")
+            return []
+
+        if not transcript:
+            logger.warning("No transcript provided for topic segmentation")
             return []
             
         # Process transcript into chunks
@@ -174,6 +255,24 @@ class YouTubeCollector:
                 segments.extend(chunk_segments)
             
         return segments
+
+    def _process_agent_segments(self, result: Dict[str, Any]) -> List[TimeAwareEntity]:
+        """Process segments from agent result."""
+        segments = []
+        if "segments" in result:
+            for segment_data in result["segments"]:
+                segment = TimeAwareEntity(
+                    type=EntityType.NARRATIVE,
+                    id=uuid4(),
+                    properties={
+                        "topic": Property(key="topic", value=segment_data.get("topic", "")),
+                        "category": Property(key="category", value=segment_data.get("category", "")),
+                        "start_time": Property(key="start_time", value=segment_data.get("start_time", 0))
+                    },
+                    valid_from=datetime.now(UTC)
+                )
+                segments.append(segment)
+        return segments
     
     def analyze_content(self, video_id: str) -> Dict[str, Any]:
         """Full content analysis pipeline.
@@ -187,24 +286,42 @@ class YouTubeCollector:
         # Get transcript
         transcript = self.get_video_transcript(video_id)
         if not transcript:
-            return {}
+            logger.error(f"Could not get transcript for video {video_id}")
+            return {
+                "video_id": video_id,
+                "entities": [],
+                "segments": [],
+                "patterns": [],
+                "error": "No transcript available"
+            }
         
-        # Extract entities
-        entities = self.extract_entities(transcript)
-        
-        # Segment by topic
-        segments = self.segment_by_topic(transcript)
-        
-        # Detect patterns if available
-        patterns = []
-        if self.pattern_detector:
-            # Get topic cycles from segments
-            topic_patterns = self.pattern_detector.detect_topic_cycles()
-            patterns.extend(topic_patterns)
-        
-        return {
-            "video_id": video_id,
-            "entities": entities,
-            "segments": segments,
-            "patterns": patterns
-        }
+        try:
+            # Extract entities
+            entities = self.extract_entities(transcript)
+            
+            # Segment by topic
+            segments = self.segment_by_topic(transcript)
+            
+            # Detect patterns if available
+            patterns = []
+            if self.pattern_detector:
+                # Get topic cycles from segments
+                topic_patterns = self.pattern_detector.detect_topic_cycles()
+                patterns.extend(topic_patterns)
+            
+            return {
+                "video_id": video_id,
+                "entities": entities,
+                "segments": segments,
+                "patterns": patterns
+            }
+            
+        except Exception as e:
+            logger.error(f"Error analyzing video {video_id}: {str(e)}")
+            return {
+                "video_id": video_id,
+                "entities": [],
+                "segments": [],
+                "patterns": [],
+                "error": str(e)
+            }
