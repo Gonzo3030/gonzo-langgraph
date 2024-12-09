@@ -1,0 +1,72 @@
+{
+  "patterns": [
+    {
+      "name": "consensus_manufacturing",
+      "description": "Creating illusion of widespread agreement on controversial topics",
+      "indicators": [
+        "experts agree that",
+        "scientists have reached consensus",
+        "growing consensus among",
+        "majority of experts believe"
+      ],
+      "examples": [
+        {
+          "text": "Experts overwhelmingly agree that the new policy is necessary for public safety",
+          "analysis": "Classic consensus manufacturing - using unnamed 'experts' to present controversial policy as settled fact"
+        }
+      ],
+      "counter_analysis": "Question which experts, their funding sources, and what contrary evidence is being ignored"
+    },
+    {
+      "name": "false_balance",
+      "description": "Presenting established facts as merely one side of a debate",
+      "indicators": [
+        "some people claim",
+        "critics argue",
+        "debates continue about",
+        "remains controversial"
+      ],
+      "examples": [
+        {
+          "text": "While official sources maintain X, some critics suggest Y",
+          "analysis": "Using 'balance' to cast doubt on verified information or introduce fringe theories as equally valid"
+        }
+      ],
+      "counter_analysis": "Examine the evidence for each position, not just the fact that disagreement exists"
+    },
+    {
+      "name": "authority_citation",
+      "description": "Using unnamed or vague authority figures to support claims",
+      "indicators": [
+        "sources say",
+        "officials claim",
+        "according to experts",
+        "authorities confirm"
+      ],
+      "examples": [
+        {
+          "text": "Sources familiar with the matter indicate that significant progress has been made",
+          "analysis": "Using anonymous sources to shape perception without accountability"
+        }
+      ],
+      "counter_analysis": "Always ask which specific sources and what their potential biases might be"
+    },
+    {
+      "name": "emotional_manipulation",
+      "description": "Using emotionally charged language to override critical thinking",
+      "indicators": [
+        "shocking revelation",
+        "fears grow",
+        "raising concerns",
+        "troubling development"
+      ],
+      "examples": [
+        {
+          "text": "Fears are growing among experts about the potential consequences of this development",
+          "analysis": "Combining appeal to authority with fear to create emotional response"
+        }
+      ],
+      "counter_analysis": "Focus on actual facts and evidence rather than emotional reactions"
+    }
+  ]
+}
