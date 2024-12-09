@@ -6,11 +6,11 @@ from ..types import GonzoState, NextStep
 
 StateType = TypeVar("StateType", bound=BaseModel)
 
-def route_next_step(state: GonzoState) -> Dict[str, Any]:
+def get_next_step(state: GonzoState) -> str:
     """Determine the next step in the workflow."""
     if not state.next_step:
         state.next_step = NextStep.NARRATIVE
-        
+    
     next_steps = {
         NextStep.NARRATIVE: "narrative",
         NextStep.CRYPTO: "end",
@@ -19,8 +19,7 @@ def route_next_step(state: GonzoState) -> Dict[str, Any]:
         NextStep.END: "end"
     }
     
-    # Return the state and the next step
-    return {"next": next_steps.get(state.next_step, "error")}
+    return next_steps.get(state.next_step, "error")
 
 def create_workflow() -> StateGraph:
     """Create the main Gonzo workflow graph."""
@@ -31,27 +30,15 @@ def create_workflow() -> StateGraph:
     workflow.add_node("start", lambda x: x)
     workflow.add_node("assessment", lambda x: x)
     workflow.add_node("narrative", lambda x: x)
-    workflow.add_node("router", route_next_step)
     
     # Set up workflow
     workflow.set_entry_point("start")
     
-    # Add edges
+    # Add edges with conditional routing
     workflow.add_edge("start", "assessment")
-    workflow.add_edge("assessment", "router")
+    workflow.add_edge("assessment", get_next_step)
     
-    # Add conditional edges
-    workflow.add_conditional_edges(
-        "router",
-        {
-            "narrative": "narrative",
-            "end": END,
-            "error": END
-        },
-        key="next"
-    )
-    
-    # Add final edges
+    # Add edge from narrative to end
     workflow.add_edge("narrative", END)
     
     return workflow.compile()
