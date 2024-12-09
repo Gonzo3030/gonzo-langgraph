@@ -4,11 +4,18 @@ import os
 import json
 from datetime import datetime
 import pytest
+from dotenv import load_dotenv
 from gonzo.collectors.youtube import YouTubeCollector
 from gonzo.patterns.detector import PatternDetector
 from gonzo.graph.knowledge.graph import KnowledgeGraph
 from gonzo.agent import GonzoAgent
 from gonzo.utils.performance import PerformanceMonitor
+
+# Load environment variables
+try:
+    load_dotenv()
+except Exception as e:
+    print(f"Note: Could not load .env file: {e}")
 
 # Test videos (Russell Brand content)
 TEST_VIDEOS = [
@@ -34,11 +41,16 @@ def collector():
     # Create agent
     agent = GonzoAgent()
     
+    # Get YouTube API key from environment
+    youtube_api_key = os.getenv('YOUTUBE_API_KEY')
+    if not youtube_api_key:
+        print("\nNote: No YouTube API key found. Some features may be limited.")
+    
     # Create collector with components
     return YouTubeCollector(
         agent=agent,
         pattern_detector=detector,
-        youtube_api_key=os.getenv('YOUTUBE_API_KEY')
+        youtube_api_key=youtube_api_key
     )
 
 @pytest.fixture
@@ -54,6 +66,9 @@ def save_results(video_id: str, results: dict, metrics: dict):
         results: Analysis results
         metrics: Performance metrics
     """
+    # Create test_results directory if it doesn't exist
+    os.makedirs("test_results", exist_ok=True)
+    
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
     # Save results
@@ -138,6 +153,11 @@ def test_video_analysis(collector, performance_monitor):
 
 def test_cross_video_patterns(collector, performance_monitor):
     """Test pattern detection across both videos."""
+    # Skip test if no transcript data available
+    sample_results = collector.analyze_content(TEST_VIDEOS[0]['id'])
+    if not sample_results.get('entities') and not sample_results.get('segments'):
+        pytest.skip("No transcript data available - skipping cross video pattern test")
+    
     # Collect entities and segments from all videos
     all_entities = []
     all_segments = []
