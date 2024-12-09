@@ -36,11 +36,12 @@ class ManipulationDetector:
             
         patterns = []
         
-        # Detect patterns...
+        # Detect emotional manipulation first
         emotional_pattern = self._detect_emotional_manipulation(topics)
         if emotional_pattern:
             patterns.append(emotional_pattern)
         
+        # Then detect narrative patterns
         for topic in topics:
             repetition = self._detect_narrative_repetition(topic)
             if repetition:
@@ -56,12 +57,14 @@ class ManipulationDetector:
         return self.emotional_detector.detect_emotional_escalation(topics)
 
     def _detect_narrative_repetition(self, topic: TimeAwareEntity) -> Optional[Dict]:
-        if "category" not in topic.properties:
+        if "category" not in topic.properties or "keywords" not in topic.properties:
             return None
             
         category = topic.properties["category"].value
         related = [t for t in self.graph.get_entities_by_type("topic")
                   if "category" in t.properties and
+                  "keywords" in t.properties and
+                  t.id != topic.id and
                   t.properties["category"].value == category]
 
         if len(related) < 2:
@@ -72,16 +75,11 @@ class ManipulationDetector:
         similarity_scores = []
 
         for rel_topic in related:
-            if rel_topic.id == topic.id:
-                continue
-                
             rel_content = self._get_topic_content(rel_topic)
             similarity = self._calculate_content_similarity(base_content, rel_content)
             
-            if set(base_content["keywords"]) == set(rel_content["keywords"]):
-                similar_topics.append(rel_topic)
-                similarity_scores.append(1.0)
-            elif similarity >= 0.7:
+            # Lower the similarity threshold to catch more patterns
+            if similarity >= 0.5:
                 similar_topics.append(rel_topic)
                 similarity_scores.append(similarity)
 
@@ -89,6 +87,8 @@ class ManipulationDetector:
             return None
 
         confidence = sum(similarity_scores) / len(similarity_scores)
+        if confidence < self.min_confidence:
+            return None
 
         return {
             "pattern_type": "narrative_repetition",
@@ -152,7 +152,10 @@ class ManipulationDetector:
             return None
             
         max_cluster = max(pattern_clusters, key=lambda c: c["source_count"])
-        confidence = max_cluster["source_count"] / len(transitions)
+        source_ratio = max_cluster["source_count"] / len(transitions)
+        target_ratio = max_cluster["shared_target_count"] / max_cluster["source_count"]
+        # Combine ratios to get better confidence score
+        confidence = (source_ratio * 0.7 + target_ratio * 0.3) * (1 + 0.1 * (len(transitions) - 1))
 
         if confidence < self.min_confidence:
             return None
