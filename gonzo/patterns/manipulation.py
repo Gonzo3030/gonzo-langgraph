@@ -19,32 +19,49 @@ class ManipulationDetector:
     def detect_narrative_manipulation(self, timeframe: int = 3600) -> List[Dict]:
         # Get all topics in timeframe
         all_topics = self.graph.get_entities_by_type("topic")
-        topics = []
+        logger.debug(f"Found {len(all_topics)} total topics")
         
+        # Filter for timeframe
         now = datetime.now(UTC)
         start_time = now - timedelta(seconds=timeframe)
         
-        for topic in all_topics:
-            if not isinstance(topic, TimeAwareEntity):
-                continue
-            if not topic.valid_from:
-                continue
-            if topic.valid_from.tzinfo is None:
-                topic.valid_from = topic.valid_from.replace(tzinfo=UTC)
-            if topic.valid_from >= start_time:
-                topics.append(topic)
+        valid_topics = [
+            t for t in all_topics
+            if isinstance(t, TimeAwareEntity) 
+            and t.valid_from 
+            and (t.valid_from.tzinfo is None or t.valid_from.replace(tzinfo=UTC)) >= start_time
+        ]
         
-        if not topics:
+        logger.debug(f"Found {len(valid_topics)} topics in timeframe")
+        if not valid_topics:
             return []
-            
+        
+        # Detect patterns
         patterns = []
         
-        # Check for emotional manipulation
-        emotional = self.emotional_detector.detect_emotional_escalation(topics)
+        # 1. Emotional manipulation check
+        emotional = self.emotional_detector.detect_emotional_escalation(valid_topics)
         if emotional:
             patterns.append(emotional)
+            logger.debug("Found emotional manipulation pattern")
         
-        # Check for narrative repetition
+        # 2. Narrative repetition check
+        narratives = self._find_narrative_patterns(valid_topics)
+        if narratives:
+            patterns.extend(narratives)
+            logger.debug(f"Found {len(narratives)} narrative patterns")
+        
+        # 3. Coordinated shift check
+        shifts = self._find_coordinated_shifts(valid_topics)
+        if shifts:
+            patterns.extend(shifts)
+            logger.debug(f"Found {len(shifts)} coordinated shift patterns")
+        
+        logger.debug(f"Total patterns found: {len(patterns)}")
+        return patterns
+        
+    def _find_narrative_patterns(self, topics: List[TimeAwareEntity]) -> List[Dict]:
+        patterns = []
         for topic in topics:
             if "category" not in topic.properties or "keywords" not in topic.properties:
                 continue
@@ -52,18 +69,14 @@ class ManipulationDetector:
             topic_category = topic.properties["category"].value
             topic_keywords = set(topic.properties["keywords"].value)
             
-            similar_topics = []
-            for other in topics:
-                if other.id == topic.id:
-                    continue
-                if "category" not in other.properties or "keywords" not in other.properties:
-                    continue
-                if other.properties["category"].value != topic_category:
-                    continue
-                    
-                other_keywords = set(other.properties["keywords"].value)
-                if topic_keywords == other_keywords:
-                    similar_topics.append(other)
+            similar_topics = [
+                other for other in topics
+                if other.id != topic.id
+                and "category" in other.properties
+                and other.properties["category"].value == topic_category
+                and "keywords" in other.properties
+                and set(other.properties["keywords"].value) == topic_keywords
+            ]
             
             if len(similar_topics) >= 2:
                 patterns.append({
@@ -76,8 +89,11 @@ class ManipulationDetector:
                         "related_topic_ids": [str(t.id) for t in similar_topics]
                     }
                 })
-        
-        # Check for coordinated shifts
+                
+        return patterns
+
+    def _find_coordinated_shifts(self, topics: List[TimeAwareEntity]) -> List[Dict]:
+        patterns = []
         for topic in topics:
             transitions = self.graph.get_relationships_by_type(
                 relationship_type="topic_transition",
@@ -87,6 +103,7 @@ class ManipulationDetector:
             if len(transitions) < 2:
                 continue
             
+            # Group by target
             by_target = {}
             for trans in transitions:
                 target = str(trans.target_id)
@@ -97,6 +114,7 @@ class ManipulationDetector:
                     source = str(trans.properties["source_entity_id"])
                     by_target[target].add(source)
             
+            # Look for multiple sources to same target
             for target, sources in by_target.items():
                 if len(sources) >= 2:
                     patterns.append({
@@ -109,5 +127,6 @@ class ManipulationDetector:
                             "source_ids": list(sources)
                         }
                     })
+                    break
         
         return patterns
