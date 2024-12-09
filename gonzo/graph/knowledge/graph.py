@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Any, Iterator, Tuple
+from typing import Dict, List, Optional, Any, Iterator, Tuple, Union
 from datetime import datetime, UTC
 from uuid import UUID
 import logging
@@ -11,7 +11,8 @@ class KnowledgeGraph:
     """High-level interface for managing and analyzing knowledge graphs."""
     
     def __init__(self):
-        self._entities: Dict[UUID, Entity] = {}
+        # Allow either Entity or TimeAwareEntity in the dict
+        self._entities: Dict[UUID, Union[Entity, TimeAwareEntity]] = {}
         self._relationships: Dict[UUID, Relationship] = {}
     
     def add_entity(self, 
@@ -19,7 +20,7 @@ class KnowledgeGraph:
                    properties: Dict[str, Any],
                    temporal: bool = False,
                    valid_from: Optional[datetime] = None,
-                   valid_to: Optional[datetime] = None) -> Entity:
+                   valid_to: Optional[datetime] = None) -> Union[Entity, TimeAwareEntity]:
         """Create and add a new entity to the graph."""
         logger.debug(f"Adding entity of type {entity_type} with properties {properties}")
         
@@ -36,6 +37,7 @@ class KnowledgeGraph:
                 valid_from=valid_from,
                 valid_to=valid_to
             )
+            logger.debug(f"Created TimeAwareEntity with valid_from={valid_from}")
         else:
             entity = Entity(type=entity_type)
             
@@ -45,7 +47,7 @@ class KnowledgeGraph:
             
         # Store in graph
         self._entities[entity.id] = entity
-        logger.debug(f"Added entity with ID {entity.id}")
+        logger.debug(f"Added entity with ID {entity.id} of type {type(entity)}")
         
         return entity
     
@@ -80,11 +82,11 @@ class KnowledgeGraph:
         
         return relationship
     
-    def get_entity(self, entity_id: UUID) -> Optional[Entity]:
+    def get_entity(self, entity_id: UUID) -> Optional[Union[Entity, TimeAwareEntity]]:
         """Retrieve an entity by ID."""
         logger.debug(f"Getting entity with ID {entity_id}")
         entity = self._entities.get(entity_id)
-        logger.debug(f"Found entity: {entity}")
+        logger.debug(f"Found entity: {entity} of type {type(entity)}")
         return entity
     
     def get_relationship(self, relationship_id: UUID) -> Optional[Relationship]:
@@ -99,21 +101,35 @@ class KnowledgeGraph:
                     entity_type: Optional[str] = None,
                     valid_from_after: Optional[datetime] = None,
                     valid_to_before: Optional[datetime] = None,
-                    property_filters: Optional[List[Tuple[str, Any]]] = None) -> List[Entity]:
+                    property_filters: Optional[List[Tuple[str, Any]]] = None) -> List[Union[Entity, TimeAwareEntity]]:
         """Get entities with optional type, temporal, and property filtering."""
         entities = list(self._entities.values())
+        logger.debug(f"Starting with {len(entities)} entities")
         
         if entity_type is not None:
             entities = [e for e in entities if e.type == entity_type]
+            logger.debug(f"After type filter: {len(entities)} entities")
             
         if valid_from_after is not None:
             # Ensure comparison datetime is UTC-aware
             if valid_from_after.tzinfo is None:
                 valid_from_after = valid_from_after.replace(tzinfo=UTC)
             
-            entities = [e for e in entities
-                       if isinstance(e, TimeAwareEntity) and
-                       e.valid_from and e.valid_from >= valid_from_after]
+            filtered = []
+            for e in entities:
+                if not isinstance(e, TimeAwareEntity):
+                    logger.debug(f"Entity {e.id} is not TimeAwareEntity (type={type(e)})")
+                    continue
+                if not e.valid_from:
+                    logger.debug(f"Entity {e.id} has no valid_from")
+                    continue
+                if e.valid_from < valid_from_after:
+                    logger.debug(f"Entity {e.id} valid_from {e.valid_from} < {valid_from_after}")
+                    continue
+                filtered.append(e)
+                
+            entities = filtered
+            logger.debug(f"After time filter: {len(entities)} entities")
             
         if valid_to_before is not None:
             # Ensure comparison datetime is UTC-aware
@@ -132,7 +148,7 @@ class KnowledgeGraph:
                 
         return entities
 
-    def get_entities_by_type(self, entity_type: str) -> List[Entity]:
+    def get_entities_by_type(self, entity_type: str) -> List[Union[Entity, TimeAwareEntity]]:
         """Get all entities of a given type."""
         return self.get_entities(entity_type=entity_type)
 
