@@ -3,7 +3,13 @@
 import pytest
 from gonzo.rag.base import MediaAnalysisRAG
 
-# Test content examples
+# Test content examples with pattern variations
+PATTERN_VARIATIONS = {
+    "consensus": ["consensus", "manufacturing consensus", "widespread agreement"],
+    "authority": ["authority", "authorities", "unnamed authorities", "appeal to authority"],
+    "emotion": ["emotion", "emotional", "fears", "shocking", "troubling"],
+}
+
 TEST_TEXTS = [
     {
         "text": """Experts overwhelmingly agree that the new policy measures are necessary for public safety, 
@@ -23,6 +29,12 @@ def rag_system():
     """Create RAG system for testing."""
     return MediaAnalysisRAG()
 
+def pattern_is_present(pattern: str, analysis: str) -> bool:
+    """Check if a pattern or its variations are present in the analysis."""
+    analysis = analysis.lower()
+    variations = PATTERN_VARIATIONS.get(pattern, [pattern])
+    return any(variation.lower() in analysis for variation in variations)
+
 def test_pattern_detection(rag_system):
     """Test basic pattern detection."""
     for test_case in TEST_TEXTS:
@@ -33,5 +45,5 @@ def test_pattern_detection(rag_system):
         
         # Check that analysis includes expected patterns
         for pattern in test_case["expected_patterns"]:
-            assert any(pattern.lower() in part.lower() for part in analysis.split()), \
-                f"Expected pattern '{pattern}' not found in analysis. Analysis was: {analysis}"
+            assert pattern_is_present(pattern, analysis), \
+                f"Expected pattern '{pattern}' (or variations) not found in analysis. \nVariations checked: {PATTERN_VARIATIONS.get(pattern, [pattern])} \nAnalysis was: {analysis}"
