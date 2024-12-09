@@ -25,12 +25,16 @@ class ManipulationDetector:
         now = datetime.now(UTC)
         start_time = now - timedelta(seconds=timeframe)
         
-        valid_topics = [
-            t for t in all_topics
-            if isinstance(t, TimeAwareEntity) 
-            and t.valid_from 
-            and (t.valid_from.tzinfo is None or t.valid_from.replace(tzinfo=UTC)) >= start_time
-        ]
+        valid_topics = []
+        for t in all_topics:
+            if not isinstance(t, TimeAwareEntity) or not t.valid_from:
+                continue
+                
+            # Ensure topic time is UTC
+            topic_time = t.valid_from if t.valid_from.tzinfo else t.valid_from.replace(tzinfo=UTC)
+            
+            if topic_time >= start_time:
+                valid_topics.append(t)
         
         logger.debug(f"Found {len(valid_topics)} topics in timeframe")
         if not valid_topics:
