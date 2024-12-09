@@ -15,16 +15,15 @@ class ManipulationDetector:
         self.emotional_detector = EmotionalManipulationDetector(
             min_confidence=min_confidence
         )
-    
+
     def detect_narrative_manipulation(self, timeframe: int = 3600) -> List[Dict]:
-        # Get all topics
+        # Get all topics in timeframe
         all_topics = self.graph.get_entities_by_type("topic")
+        topics = []
         
-        # Filter within timeframe
         now = datetime.now(UTC)
         start_time = now - timedelta(seconds=timeframe)
         
-        valid_topics = []
         for topic in all_topics:
             if not isinstance(topic, TimeAwareEntity):
                 continue
@@ -33,62 +32,53 @@ class ManipulationDetector:
             if topic.valid_from.tzinfo is None:
                 topic.valid_from = topic.valid_from.replace(tzinfo=UTC)
             if topic.valid_from >= start_time:
-                valid_topics.append(topic)
+                topics.append(topic)
         
-        if not valid_topics:
+        if not topics:
             return []
-        
-        # Initialize patterns list
+            
         patterns = []
         
-        # Check for repetitive narratives first
-        by_category = {}
-        for topic in valid_topics:
-            if "category" not in topic.properties:
-                continue
-            cat = topic.properties["category"].value
-            if cat not in by_category:
-                by_category[cat] = []
-            by_category[cat].append(topic)
+        # Check for emotional manipulation
+        emotional = self.emotional_detector.detect_emotional_escalation(topics)
+        if emotional:
+            patterns.append(emotional)
         
-        # Look for repeated narratives in each category
-        for category, topics in by_category.items():
-            if len(topics) < 3:
+        # Check for narrative repetition
+        for topic in topics:
+            if "category" not in topic.properties or "keywords" not in topic.properties:
                 continue
+                
+            topic_category = topic.properties["category"].value
+            topic_keywords = set(topic.properties["keywords"].value)
             
-            # Check for keyword matches
-            for topic in topics:
-                if "keywords" not in topic.properties:
+            similar_topics = []
+            for other in topics:
+                if other.id == topic.id:
+                    continue
+                if "category" not in other.properties or "keywords" not in other.properties:
+                    continue
+                if other.properties["category"].value != topic_category:
                     continue
                     
-                base_keywords = set(topic.properties["keywords"].value)
-                matches = []
-                
-                for other in topics:
-                    if other.id == topic.id:
-                        continue
-                    if "keywords" not in other.properties:
-                        continue
-                        
-                    other_keywords = set(other.properties["keywords"].value)
-                    if base_keywords == other_keywords:
-                        matches.append(other)
-                
-                if len(matches) >= 2:
-                    patterns.append({
-                        "pattern_type": "narrative_repetition",
-                        "category": category,
-                        "topic_count": len(matches) + 1,
-                        "confidence": 1.0,
-                        "metadata": {
-                            "base_topic_id": str(topic.id),
-                            "related_topic_ids": [str(t.id) for t in matches]
-                        }
-                    })
-                    break  # Found one pattern in this category
+                other_keywords = set(other.properties["keywords"].value)
+                if topic_keywords == other_keywords:
+                    similar_topics.append(other)
+            
+            if len(similar_topics) >= 2:
+                patterns.append({
+                    "pattern_type": "narrative_repetition",
+                    "category": topic_category,
+                    "topic_count": len(similar_topics) + 1,
+                    "confidence": 1.0,
+                    "metadata": {
+                        "base_topic_id": str(topic.id),
+                        "related_topic_ids": [str(t.id) for t in similar_topics]
+                    }
+                })
         
         # Check for coordinated shifts
-        for topic in valid_topics:
+        for topic in topics:
             transitions = self.graph.get_relationships_by_type(
                 relationship_type="topic_transition",
                 source_id=topic.id
@@ -97,7 +87,6 @@ class ManipulationDetector:
             if len(transitions) < 2:
                 continue
             
-            # Group by target
             by_target = {}
             for trans in transitions:
                 target = str(trans.target_id)
@@ -105,9 +94,9 @@ class ManipulationDetector:
                     by_target[target] = set()
                     
                 if "source_entity_id" in trans.properties:
-                    by_target[target].add(str(trans.properties["source_entity_id"]))
+                    source = str(trans.properties["source_entity_id"])
+                    by_target[target].add(source)
             
-            # Look for coordinated shifts
             for target, sources in by_target.items():
                 if len(sources) >= 2:
                     patterns.append({
@@ -118,35 +107,6 @@ class ManipulationDetector:
                             "target_id": target,
                             "source_count": len(sources),
                             "source_ids": list(sources)
-                        }
-                    })
-                    break  # Found one pattern for this topic
-        
-        # Check for emotional manipulation
-        if len(valid_topics) >= 3:
-            # Sort by time
-            valid_topics.sort(key=lambda x: x.valid_from)
-            
-            # Get sentiment changes
-            sentiments = []
-            for topic in valid_topics:
-                if "sentiment" not in topic.properties:
-                    continue
-                sentiments.append(topic.properties["sentiment"].value)
-            
-            if len(sentiments) >= 3:
-                fear_change = sentiments[-1]["fear"] - sentiments[0]["fear"]
-                anger_change = sentiments[-1]["anger"] - sentiments[0]["anger"]
-                
-                if fear_change >= 0.3 or anger_change >= 0.3:
-                    patterns.append({
-                        "pattern_type": "emotional_manipulation",
-                        "topic_id": str(valid_topics[-1].id),
-                        "confidence": max(fear_change, anger_change),
-                        "metadata": {
-                            "fear_change": fear_change,
-                            "anger_change": anger_change,
-                            "sequence_length": len(sentiments)
                         }
                     })
         
