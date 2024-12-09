@@ -6,7 +6,7 @@ from typing import List, Dict, Optional, Set
 from uuid import UUID
 
 from ..graph.knowledge.graph import KnowledgeGraph
-from ..types import TimeAwareEntity, Relationship, Property
+from ..types import TimeAwareEntity, Relationship, Property, EntityType
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +21,119 @@ class PatternDetector:
         """
         self.graph = graph
         self._patterns = {}
+    
+    def detect_patterns(self, entities: List[TimeAwareEntity]) -> List[Dict]:
+        """Detect patterns across a set of entities.
+        
+        Args:
+            entities: List of entities to analyze
+            
+        Returns:
+            List of detected patterns with metadata
+        """
+        patterns = []
+        
+        # Skip if no entities
+        if not entities:
+            return patterns
+            
+        # Group entities by type
+        entities_by_type = {}
+        for entity in entities:
+            if entity.type not in entities_by_type:
+                entities_by_type[entity.type] = []
+            entities_by_type[entity.type].append(entity)
+            
+        # Detect narrative patterns
+        if EntityType.NARRATIVE in entities_by_type:
+            narrative_patterns = self._detect_narrative_patterns(
+                entities_by_type[EntityType.NARRATIVE]
+            )
+            patterns.extend(narrative_patterns)
+            
+        # Detect claim patterns
+        if EntityType.CLAIM in entities_by_type:
+            claim_patterns = self._detect_claim_patterns(
+                entities_by_type[EntityType.CLAIM]
+            )
+            patterns.extend(claim_patterns)
+            
+        # Get topic cycles
+        topic_cycles = self.detect_topic_cycles()
+        patterns.extend(topic_cycles)
+        
+        return patterns
+    
+    def _detect_narrative_patterns(self, narratives: List[TimeAwareEntity]) -> List[Dict]:
+        """Detect patterns in narrative entities.
+        
+        Args:
+            narratives: List of narrative entities
+            
+        Returns:
+            List of narrative patterns
+        """
+        patterns = []
+        
+        # Group by category
+        by_category = {}
+        for narrative in narratives:
+            category = narrative.properties.get("category", None)
+            if not category:
+                continue
+                
+            if category.value not in by_category:
+                by_category[category.value] = []
+            by_category[category.value].append(narrative)
+            
+        # Analyze category frequency
+        total = len(narratives)
+        for category, items in by_category.items():
+            frequency = len(items) / total
+            if frequency > 0.3:  # Significant category
+                patterns.append({
+                    "pattern_type": "dominant_narrative",
+                    "category": category,
+                    "frequency": frequency,
+                    "confidence": 0.7 + (0.2 * frequency)
+                })
+                
+        return patterns
+    
+    def _detect_claim_patterns(self, claims: List[TimeAwareEntity]) -> List[Dict]:
+        """Detect patterns in claim entities.
+        
+        Args:
+            claims: List of claim entities
+            
+        Returns:
+            List of claim patterns
+        """
+        patterns = []
+        
+        # Track repeated claims
+        claim_counts = {}
+        for claim in claims:
+            claim_text = claim.properties.get("text", None)
+            if not claim_text:
+                continue
+                
+            text_value = claim_text.value
+            if text_value not in claim_counts:
+                claim_counts[text_value] = 0
+            claim_counts[text_value] += 1
+            
+        # Identify repeated claims
+        for text, count in claim_counts.items():
+            if count > 1:
+                patterns.append({
+                    "pattern_type": "repeated_claim",
+                    "text": text,
+                    "frequency": count,
+                    "confidence": 0.6 + (0.1 * min(count, 5))
+                })
+                
+        return patterns
     
     def detect_topic_cycles(self, timeframe: float = 3600) -> List[Dict]:
         """Detect cyclical patterns in topic transitions.
