@@ -88,10 +88,49 @@ class KnowledgeGraph:
     def get_entity_relationships(self, entity_id: UUID) -> List[Relationship]:
         """Get all relationships where the entity is the source."""
         return [r for r in self._relationships.values() if r.source_id == entity_id]
+
+    def get_entities(self,
+                    entity_type: Optional[str] = None,
+                    valid_from_after: Optional[datetime] = None,
+                    valid_to_before: Optional[datetime] = None,
+                    property_filters: Optional[List[Tuple[str, Any]]] = None) -> List[Entity]:
+        """Get entities with optional type, temporal, and property filtering.
+        
+        Args:
+            entity_type: Optional type to filter entities by
+            valid_from_after: Only include entities valid from after this time
+            valid_to_before: Only include entities valid until before this time
+            property_filters: List of (key, value) tuples to filter properties
+            
+        Returns:
+            List of matching entities
+        """
+        entities = list(self._entities.values())
+        
+        if entity_type is not None:
+            entities = [e for e in entities if e.type == entity_type]
+            
+        if valid_from_after is not None:
+            entities = [e for e in entities 
+                       if isinstance(e, TimeAwareEntity) and
+                       e.valid_from and e.valid_from >= valid_from_after]
+            
+        if valid_to_before is not None:
+            entities = [e for e in entities
+                       if isinstance(e, TimeAwareEntity) and
+                       (e.valid_to is None or e.valid_to <= valid_to_before)]
+            
+        if property_filters:
+            for key, value in property_filters:
+                entities = [e for e in entities 
+                           if key in e.properties and
+                           e.properties[key].value == value]
+                
+        return entities
     
     def get_entities_by_type(self, entity_type: str) -> List[Entity]:
         """Get all entities of a given type."""
-        return [e for e in self._entities.values() if e.type == entity_type]
+        return self.get_entities(entity_type=entity_type)
 
     def get_relationships_by_type(self, 
                                  relationship_type: str,
