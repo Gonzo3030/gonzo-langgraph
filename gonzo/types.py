@@ -1,7 +1,20 @@
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from uuid import UUID
+from enum import Enum
 from pydantic import BaseModel, Field
+
+class EntityType(str, Enum):
+    """Types of entities that can be extracted."""
+    PERSON = "PERSON"
+    ORGANIZATION = "ORGANIZATION"
+    CONCEPT = "CONCEPT"
+    CLAIM = "CLAIM"
+    NARRATIVE = "NARRATIVE"
+    EVENT = "EVENT"
+    LOCATION = "LOCATION"
+    DATE = "DATE"
+    UNKNOWN = "UNKNOWN"
 
 class Property(BaseModel):
     """Represents a property with temporal metadata."""
