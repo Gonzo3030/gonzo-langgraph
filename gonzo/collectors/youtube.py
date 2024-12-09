@@ -5,7 +5,7 @@ from datetime import datetime, UTC
 from uuid import uuid4
 import logging
 from youtube_transcript_api import YouTubeTranscriptApi
-from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound
+from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound, VideoUnavailable
 from urllib.parse import urlparse, parse_qs
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from ..types import EntityType, TimeAwareEntity, Property, Relationship
@@ -15,6 +15,15 @@ from ..integrations.youtube_data import YouTubeDataAPI
 from ..config import ANALYSIS_CONFIG
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+# Add console handler if not already present
+if not logger.handlers:
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
 
 class YouTubeCollector:
     """Collects and processes YouTube transcripts and metadata."""
@@ -31,6 +40,7 @@ class YouTubeCollector:
             pattern_detector: Pattern detector for analysis
             youtube_api_key: Optional YouTube Data API key
         """
+        logger.debug(f"Initializing YouTubeCollector with API key present: {youtube_api_key is not None}")
         self._transcript_api = YouTubeTranscriptApi
         self.agent = agent
         self.pattern_detector = pattern_detector
@@ -50,24 +60,39 @@ class YouTubeCollector:
         Returns:
             List of transcript segments or None if unavailable
         """
+        logger.debug(f"Attempting to get transcript for video {video_id}")
         try:
+            # First try direct transcript retrieval
+            try:
+                logger.debug("Attempting direct transcript retrieval")
+                return self._transcript_api.get_transcript(video_id)
+            except Exception as e:
+                logger.debug(f"Direct retrieval failed: {str(e)}")
+                
+            # Try list_transcripts approach
+            logger.debug("Attempting list_transcripts approach")
             transcript_list = self._transcript_api.list_transcripts(video_id)
             
             # Try to get English transcript first
             try:
+                logger.debug("Looking for English transcript")
                 transcript = transcript_list.find_transcript(['en'])
             except NoTranscriptFound:
                 # Fallback to auto-generated English
                 try:
+                    logger.debug("Looking for auto-generated English transcript")
                     transcript = transcript_list.find_generated_transcript(['en'])
                 except NoTranscriptFound:
                     # Final fallback - get first available and translate
+                    logger.debug("Looking for any transcript to translate")
                     transcript = transcript_list.find_manually_created_transcript()
                     transcript = transcript.translate('en')
             
-            return transcript.fetch()
+            result = transcript.fetch()
+            logger.debug(f"Successfully retrieved transcript with {len(result)} segments")
+            return result
             
-        except (TranscriptsDisabled, NoTranscriptFound) as e:
+        except (TranscriptsDisabled, NoTranscriptFound, VideoUnavailable) as e:
             logger.warning(f"No transcript available for video {video_id}: {str(e)}")
             return None
         except Exception as e:
