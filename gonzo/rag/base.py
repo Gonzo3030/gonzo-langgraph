@@ -37,8 +37,8 @@ class MediaAnalysisRAG:
         self.patterns = self._load_patterns()
         
         # Initialize models
-        self.embeddings = OpenAIEmbeddings(model=embeddings_model or "text-embedding-3-small")
-        self.llm = ChatOpenAI(model_name=llm_model or "gpt-4")
+        self.embeddings = OpenAIEmbeddings(model=embeddings_model or "text-embedding-ada-002")
+        self.llm = ChatOpenAI(model_name=llm_model or "gpt-3.5-turbo")
         
         # Create vector store
         self.vectorstore = self._create_vectorstore()
