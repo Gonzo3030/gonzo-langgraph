@@ -4,20 +4,33 @@ from langgraph.prebuilt import RoutingEdge
 from pydantic import BaseModel
 
 from ..types import GonzoState, NextStep
-from ..nodes.knowledge_enhanced_assessment import enhance_assessment
-from ..nodes.knowledge_enhanced_narrative import enhance_narrative
 
 StateType = TypeVar("StateType", bound=BaseModel)
+
+def should_route_to_narrative(state: GonzoState) -> bool:
+    return state.next_step == NextStep.NARRATIVE
+
+def should_route_to_crypto(state: GonzoState) -> bool:
+    return state.next_step == NextStep.CRYPTO
+
+def should_route_to_general(state: GonzoState) -> bool:
+    return state.next_step == NextStep.GENERAL
+
+def should_route_to_error(state: GonzoState) -> bool:
+    return state.next_step == NextStep.ERROR
+
+def should_end(state: GonzoState) -> bool:
+    return state.next_step == NextStep.END
 
 def create_router() -> RoutingEdge:
     """Create a routing edge for workflow control."""
     return RoutingEdge(
         conditions={
-            "narrative": lambda x: x.next_step == NextStep.NARRATIVE,
-            "crypto": lambda x: x.next_step == NextStep.CRYPTO,
-            "general": lambda x: x.next_step == NextStep.GENERAL,
-            "error": lambda x: x.next_step == NextStep.ERROR,
-            END: lambda x: x.next_step == NextStep.END
+            "narrative": should_route_to_narrative,
+            "crypto": should_route_to_crypto,
+            "general": should_route_to_general,
+            "error": should_route_to_error,
+            END: should_end
         }
     )
 
@@ -27,8 +40,8 @@ def create_workflow() -> StateGraph:
     workflow = StateGraph(GonzoState)
     
     # Add nodes for workflow steps
-    workflow.add_node("assessment", enhance_assessment)
-    workflow.add_node("narrative", enhance_narrative)
+    workflow.add_node("assessment", lambda x: x)
+    workflow.add_node("narrative", lambda x: x)
     
     # Create router
     router = create_router()
@@ -40,7 +53,7 @@ def create_workflow() -> StateGraph:
     # Configure edges
     workflow.add_edge("assessment", "router")
     
-    # Add conditional routing
+    # Add conditional edges
     workflow.add_conditional_edges(
         "router",
         {
