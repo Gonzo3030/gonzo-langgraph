@@ -1,12 +1,13 @@
 """YouTube transcript and content collector."""
 
 from typing import List, Dict, Optional, Any
-from datetime import datetime
+from datetime import datetime, UTC
+from uuid import uuid4
 import logging
 from youtube_transcript_api import YouTubeTranscriptApi
 from urllib.parse import urlparse, parse_qs
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from ..types import EntityType
+from ..types import EntityType, TimeAwareEntity, Property, Relationship
 from ..patterns.detector import PatternDetector
 
 logger = logging.getLogger(__name__)
@@ -119,11 +120,14 @@ class YouTubeCollector:
         chunks = self.text_splitter.split_text(text)
         
         entities = []
-        for chunk in chunks:
+        for i, chunk in enumerate(chunks):
             # Use agent to extract entities
+            # Provide chunk index for temporal ordering
             response = self.agent.run({
                 "task": "entity_extraction",
                 "text": chunk,
+                "chunk_index": i,
+                "total_chunks": len(chunks),
                 "context": "YouTube transcript analysis"
             })
             
@@ -133,8 +137,23 @@ class YouTubeCollector:
             
         return entities
         
-    def _process_agent_entities(self, agent_response: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _process_agent_entities(self, agent_response: Dict[str, Any]) -> List[TimeAwareEntity]:
         """Process agent response into structured entities.
+        
+        Expected agent response format:
+        {
+            "entities": [
+                {
+                    "text": str,
+                    "type": str,
+                    "properties": Dict[str, Any],
+                    "timestamp": float,
+                    "confidence": float,
+                    "relationships": List[Dict]
+                },
+                ...
+            ]
+        }
         
         Args:
             agent_response: Raw agent response
@@ -142,8 +161,60 @@ class YouTubeCollector:
         Returns:
             List of processed entities
         """
-        # TODO: Implement response processing based on agent output format
-        return []
+        processed_entities = []
+        
+        try:
+            now = datetime.now(UTC)
+            
+            for entity_data in agent_response.get("entities", []):
+                # Create properties
+                properties = {}
+                for key, value in entity_data.get("properties", {}).items():
+                    properties[key] = Property(
+                        key=key,
+                        value=value,
+                        timestamp=now,
+                        confidence=entity_data.get("confidence", 0.8)
+                    )
+                
+                # Create entity
+                entity = TimeAwareEntity(
+                    id=uuid4(),
+                    type=entity_data["type"],
+                    properties=properties,
+                    valid_from=now,
+                    metadata={
+                        "source": "youtube_transcript",
+                        "original_text": entity_data["text"],
+                        "timestamp": entity_data.get("timestamp"),
+                    }
+                )
+                
+                processed_entities.append(entity)
+                
+                # Process relationships if any
+                for rel in entity_data.get("relationships", []):
+                    relationship = Relationship(
+                        id=uuid4(),
+                        type=rel["type"],
+                        source_id=entity.id,
+                        target_id=rel["target_id"],
+                        confidence=rel.get("confidence", 0.8),
+                        properties={
+                            k: Property(key=k, value=v)
+                            for k, v in rel.get("properties", {}).items()
+                        }
+                    )
+                    
+                    # Add to entity metadata for pattern detection
+                    if "relationships" not in entity.metadata:
+                        entity.metadata["relationships"] = []
+                    entity.metadata["relationships"].append(relationship)
+                    
+        except Exception as e:
+            logger.error(f"Failed to process agent entities: {str(e)}")
+            
+        return processed_entities
         
     def segment_by_topic(self, transcript: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Segment transcript into topic-based chunks using OpenAI agent.
@@ -163,11 +234,13 @@ class YouTubeCollector:
         chunks = self.text_splitter.split_text(text)
         
         segments = []
-        for chunk in chunks:
+        for i, chunk in enumerate(chunks):
             # Use agent to identify topic boundaries and labels
             response = self.agent.run({
                 "task": "topic_segmentation",
                 "text": chunk,
+                "chunk_index": i,
+                "total_chunks": len(chunks),
                 "context": "YouTube content analysis"
             })
             
@@ -177,17 +250,101 @@ class YouTubeCollector:
             
         return segments
     
-    def _process_agent_segments(self, agent_response: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _process_agent_segments(self, agent_response: Dict[str, Any]) -> List[TimeAwareEntity]:
         """Process agent response into topic segments.
+        
+        Expected agent response format:
+        {
+            "segments": [
+                {
+                    "text": str,
+                    "topic": str,
+                    "start_time": float,
+                    "end_time": float,
+                    "confidence": float,
+                    "properties": Dict[str, Any],
+                    "transitions": List[Dict]
+                },
+                ...
+            ]
+        }
         
         Args:
             agent_response: Raw agent response
             
         Returns:
-            List of processed segments
+            List of processed segments as entities
         """
-        # TODO: Implement response processing based on agent output format
-        return []
+        processed_segments = []
+        
+        try:
+            now = datetime.now(UTC)
+            
+            for segment_data in agent_response.get("segments", []):
+                # Create properties including topic info
+                properties = {
+                    "topic": Property(
+                        key="topic",
+                        value=segment_data["topic"],
+                        timestamp=now,
+                        confidence=segment_data.get("confidence", 0.8)
+                    ),
+                    "category": Property(
+                        key="category",
+                        value=segment_data.get("category", "general"),
+                        timestamp=now,
+                        confidence=segment_data.get("confidence", 0.8)
+                    )
+                }
+                
+                # Add any additional properties
+                for key, value in segment_data.get("properties", {}).items():
+                    properties[key] = Property(
+                        key=key,
+                        value=value,
+                        timestamp=now,
+                        confidence=segment_data.get("confidence", 0.8)
+                    )
+                
+                # Create segment entity
+                segment = TimeAwareEntity(
+                    id=uuid4(),
+                    type="topic",
+                    properties=properties,
+                    valid_from=now,
+                    metadata={
+                        "source": "youtube_transcript",
+                        "text": segment_data["text"],
+                        "start_time": segment_data["start_time"],
+                        "end_time": segment_data["end_time"]
+                    }
+                )
+                
+                processed_segments.append(segment)
+                
+                # Process transitions if any
+                for trans in segment_data.get("transitions", []):
+                    transition = Relationship(
+                        id=uuid4(),
+                        type="topic_transition",
+                        source_id=segment.id,
+                        target_id=trans["target_id"],
+                        confidence=trans.get("confidence", 0.8),
+                        properties={
+                            k: Property(key=k, value=v)
+                            for k, v in trans.get("properties", {}).items()
+                        }
+                    )
+                    
+                    # Add to segment metadata
+                    if "transitions" not in segment.metadata:
+                        segment.metadata["transitions"] = []
+                    segment.metadata["transitions"].append(transition)
+                    
+        except Exception as e:
+            logger.error(f"Failed to process agent segments: {str(e)}")
+            
+        return processed_segments
     
     def analyze_content(self, video_id: str) -> Dict[str, Any]:
         """Full content analysis pipeline.
@@ -212,7 +369,11 @@ class YouTubeCollector:
         # Detect patterns if available
         patterns = []
         if self.pattern_detector:
-            patterns = self.pattern_detector.detect_patterns(entities)
+            # Get topic cycles from segments
+            topic_patterns = self.pattern_detector.detect_topic_cycles()
+            patterns.extend(topic_patterns)
+            
+            # Additional pattern detection can be added here
         
         return {
             "video_id": video_id,
