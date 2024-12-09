@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import datetime, UTC
+from datetime import datetime
 from typing import Dict, List, Optional, Any, Set
 from uuid import UUID, uuid4
 
@@ -8,7 +8,7 @@ class Property:
     """A property represents a key-value pair with temporal metadata."""
     key: str
     value: Any
-    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
+    timestamp: datetime = field(default_factory=datetime.now)
     confidence: float = 1.0
     source: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -22,8 +22,8 @@ class Entity:
     type: str  # Required argument first
     id: UUID = field(default_factory=uuid4)  # Default arguments after
     properties: Dict[str, Property] = field(default_factory=dict)
-    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
-    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = field(default_factory=datetime.now)
+    updated_at: datetime = field(default_factory=datetime.now)
     metadata: Dict[str, Any] = field(default_factory=dict)
     
     def add_property(self, key: str, value: Any, confidence: float = 1.0, 
@@ -33,10 +33,9 @@ class Entity:
             key=key,
             value=value,
             confidence=confidence,
-            source=source,
-            timestamp=datetime.now(UTC)
+            source=source
         )
-        self.updated_at = datetime.now(UTC)
+        self.updated_at = datetime.now()
 
 @dataclass
 class Relationship:
@@ -49,8 +48,8 @@ class Relationship:
     target_id: UUID
     id: UUID = field(default_factory=uuid4)  # Default arguments after
     properties: Dict[str, Property] = field(default_factory=dict)
-    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
-    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = field(default_factory=datetime.now)
+    updated_at: datetime = field(default_factory=datetime.now)
     confidence: float = 1.0
     causal_strength: Optional[float] = None
     temporal_ordering: Optional[str] = None  # before, after, during, etc.
@@ -65,14 +64,6 @@ class TimeAwareEntity(Entity):
     valid_from: Optional[datetime] = None
     valid_to: Optional[datetime] = None
     previous_versions: List[Dict[str, Any]] = field(default_factory=list)
-    
-    def __post_init__(self):
-        """Ensure datetimes are timezone-aware."""
-        super().__post_init__()
-        if self.valid_from and self.valid_from.tzinfo is None:
-            self.valid_from = self.valid_from.replace(tzinfo=UTC)
-        if self.valid_to and self.valid_to.tzinfo is None:
-            self.valid_to = self.valid_to.replace(tzinfo=UTC)
     
     def update_property(self, key: str, value: Any, confidence: float = 1.0,
                        source: Optional[str] = None) -> None:
