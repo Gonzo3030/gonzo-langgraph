@@ -18,55 +18,106 @@
       "counter_analysis": "Question which experts, their funding sources, and what contrary evidence is being ignored"
     },
     {
-      "name": "false_balance",
-      "description": "Presenting established facts as merely one side of a debate",
+      "name": "controlled_opposition",
+      "description": "Presenting a weak or strawman version of opposing viewpoints",
       "indicators": [
-        "some people claim",
-        "critics argue",
-        "debates continue about",
-        "remains controversial"
+        "conspiracy theorists claim",
+        "fringe elements suggest",
+        "discredited sources argue",
+        "alternative views, widely debunked"
       ],
       "examples": [
         {
-          "text": "While official sources maintain X, some critics suggest Y",
-          "analysis": "Using 'balance' to cast doubt on verified information or introduce fringe theories as equally valid"
+          "text": "While some conspiracy theorists suggest alternative explanations, credible sources maintain...",
+          "analysis": "Using loaded language to discredit opposing viewpoints without addressing their actual arguments"
         }
       ],
-      "counter_analysis": "Examine the evidence for each position, not just the fact that disagreement exists"
+      "counter_analysis": "Look for substantive critiques being dismissed through association with weaker arguments"
     },
     {
-      "name": "authority_citation",
-      "description": "Using unnamed or vague authority figures to support claims",
+      "name": "institutional_capture",
+      "description": "Using institutional authority to suppress alternative narratives",
       "indicators": [
-        "sources say",
-        "officials claim",
-        "according to experts",
-        "authorities confirm"
+        "fact-checkers have debunked",
+        "official sources deny",
+        "platform guidelines prohibit",
+        "regulatory bodies confirm"
       ],
       "examples": [
         {
-          "text": "Sources familiar with the matter indicate that significant progress has been made",
-          "analysis": "Using anonymous sources to shape perception without accountability"
+          "text": "Independent fact-checkers have thoroughly debunked these alternative theories",
+          "analysis": "Using institutional authority to declare certain viewpoints as definitively false without transparent analysis"
         }
       ],
-      "counter_analysis": "Always ask which specific sources and what their potential biases might be"
+      "counter_analysis": "Examine the independence of fact-checkers and their methodology"
     },
     {
-      "name": "emotional_manipulation",
-      "description": "Using emotionally charged language to override critical thinking",
+      "name": "corporate_media_bias",
+      "description": "Legacy media protecting corporate interests through selective coverage",
       "indicators": [
-        "shocking revelation",
-        "fears grow",
-        "raising concerns",
-        "troubling development"
+        "sponsored content",
+        "advertiser-friendly",
+        "industry experts suggest",
+        "market analysts predict"
       ],
       "examples": [
         {
-          "text": "Fears are growing among experts about the potential consequences of this development",
-          "analysis": "Combining appeal to authority with fear to create emotional response"
+          "text": "Industry experts suggest the concerns about the product are overblown",
+          "analysis": "Using industry-funded sources to downplay legitimate concerns"
         }
       ],
-      "counter_analysis": "Focus on actual facts and evidence rather than emotional reactions"
+      "counter_analysis": "Follow the money - who funds the experts and media outlets?"
+    },
+    {
+      "name": "narrative_shift",
+      "description": "Sudden coordinated changes in mainstream narrative",
+      "indicators": [
+        "emerging evidence suggests",
+        "new data reveals",
+        "experts now believe",
+        "updated guidance indicates"
+      ],
+      "examples": [
+        {
+          "text": "New evidence has led experts to revise their previous position on this issue",
+          "analysis": "Coordinated narrative shift without acknowledging previous certainty or reasons for change"
+        }
+      ],
+      "counter_analysis": "Track narrative changes over time and question sudden shifts"
+    },
+    {
+      "name": "deep_state_mechanics",
+      "description": "Institutional power structures working behind democratic facades",
+      "indicators": [
+        "senior officials speaking anonymously",
+        "intelligence sources indicate",
+        "national security concerns",
+        "classified briefings suggest"
+      ],
+      "examples": [
+        {
+          "text": "Anonymous intelligence sources warn of potential threats to national security",
+          "analysis": "Using unnamed intelligence sources to shape public opinion without accountability"
+        }
+      ],
+      "counter_analysis": "Question the timing and beneficiaries of intelligence leaks"
+    },
+    {
+      "name": "algorithmic_suppression",
+      "description": "Using platform algorithms to limit reach of alternative viewpoints",
+      "indicators": [
+        "community guidelines",
+        "policy violations",
+        "misinformation labels",
+        "reduced visibility"
+      ],
+      "examples": [
+        {
+          "text": "The content was flagged for review under our community guidelines",
+          "analysis": "Using vague platform policies to suppress specific narratives"
+        }
+      ],
+      "counter_analysis": "Examine patterns in content suppression and platform policies"
     }
   ]
 }
