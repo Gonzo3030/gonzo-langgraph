@@ -2,6 +2,8 @@ import pytest
 from datetime import datetime
 from pydantic import BaseModel
 from typing import List, Dict, Optional
+from unittest.mock import patch
+from .mocks.llm import MockChatOpenAI
 
 # Test-specific base models to avoid deep imports
 class TestMonitoringState(BaseModel):
@@ -22,6 +24,12 @@ class TestMonitoringState(BaseModel):
 class TestXState(BaseModel):
     monitoring: TestMonitoringState = TestMonitoringState()
     last_monitor_time: Optional[datetime] = None
+
+@pytest.fixture(autouse=True)
+def mock_langchain():
+    """Mock LangChain components for all tests."""
+    with patch('langchain_openai.ChatOpenAI', MockChatOpenAI):
+        yield
 
 @pytest.fixture
 def mock_state():
