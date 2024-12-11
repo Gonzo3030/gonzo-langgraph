@@ -3,6 +3,24 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 from ..types.social import PostHistory, InteractionQueue, QueuedPost, Post
 
+class MonitoringState(BaseModel):
+    """State for content monitoring."""
+    tracked_topics: List[str] = Field(default_factory=list)
+    tracked_users: List[str] = Field(default_factory=list)
+    last_check_times: Dict[str, datetime] = Field(default_factory=dict)
+    
+    def add_topic(self, topic: str):
+        """Add a topic to track."""
+        if topic not in self.tracked_topics:
+            self.tracked_topics.append(topic)
+            self.last_check_times[f'topic:{topic}'] = datetime.now()
+    
+    def add_user(self, user_id: str):
+        """Add a user to track."""
+        if user_id not in self.tracked_users:
+            self.tracked_users.append(user_id)
+            self.last_check_times[f'user:{user_id}'] = datetime.now()
+
 class XState(BaseModel):
     """State management for X integration."""
     post_history: PostHistory = Field(default_factory=PostHistory)
@@ -36,21 +54,3 @@ class XState(BaseModel):
             'remaining': remaining,
             'reset_time': reset_time
         }
-
-class MonitoringState(BaseModel):
-    """State for content monitoring."""
-    tracked_topics: List[str] = Field(default_factory=list)
-    tracked_users: List[str] = Field(default_factory=list)
-    last_check_times: Dict[str, datetime] = Field(default_factory=dict)
-    
-    def add_topic(self, topic: str):
-        """Add a topic to track."""
-        if topic not in self.tracked_topics:
-            self.tracked_topics.append(topic)
-            self.last_check_times[f'topic:{topic}'] = datetime.now()
-    
-    def add_user(self, user_id: str):
-        """Add a user to track."""
-        if user_id not in self.tracked_users:
-            self.tracked_users.append(user_id)
-            self.last_check_times[f'user:{user_id}'] = datetime.now()
