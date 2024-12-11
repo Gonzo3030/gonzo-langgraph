@@ -1,6 +1,8 @@
 import pytest
 from datetime import datetime
+from unittest.mock import AsyncMock, Mock
 from gonzo.integrations.x.content_discovery import ContentDiscovery
+from gonzo.integrations.x.client import XClient
 from gonzo.config.topics import TopicConfiguration
 from gonzo.types.social import Post
 from gonzo.state.x_state import MonitoringState
@@ -22,9 +24,10 @@ def test_topic_configuration():
 @pytest.mark.asyncio
 async def test_content_discovery(mock_state):
     """Test that content discovery finds posts for topics."""
-    discovery = ContentDiscovery()
+    # Create mock client
+    mock_client = AsyncMock(spec=XClient)
     
-    # Mock some discovered posts
+    # Set up mock response
     mock_posts = [
         Post(
             id="1",
@@ -34,10 +37,16 @@ async def test_content_discovery(mock_state):
         )
     ]
     
-    # Set up mock client
-    discovery.client.search_recent = lambda *args, **kwargs: mock_posts
-    discovery.client.get_user_posts = lambda *args, **kwargs: []
+    # Configure mock methods
+    mock_client.search_recent.return_value = mock_posts
+    mock_client.get_user_posts.return_value = []
+    
+    # Create discovery instance with mock client
+    discovery = ContentDiscovery(client=mock_client)
     
     # Test discovery
     posts = await discovery.discover_content(mock_state)
+    
+    # Verify results
     assert len(posts) > 0
+    assert mock_client.search_recent.called
