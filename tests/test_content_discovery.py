@@ -119,12 +119,13 @@ async def test_category_content_discovery(content_discovery, mock_state):
     assert len(category_posts) > 0
     assert content_discovery.client.search_recent.called
 
-def test_error_handling(content_discovery, mock_state):
+@pytest.mark.asyncio
+async def test_error_handling(content_discovery, mock_state):
     """Test error handling in content discovery."""
     # Simulate API error
     content_discovery.client.search_recent = AsyncMock(side_effect=Exception("API Error"))
     
-    # Should handle error gracefully
+    # Should handle error gracefully and log it
     with pytest.raises(Exception):
         await content_discovery._get_category_content(
             TopicConfiguration.CRYPTO_DEFI,
