@@ -1,4 +1,3 @@
-from .checkpointer import Checkpointer
-from .store import PersistentStore
+from .x_persistence import XPersistence
 
-__all__ = ['Checkpointer', 'PersistentStore']
+__all__ = ['XPersistence']
