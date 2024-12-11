@@ -1,109 +1,68 @@
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime
 from unittest.mock import Mock, patch
 from gonzo.integrations.x.client import XClient
-from gonzo.integrations.x.monitor import ContentMonitor
-from gonzo.integrations.x.queue_manager import QueueManager
-from gonzo.state.x_state import XState, MonitoringState
-from gonzo.types.social import Post, PostMetrics, QueuedPost
+from gonzo.state.x_state import XState
 
 @pytest.fixture
 def x_state():
     return XState()
 
 @pytest.fixture
-def monitoring_state():
-    return MonitoringState()
-
-@pytest.fixture
-def mock_client():
-    with patch('gonzo.integrations.x.client.tweepy.Client') as mock:
-        yield mock
+def mock_oauth():
+    with patch('gonzo.integrations.x.client.OAuth1Session') as mock:
+        mock_session = Mock()
+        mock.return_value = mock_session
+        yield mock_session
 
 class TestXClient:
-    async def test_post_update(self, x_state, mock_client):
+    async def test_post_update(self, mock_oauth):
         # Setup
         client = XClient()
-        mock_client.return_value.create_tweet.return_value.data = {'id': '123'}
-        post = QueuedPost(content="Test post", priority=1)
-        
-        # Execute
-        posted = await client.post_update(x_state, post)
-        
-        # Assert
-        assert posted.id == '123'
-        assert posted.content == "Test post"
-        assert posted.platform == 'x'
-        assert len(x_state.post_history.posts) == 1
-    
-    async def test_fetch_metrics(self, x_state, mock_client):
-        # Setup
-        client = XClient()
-        mock_client.return_value.get_tweet.return_value.data.public_metrics = {
-            'like_count': 10,
-            'reply_count': 5,
-            'retweet_count': 3
+        mock_oauth.post.return_value.json.return_value = {
+            'data': {'id': '123', 'text': 'Test post'}
         }
+        mock_oauth.post.return_value.raise_for_status = Mock()
         
         # Execute
-        metrics = await client.fetch_metrics(x_state, '123')
+        result = await client.post_update("Test post")
         
         # Assert
-        assert metrics.likes == 10
-        assert metrics.replies == 5
-        assert metrics.reposts == 3
-
-class TestContentMonitor:
-    async def test_process_mentions(self, x_state, mock_client):
-        # Setup
-        monitor = ContentMonitor()
-        mock_client.return_value.get_users_mentions.return_value.data = [
-            Mock(id='123', text='Test mention', created_at=datetime.now(),
-                 author_id='456', public_metrics={
-                     'like_count': 1,
-                     'reply_count': 0,
-                     'retweet_count': 0
-                 })
-        ]
-        
-        # Execute
-        await monitor.process_mentions(x_state)
-        
-        # Assert
-        assert len(x_state.interaction_queue.pending) == 1
-        assert x_state.interaction_queue.pending[0].reply_to_id == '123'
-
-class TestQueueManager:
-    async def test_process_post_queue(self, x_state, mock_client):
-        # Setup
-        manager = QueueManager()
-        mock_client.return_value.create_tweet.return_value.data = {'id': '123'}
-        post = QueuedPost(content="Test queue post", priority=1)
-        x_state.add_to_post_queue(post)
-        
-        # Execute
-        posted = await manager.process_post_queue(x_state)
-        
-        # Assert
-        assert posted.id == '123'
-        assert posted.content == "Test queue post"
-        assert len(x_state.post_queue) == 0
+        assert result['data']['id'] == '123'
+        assert client.daily_counts['posts'] == 1
+        mock_oauth.post.assert_called_once()
     
-    async def test_process_interaction_queue(self, x_state, mock_client):
+    async def test_post_rate_limit(self, mock_oauth):
         # Setup
-        manager = QueueManager()
-        mock_client.return_value.create_tweet.return_value.data = {'id': '123'}
-        interaction = QueuedPost(
-            content="Test reply",
-            reply_to_id='456',
-            priority=1
-        )
-        x_state.interaction_queue.add_interaction(interaction)
+        client = XClient()
+        client.daily_counts['posts'] = 100  # Max limit
+        
+        # Execute & Assert
+        with pytest.raises(Exception, match="Post limit reached"):
+            await client.post_update("Test post")
+            
+        mock_oauth.post.assert_not_called()
+    
+    async def test_reply_to_post(self, mock_oauth):
+        # Setup
+        client = XClient()
+        mock_oauth.post.return_value.json.return_value = {
+            'data': {'id': '123', 'text': 'Test reply'}
+        }
+        mock_oauth.post.return_value.raise_for_status = Mock()
         
         # Execute
-        posted = await manager.process_interaction_queue(x_state)
+        result = await client.reply_to_post('456', "Test reply")
         
         # Assert
-        assert posted.id == '123'
-        assert posted.reply_to_id == '456'
-        assert len(x_state.interaction_queue.pending) == 0
+        assert result['data']['id'] == '123'
+        assert client.daily_counts['replies'] == 1
+        
+        # Verify the correct data was sent
+        mock_oauth.post.assert_called_once_with(
+            'https://api.twitter.com/2/tweets',
+            json={
+                'text': 'Test reply',
+                'reply': {'in_reply_to_tweet_id': '456'}
+            }
+        )
