@@ -4,12 +4,14 @@ from pydantic import BaseModel
 
 from ..types import GonzoState, NextStep
 from .nodes.x_nodes import XNodes
+from .nodes.rag_nodes import RAGNodes
 from ..state.x_state import XState, MonitoringState
 
 StateType = TypeVar("StateType", bound=BaseModel)
 
-# Initialize X components
+# Initialize components
 x_nodes = XNodes()
+rag_nodes = RAGNodes()
 
 async def handle_content_monitor(state: GonzoState) -> Dict[str, Any]:
     """Content monitoring node handler."""
@@ -26,18 +28,28 @@ async def handle_content_monitor(state: GonzoState) -> Dict[str, Any]:
     # Update state with monitoring results
     state.x_state = updated_state['x_state']
     if 'new_content' in updated_state:
-        state.new_content = updated_state['new_content']
+        state.discovered_content = updated_state['new_content']
+        state.next_step = NextStep.RAG  # Proceed to RAG analysis
+    else:
+        state.next_step = NextStep.QUEUE  # No new content, check queues
+    
+    return {"state": state}
+
+async def handle_rag_analysis(state: GonzoState) -> Dict[str, Any]:
+    """RAG analysis node handler."""
+    # Run RAG analysis on discovered content
+    updated_state = await rag_nodes.analyze_content(state)
+    
+    # Move to next step
+    state = updated_state['state']
+    state.next_step = NextStep.ASSESSMENT
     
     return {"state": state}
 
 async def handle_assessment(state: GonzoState) -> Dict[str, Any]:
     """Assessment node handler."""
-    # Implement assessment logic here
-    return {"state": state}
-
-async def handle_narrative(state: GonzoState) -> Dict[str, Any]:
-    """Narrative analysis handler."""
-    # Implement narrative analysis logic here
+    # Use RAG analysis results to determine response strategy
+    state.next_step = NextStep.QUEUE
     return {"state": state}
 
 async def handle_queue_processing(state: GonzoState) -> Dict[str, Any]:
@@ -56,6 +68,9 @@ async def handle_queue_processing(state: GonzoState) -> Dict[str, Any]:
     if 'interactions' in updated_state:
         state.interactions = updated_state['interactions']
     
+    # Back to monitoring
+    state.next_step = NextStep.MONITOR
+    
     return {"state": state}
 
 def router(state: GonzoState) -> str:
@@ -65,8 +80,8 @@ def router(state: GonzoState) -> str:
     
     next_steps = {
         NextStep.MONITOR: "content_monitor",
+        NextStep.RAG: "rag_analysis",
         NextStep.ASSESSMENT: "assessment",
-        NextStep.NARRATIVE: "narrative",
         NextStep.QUEUE: "queue_processing",
         NextStep.END: "end"
     }
@@ -78,11 +93,11 @@ def create_workflow() -> StateGraph:
     # Initialize the graph
     workflow = StateGraph(GonzoState)
     
-    # Add nodes with their respective handlers
+    # Add nodes
     workflow.add_node("start", lambda x: {"state": x})
     workflow.add_node("content_monitor", handle_content_monitor)
+    workflow.add_node("rag_analysis", handle_rag_analysis)
     workflow.add_node("assessment", handle_assessment)
-    workflow.add_node("narrative", handle_narrative)
     workflow.add_node("queue_processing", handle_queue_processing)
     workflow.add_node("end", lambda x: {"state": x})
     
@@ -100,6 +115,16 @@ def create_workflow() -> StateGraph:
         "content_monitor",
         router,
         {
+            "rag_analysis": "rag_analysis",
+            "queue_processing": "queue_processing",
+            "end": "end"
+        }
+    )
+    
+    workflow.add_conditional_edges(
+        "rag_analysis",
+        router,
+        {
             "assessment": "assessment",
             "queue_processing": "queue_processing",
             "end": "end"
@@ -108,16 +133,6 @@ def create_workflow() -> StateGraph:
     
     workflow.add_conditional_edges(
         "assessment",
-        router,
-        {
-            "narrative": "narrative",
-            "queue_processing": "queue_processing",
-            "end": "end"
-        }
-    )
-    
-    workflow.add_conditional_edges(
-        "narrative",
         router,
         {
             "queue_processing": "queue_processing",
