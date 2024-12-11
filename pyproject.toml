@@ -1,26 +1,23 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
 [project]
 name = "gonzo-langgraph"
-version = "0.0.1"
-description = "LangGraph-based implementation of the Gonzo AI Agent"
-requires-python = ">= 3.9"
-dependencies = [
-    "langchain>=0.1.0",
-    "langchain-community>=0.0.10",
-    "langgraph>=0.0.1",
-    "langsmith",
-    "pydantic>=2.0.0",
-    "numpy",
-    "pytest",
-    "pytest-asyncio"
-]
+version = "0.1.0"
+description = "A dystopian attorney from 3030, here to analyze media and prevent catastrophic timelines."
+requires-python = ">=3.10,<3.13"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
 
 [tool.pytest.ini_options]
-asyncio_mode = "strict"
+asyncio_mode = "auto"
 testpaths = ["tests"]
+addopts = "-v --tb=short"
 
-[tool.hatch.build.targets.wheel]
-packages = ["gonzo/"]
+[tool.black]
+line-length = 88
+target-version = ['py310']
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
