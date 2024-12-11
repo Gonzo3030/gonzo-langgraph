@@ -1,5 +1,6 @@
 # Core configuration
 from .topics import TopicConfiguration
+from .prompts import SYSTEM_PROMPT, ANALYSIS_PROMPT, RESPONSE_PROMPT
 
 # Model Configuration
 MODEL_NAME = "claude-3-opus-20240229"
@@ -17,4 +18,11 @@ def get_api_keys():
         'x_access_secret': 'test_secret'
     }
 
-__all__ = ['TopicConfiguration', 'MODEL_NAME', 'get_api_keys']
+__all__ = [
+    'TopicConfiguration',
+    'MODEL_NAME',
+    'get_api_keys',
+    'SYSTEM_PROMPT',
+    'ANALYSIS_PROMPT',
+    'RESPONSE_PROMPT'
+]
