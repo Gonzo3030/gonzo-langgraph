@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import List
 from pydantic import BaseModel
 
 class TopicCategory(BaseModel):
@@ -11,6 +11,8 @@ class TopicCategory(BaseModel):
 
 class TopicConfiguration:
     """Configuration for Gonzo's topics of interest."""
+    
+    TopicCategory = TopicCategory  # Make TopicCategory accessible via TopicConfiguration.TopicCategory
     
     CRYPTO_DEFI = TopicCategory(
         name="Crypto & DeFi",
