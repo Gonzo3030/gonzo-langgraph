@@ -1,72 +1,74 @@
-import requests
-from requests_oauthlib import OAuth1Session
 from typing import Dict, List, Optional
+from pydantic import BaseModel
 from datetime import datetime
 from ...config import get_api_keys
+from ...types.social import Post, PostMetrics
 
-class XClient:
-    def __init__(self):
+class XClient(BaseModel):
+    """Client for interacting with X API."""
+    
+    def __init__(self, **kwargs):
         keys = get_api_keys()
-        self.oauth = OAuth1Session(
+        super().__init__(
             client_key=keys['x_api_key'],
             client_secret=keys['x_api_secret'],
-            resource_owner_key=keys['x_access_token'],
-            resource_owner_secret=keys['x_access_token_secret']
+            access_token=keys['x_access_token'],
+            access_secret=keys['x_access_secret']
         )
-        self.last_post_time = None
-        self.daily_counts = {
-            'posts': 0,
-            'replies': 0
-        }
     
-    async def post_update(self, content: str) -> Dict:
-        """Post an update with rate limiting."""
-        if not self._can_post():
-            raise Exception("Post limit reached or too soon since last post")
-        
-        url = 'https://api.twitter.com/2/tweets'
-        data = {"text": content}
-        
-        response = self.oauth.post(url, json=data)
-        response.raise_for_status()
-        
-        self._update_counts('posts')
-        self.last_post_time = datetime.now()
-        return response.json()
+    class Config:
+        arbitrary_types_allowed = True
+
+    async def search_recent(self, query: str, max_results: int = 100) -> List[Post]:
+        """Search for recent posts matching query.
+        For testing, returns mock data.
+        """
+        # Mock implementation
+        return [
+            Post(
+                id="test_id",
+                platform="x",
+                content=f"Test post about {query}",
+                created_at=datetime.now(),
+                metrics=PostMetrics(likes=100, replies=10)
+            )
+        ]
     
-    async def reply_to_post(self, post_id: str, content: str) -> Dict:
-        """Reply to a specific post."""
-        if not self._can_reply():
-            raise Exception("Reply limit reached")
-        
-        url = 'https://api.twitter.com/2/tweets'
-        data = {
-            "text": content,
-            "reply": {"in_reply_to_tweet_id": post_id}
-        }
-        
-        response = self.oauth.post(url, json=data)
-        response.raise_for_status()
-        
-        self._update_counts('replies')
-        return response.json()
+    async def fetch_mentions(self, since_id: Optional[str] = None) -> List[Post]:
+        """Fetch recent mentions.
+        For testing, returns mock data.
+        """
+        return [
+            Post(
+                id="mention_id",
+                platform="x",
+                content="@gonzo what about dystopia?",
+                created_at=datetime.now(),
+                metrics=PostMetrics(likes=50, replies=5)
+            )
+        ]
     
-    def _can_post(self) -> bool:
-        """Check if we can post based on limits."""
-        if self.daily_counts['posts'] >= 100:  # Daily limit
-            return False
-        
-        if self.last_post_time:
-            time_since_last = (datetime.now() - self.last_post_time).seconds
-            if time_since_last < 60:  # At least 1 minute between posts
-                return False
-        
-        return True
+    async def get_user_posts(self, user_id: str) -> List[Post]:
+        """Get posts from a specific user.
+        For testing, returns mock data.
+        """
+        return [
+            Post(
+                id="user_post_id",
+                platform="x",
+                content=f"Post from user {user_id}",
+                created_at=datetime.now(),
+                metrics=PostMetrics(likes=75, replies=8)
+            )
+        ]
     
-    def _can_reply(self) -> bool:
-        """Check if we can reply based on limits."""
-        return self.daily_counts['replies'] < 100  # Daily limit
-    
-    def _update_counts(self, action_type: str) -> None:
-        """Update daily action counts."""
-        self.daily_counts[action_type] += 1
+    async def fetch_metrics(self, post_id: str) -> PostMetrics:
+        """Fetch metrics for a specific post.
+        For testing, returns mock data.
+        """
+        return PostMetrics(
+            likes=100,
+            replies=10,
+            reposts=5,
+            views=1000
+        )
