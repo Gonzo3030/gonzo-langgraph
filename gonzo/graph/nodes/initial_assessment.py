@@ -1,10 +1,14 @@
+from typing import Dict, Any, TypeVar, Optional
 from langchain_core.messages import BaseMessage
 from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langsmith import traceable
+from langchain_core.runnables import RunnableConfig
 from ...config import MODEL_NAME
 from ...types.base import GonzoState
 from .base import update_state, log_step, get_latest_message
+
+StateType = TypeVar("StateType")
 
 # Initialize LLM
 llm = ChatOpenAI(model_name=MODEL_NAME)
@@ -26,7 +30,7 @@ ASSESSMENT_PROMPT = ChatPromptTemplate.from_messages([
 ])
 
 @traceable(name="initial_assessment")
-async def initial_assessment(state: GonzoState) -> Dict[str, Any]:
+async def initial_assessment(state: GonzoState, config: Optional[RunnableConfig] = None) -> Dict[str, GonzoState]:
     """Perform initial assessment of user input."""
     try:
         # Get latest message
@@ -36,7 +40,10 @@ async def initial_assessment(state: GonzoState) -> Dict[str, Any]:
         
         # Get LLM assessment
         chain = ASSESSMENT_PROMPT | llm
-        result = await chain.ainvoke({"input": latest_message.content})
+        result = await chain.ainvoke(
+            {"input": latest_message.content},
+            config=config
+        )
         
         # Extract category and update state
         category = _extract_category(result.content)
