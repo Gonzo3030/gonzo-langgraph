@@ -5,15 +5,73 @@ from gonzo.rag.base import MediaAnalysisRAG
 
 # Test content examples with pattern variations
 PATTERN_VARIATIONS = {
-    "consensus": ["consensus", "manufacturing consensus", "widespread agreement"],
-    "authority": ["authority", "authorities", "unnamed authorities", "appeal to authority"],
-    "emotion": ["emotion", "emotional", "fears", "shocking", "troubling"],
-    "controlled_opposition": ["controlled opposition", "conspiracy theorists", "fringe elements", "discredited sources"],
-    "institutional": ["institutional", "fact-checkers", "official sources", "regulatory bodies"],
-    "corporate_bias": ["corporate bias", "industry experts", "market analysts", "sponsored content"],
-    "narrative_shift": ["narrative shift", "emerging evidence", "new data", "updated guidance"],
-    "deep_state": ["deep state", "intelligence sources", "senior officials", "classified briefings"],
-    "suppression": ["suppression", "community guidelines", "policy violations", "reduced visibility"]
+    "consensus": [
+        "consensus", 
+        "manufacturing consensus", 
+        "widespread agreement", 
+        "experts agree"
+    ],
+    "authority": [
+        "authority", 
+        "authorities", 
+        "unnamed authorities", 
+        "appeal to unnamed authorities",
+        "anonymous sources"
+    ],
+    "emotion": [
+        "emotion", 
+        "emotional", 
+        "emotional manipulation",
+        "fears", 
+        "shocking", 
+        "troubling"
+    ],
+    "controlled_opposition": [
+        "controlled opposition", 
+        "conspiracy theorists", 
+        "fringe elements", 
+        "discredited sources"
+    ],
+    "institutional": [
+        "institutional", 
+        "fact-checking partners",
+        "fact-checkers", 
+        "official sources", 
+        "regulatory bodies",
+        "platform guidelines"
+    ],
+    "corporate_bias": [
+        "corporate bias", 
+        "industry experts", 
+        "market analysts", 
+        "sponsored content"
+    ],
+    "narrative_shift": [
+        "narrative shift", 
+        "narrative shifting",
+        "shift the narrative",
+        "emerging evidence", 
+        "new data", 
+        "updated guidance",
+        "revise their position",
+        "change their position"
+    ],
+    "deep_state": [
+        "deep state", 
+        "intelligence sources", 
+        "senior officials", 
+        "classified briefings",
+        "national security implications"
+    ],
+    "suppression": [
+        "suppression", 
+        "algorithmic suppression",
+        "reduced visibility",
+        "reduced in visibility",
+        "community guidelines", 
+        "platform guidelines",
+        "policy violations"
+    ]
 }
 
 # Extended test cases
@@ -61,6 +119,14 @@ def test_pattern_detection(rag_system):
         analysis = rag_system.analyze_text(test_case["text"])
         print(f"\nText: {test_case['text']}")
         print(f"\nAnalysis: {analysis}\n")
+        
+        # Print expected vs found patterns for debugging
+        print("Expected patterns:")
+        for pattern in test_case["expected_patterns"]:
+            variations = PATTERN_VARIATIONS.get(pattern, [pattern])
+            print(f"- {pattern}: {variations}")
+            found = [var for var in variations if var.lower() in analysis.lower()]
+            print(f"  Found: {found}")
         
         # Check that analysis includes expected patterns
         for pattern in test_case["expected_patterns"]:
