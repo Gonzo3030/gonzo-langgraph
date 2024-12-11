@@ -1,0 +1,32 @@
+graph TD
+    START((Start)) --> ContentMonitor[Content Monitor]
+    
+    subgraph Analysis Flow
+        ContentMonitor --> RAG[RAG Analysis Engine]
+        RAG --> PatternMatch[Pattern Detection]
+        PatternMatch --> ResponseGen[Response Generator]
+    end
+
+    subgraph Knowledge Base
+        RBExamples[RB Analysis Examples] -.-> RAG
+        Patterns[Pattern Definitions] -.-> PatternMatch
+        NarrativeTactics[Narrative Tactics] -.-> ResponseGen
+    end
+
+    subgraph Output Flow
+        ResponseGen --> PostQueue[Post Queue]
+        PostQueue --> XPost[X Post]
+        PostQueue --> InteractionQueue[Interaction Queue]
+        InteractionQueue --> XReply[X Reply]
+    end
+
+    subgraph State Management
+        StateTracker[State Tracker] -.-> PostQueue
+        StateTracker -.-> InteractionQueue
+        PostHistory[Post History] -.-> StateTracker
+    end
+
+    ContentMonitor --> |New Content| RAG
+    ResponseGen --> StateTracker
+    XPost --> PostHistory
+    XReply --> PostHistory
