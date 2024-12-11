@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from typing import List, Dict, Optional
 from unittest.mock import patch
 from .mocks.llm import MockChatOpenAI
+from gonzo.utils.llm import set_llm
 
 # Test-specific base models to avoid deep imports
 class TestMonitoringState(BaseModel):
@@ -26,10 +27,11 @@ class TestXState(BaseModel):
     last_monitor_time: Optional[datetime] = None
 
 @pytest.fixture(autouse=True)
-def mock_langchain():
-    """Mock LangChain components for all tests."""
-    with patch('langchain_openai.ChatOpenAI', MockChatOpenAI):
-        yield
+def mock_llm():
+    """Set up mock LLM for all tests."""
+    mock_llm = MockChatOpenAI()
+    set_llm(mock_llm)
+    return mock_llm
 
 @pytest.fixture
 def mock_state():
