@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Any
 from uuid import UUID
 from enum import Enum, auto
 from pydantic import BaseModel, Field
+from .state.x_state import XState, MonitoringState
 
 class EntityType(str, Enum):
     """Types of entities that can be extracted."""
@@ -18,10 +19,10 @@ class EntityType(str, Enum):
 
 class NextStep(str, Enum):
     """Next step in the workflow."""
+    MONITOR = "monitor"
+    ASSESSMENT = "assessment"
     NARRATIVE = "narrative"
-    CRYPTO = "crypto"
-    GENERAL = "general"
-    ERROR = "error"
+    QUEUE = "queue"
     END = "end"
 
 class Property(BaseModel):
@@ -76,6 +77,13 @@ class GonzoState(BaseModel):
     memory: Dict[str, Any] = Field(default_factory=dict)
     next_step: Optional[NextStep] = None
     errors: List[str] = Field(default_factory=list)
+    
+    # X Integration State
+    x_state: Optional[XState] = None
+    monitoring_state: Optional[MonitoringState] = None
+    new_content: List[Any] = Field(default_factory=list)
+    posted_content: List[Any] = Field(default_factory=list)
+    interactions: List[Any] = Field(default_factory=list)
 
     def add_message(self, message: Message) -> None:
         """Add a message to the state."""
@@ -105,10 +113,19 @@ class GonzoState(BaseModel):
         if memory_type in self.memory and key in self.memory[memory_type]:
             return self.memory[memory_type][key]
         return None
+        
+    def initialize_x_state(self) -> None:
+        """Initialize X integration state if not already present."""
+        if not self.x_state:
+            self.x_state = XState()
+        if not self.monitoring_state:
+            self.monitoring_state = MonitoringState()
 
 def create_initial_state() -> GonzoState:
     """Create an initial state for the workflow."""
-    return GonzoState()
+    state = GonzoState()
+    state.initialize_x_state()
+    return state
 
 def update_state(state: GonzoState, updates: Dict[str, Any]) -> GonzoState:
     """Update the state with new values.
