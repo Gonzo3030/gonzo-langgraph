@@ -4,8 +4,10 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from gonzo.integrations.x.content_discovery import ContentDiscovery, ContentRelevanceScore
 from gonzo.config.topics import TopicConfiguration
-from gonzo.types.social import Post
-from gonzo.state.x_state import MonitoringState
+from gonzo.types.social import Post, PostMetrics
+
+# Import our test state models instead of the real ones
+from .conftest import TestMonitoringState as MonitoringState
 
 @pytest.fixture
 def mock_client():
@@ -49,7 +51,8 @@ def test_content_relevance_scoring():
         id="123",
         platform="x",
         content="Bitcoin and cryptocurrency are tools for resistance against centralized control",
-        created_at=datetime.now()
+        created_at=datetime.now(),
+        metrics=PostMetrics(likes=100, replies=10)
     )
     score = discovery._score_content(relevant_post)
     assert score.topic_match > 0.0
@@ -60,7 +63,8 @@ def test_content_relevance_scoring():
         id="456",
         platform="x",
         content="Just had a great lunch!",
-        created_at=datetime.now()
+        created_at=datetime.now(),
+        metrics=PostMetrics(likes=5, replies=1)
     )
     score = discovery._score_content(irrelevant_post)
     assert score.overall_score < score.topic_match  # Should score lower
@@ -74,13 +78,15 @@ async def test_discover_content(content_discovery, mock_state):
             id="1",
             platform="x",
             content="Bitcoin price analysis and decentralization impact",
-            created_at=datetime.now()
+            created_at=datetime.now(),
+            metrics=PostMetrics(likes=150, replies=20)
         ),
         Post(
             id="2",
             platform="x",
             content="AI developments in autonomous systems",
-            created_at=datetime.now()
+            created_at=datetime.now(),
+            metrics=PostMetrics(likes=120, replies=15)
         )
     ]
     
@@ -105,7 +111,8 @@ async def test_category_content_discovery(content_discovery, mock_state):
             id="1",
             platform="x",
             content="DeFi and cryptocurrency updates",
-            created_at=datetime.now()
+            created_at=datetime.now(),
+            metrics=PostMetrics(likes=200, replies=30)
         )
     ]
     content_discovery.client.search_recent = AsyncMock(return_value=mock_posts)
