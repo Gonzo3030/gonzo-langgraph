@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from .client import XClient
 from ...types.social import Post
 from ...state.x_state import MonitoringState
-from ...config.topics import TopicConfiguration
+from ...config.topics import TopicConfiguration, TopicCategory
 
 class ContentRelevanceScore(BaseModel):
     """Scoring model for content relevance to Gonzo's mission."""
@@ -28,10 +28,6 @@ class ContentDiscovery(BaseModel):
         """Proactively discover content relevant to Gonzo's mission."""
         discovered_posts = []
         
-        # Update trending topics if needed
-        if self._should_refresh_trends(state):
-            await self._update_trending_topics(state)
-        
         # Get content from each topic category
         for category in TopicConfiguration.get_all_categories():
             category_posts = await self._get_category_content(category, state)
@@ -48,12 +44,9 @@ class ContentDiscovery(BaseModel):
             if score.overall_score >= 0.6  # Minimum relevance threshold
         ]
         
-        # Update discovery metrics
-        self._update_discovery_metrics(state, relevant_posts)
-        
         return relevant_posts
     
-    async def _get_category_content(self, category: TopicConfiguration.TopicCategory, state: MonitoringState) -> List[Post]:
+    async def _get_category_content(self, category: TopicCategory, state: MonitoringState) -> List[Post]:
         """Get content for a specific topic category."""
         posts = []
         
@@ -73,26 +66,6 @@ class ContentDiscovery(BaseModel):
         
         return posts
     
-    def _score_content(self, post: Post) -> ContentRelevanceScore:
-        """Score content based on relevance to Gonzo's mission."""
-        score = ContentRelevanceScore()
-        
-        # Topic matching
-        topics = TopicConfiguration.get_all_topics()
-        keywords = TopicConfiguration.get_all_keywords()
-        content_lower = post.content.lower()
-        
-        # Calculate topic match score
-        topic_matches = sum(1 for topic in topics if topic.lower() in content_lower)
-        keyword_matches = sum(1 for kw in keywords if kw.lower() in content_lower)
-        score.topic_match = (topic_matches + keyword_matches) / (len(topics) + len(keywords))
-        
-        # TODO: Implement more sophisticated scoring using NLP
-        # For MVP, we'll use topic matching as the primary score
-        score.overall_score = score.topic_match
-        
-        return score
-    
     async def _get_user_content(self, state: MonitoringState) -> List[Post]:
         """Get content from tracked resistance-aligned users."""
         posts = []
@@ -103,3 +76,25 @@ class ContentDiscovery(BaseModel):
             except Exception as e:
                 state.log_error(f"Error fetching user {user_id}: {str(e)}")
         return posts
+    
+    def _score_content(self, post: Post) -> ContentRelevanceScore:
+        """Score content based on relevance to Gonzo's mission."""
+        score = ContentRelevanceScore()
+        
+        # Calculate topic match score
+        content_lower = post.content.lower()
+        
+        # Check topic matches
+        topics = TopicConfiguration.get_all_topics()
+        topic_matches = sum(1 for topic in topics if topic.lower() in content_lower)
+        
+        # Check keyword matches
+        keywords = TopicConfiguration.get_all_keywords()
+        keyword_matches = sum(1 for kw in keywords if kw.lower() in content_lower)
+        
+        # Calculate normalized scores
+        if topics and keywords:  # Avoid division by zero
+            score.topic_match = (topic_matches + keyword_matches) / (len(topics) + len(keywords))
+            score.overall_score = score.topic_match  # For now, use topic match as overall score
+        
+        return score
