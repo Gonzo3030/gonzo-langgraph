@@ -2,8 +2,9 @@ from langchain_core.messages import BaseMessage
 from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langsmith import traceable
-from ...types import GonzoState
 from ...config import MODEL_NAME
+from ...types.base import GonzoState
+from .base import update_state, log_step, get_latest_message
 
 # Initialize LLM
 llm = ChatOpenAI(model_name=MODEL_NAME)
@@ -25,32 +26,33 @@ ASSESSMENT_PROMPT = ChatPromptTemplate.from_messages([
 ])
 
 @traceable(name="initial_assessment")
-def initial_assessment(state: GonzoState) -> GonzoState:
+async def initial_assessment(state: GonzoState) -> Dict[str, Any]:
     """Perform initial assessment of user input."""
     try:
         # Get latest message
-        latest_message = state["messages"][-1]
+        latest_message = get_latest_message(state)
+        if not latest_message:
+            raise ValueError("No message found in state")
         
         # Get LLM assessment
         chain = ASSESSMENT_PROMPT | llm
-        result = chain.invoke({"input": latest_message.content})
+        result = await chain.ainvoke({"input": latest_message.content})
         
-        # Update state with assessment
-        new_state = state.copy()
-        new_state["context"]["assessment"] = result.content
-        new_state["context"]["category"] = _extract_category(result.content)
-        new_state["intermediate_steps"].append({
-            "step": "initial_assessment",
-            "result": result.content
+        # Extract category and update state
+        category = _extract_category(result.content)
+        
+        # Log step
+        log_step(state, "initial_assessment", {
+            "category": category,
+            "assessment": result.content
         })
         
-        return new_state
+        # Return state dict
+        return {"state": state}
         
     except Exception as e:
-        # Handle errors gracefully
-        new_state = state.copy()
-        new_state["errors"].append(f"Error in initial assessment: {str(e)}")
-        return new_state
+        state.add_error(f"Error in initial assessment: {str(e)}")
+        return {"state": state}
 
 def _extract_category(assessment: str) -> str:
     """Extract category from assessment result."""
