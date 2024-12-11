@@ -1,9 +1,13 @@
-from typing import Dict, Any, Tuple
-from langchain.pydantic_v1 import BaseModel
+from typing import Dict, Any, TypeVar, Optional
+from langchain_core.runnables import RunnableConfig
+from langsmith import traceable
 from ...integrations.x.client import XClient
 from ...integrations.x.monitor import ContentMonitor
 from ...integrations.x.queue_manager import QueueManager
-from ...state.x_state import XState
+from ...types.base import GonzoState
+from .base import update_state, log_step
+
+StateType = TypeVar("StateType")
 
 class XNodes:
     """Graph nodes for X integration in the LangGraph workflow."""
@@ -13,87 +17,110 @@ class XNodes:
         self.monitor = ContentMonitor()
         self.queue_manager = QueueManager()
     
-    async def monitor_content(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    @traceable(name="monitor_content")
+    async def monitor_content(self, state: GonzoState, config: Optional[RunnableConfig] = None) -> Dict[str, GonzoState]:
         """Node for monitoring X content and mentions."""
-        x_state = state.get('x_state', XState())
-        
         try:
+            # Initialize X state if needed
+            if not state.x_state:
+                state.initialize_x_state()
+            
             # Monitor mentions
-            await self.monitor.process_mentions(x_state)
+            await self.monitor.process_mentions(state.x_state)
             
             # Update metrics for recent posts
-            await self.monitor.update_metrics(x_state)
+            await self.monitor.update_metrics(state.x_state)
             
             # Check tracked topics
-            if hasattr(state, 'monitoring_state'):
+            if state.monitoring_state:
                 new_posts = await self.monitor.check_topics(state.monitoring_state)
                 if new_posts:
-                    if 'new_content' not in state:
-                        state['new_content'] = []
-                    state['new_content'].extend(new_posts)
+                    state.new_content.extend(new_posts)
+            
+            log_step(state, "monitor_content", {
+                "new_posts": len(state.new_content),
+                "mentions_processed": len(state.x_state.interaction_queue.pending)
+            })
             
         except Exception as e:
-            x_state.log_error(f"Error in content monitoring: {str(e)}")
+            state.add_error(f"Error in content monitoring: {str(e)}")
         
-        state['x_state'] = x_state
-        return state
+        return {"state": state}
     
-    async def process_queues(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    @traceable(name="process_queues")
+    async def process_queues(self, state: GonzoState, config: Optional[RunnableConfig] = None) -> Dict[str, GonzoState]:
         """Node for processing post and interaction queues."""
-        x_state = state.get('x_state', XState())
-        
         try:
+            if not state.x_state:
+                state.initialize_x_state()
+            
             # Process post queue
-            posted = await self.queue_manager.process_post_queue(x_state)
+            posted = await self.queue_manager.process_post_queue(state.x_state)
             if posted:
-                if 'posted_content' not in state:
-                    state['posted_content'] = []
-                state['posted_content'].append(posted)
+                state.posted_content.append(posted)
             
             # Process interaction queue
-            reply = await self.queue_manager.process_interaction_queue(x_state)
+            reply = await self.queue_manager.process_interaction_queue(state.x_state)
             if reply:
-                if 'interactions' not in state:
-                    state['interactions'] = []
-                state['interactions'].append(reply)
+                state.interactions.append(reply)
+            
+            log_step(state, "process_queues", {
+                "posts_processed": len(state.posted_content),
+                "interactions_processed": len(state.interactions)
+            })
                 
         except Exception as e:
-            x_state.log_error(f"Error processing queues: {str(e)}")
+            state.add_error(f"Error processing queues: {str(e)}")
         
-        state['x_state'] = x_state
-        return state
+        return {"state": state}
     
-    async def queue_post(self, state: Dict[str, Any], content: str, 
-                      priority: int = 1) -> Dict[str, Any]:
+    @traceable(name="queue_post")
+    async def queue_post(self, state: GonzoState, content: str, 
+                      priority: int = 1, config: Optional[RunnableConfig] = None) -> Dict[str, GonzoState]:
         """Node for adding content to the post queue."""
-        x_state = state.get('x_state', XState())
-        
         try:
+            if not state.x_state:
+                state.initialize_x_state()
+                
             self.queue_manager.add_post(
-                state=x_state,
+                state=state.x_state,
                 content=content,
                 priority=priority
             )
+            
+            log_step(state, "queue_post", {
+                "content": content,
+                "priority": priority
+            })
+            
         except Exception as e:
-            x_state.log_error(f"Error queueing post: {str(e)}")
+            state.add_error(f"Error queueing post: {str(e)}")
         
-        state['x_state'] = x_state
-        return state
+        return {"state": state}
     
-    async def queue_reply(self, state: Dict[str, Any], content: str, 
-                       reply_to_id: str, priority: int = 1) -> Dict[str, Any]:
+    @traceable(name="queue_reply")
+    async def queue_reply(self, state: GonzoState, content: str, 
+                       reply_to_id: str, priority: int = 1,
+                       config: Optional[RunnableConfig] = None) -> Dict[str, GonzoState]:
         """Node for adding replies to the interaction queue."""
-        x_state = state.get('x_state', XState())
-        
         try:
+            if not state.x_state:
+                state.initialize_x_state()
+                
             self.queue_manager.add_reply(
-                state=x_state,
+                state=state.x_state,
                 content=content,
                 reply_to_id=reply_to_id,
                 priority=priority
             )
+            
+            log_step(state, "queue_reply", {
+                "content": content,
+                "reply_to": reply_to_id,
+                "priority": priority
+            })
+            
         except Exception as e:
-            x_state.log_error(f"Error queueing reply: {str(e)}")
+            state.add_error(f"Error queueing reply: {str(e)}")
         
-        state['x_state'] = x_state
-        return state
+        return {"state": state}
