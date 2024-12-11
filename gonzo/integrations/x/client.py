@@ -1,4 +1,5 @@
-import tweepy
+import requests
+from requests_oauthlib import OAuth1Session
 from typing import Dict, List, Optional
 from datetime import datetime
 from ...config import get_api_keys
@@ -6,11 +7,11 @@ from ...config import get_api_keys
 class XClient:
     def __init__(self):
         keys = get_api_keys()
-        self.client = tweepy.Client(
-            consumer_key=keys['x_api_key'],
-            consumer_secret=keys['x_api_secret'],
-            access_token=keys['x_access_token'],
-            access_token_secret=keys['x_access_token_secret']
+        self.oauth = OAuth1Session(
+            client_key=keys['x_api_key'],
+            client_secret=keys['x_api_secret'],
+            resource_owner_key=keys['x_access_token'],
+            resource_owner_secret=keys['x_access_token_secret']
         )
         self.last_post_time = None
         self.daily_counts = {
@@ -23,22 +24,32 @@ class XClient:
         if not self._can_post():
             raise Exception("Post limit reached or too soon since last post")
         
-        response = self.client.create_tweet(text=content)
+        url = 'https://api.twitter.com/2/tweets'
+        data = {"text": content}
+        
+        response = self.oauth.post(url, json=data)
+        response.raise_for_status()
+        
         self._update_counts('posts')
         self.last_post_time = datetime.now()
-        return response.data
+        return response.json()
     
     async def reply_to_post(self, post_id: str, content: str) -> Dict:
         """Reply to a specific post."""
         if not self._can_reply():
             raise Exception("Reply limit reached")
         
-        response = self.client.create_tweet(
-            text=content,
-            in_reply_to_tweet_id=post_id
-        )
+        url = 'https://api.twitter.com/2/tweets'
+        data = {
+            "text": content,
+            "reply": {"in_reply_to_tweet_id": post_id}
+        }
+        
+        response = self.oauth.post(url, json=data)
+        response.raise_for_status()
+        
         self._update_counts('replies')
-        return response.data
+        return response.json()
     
     def _can_post(self) -> bool:
         """Check if we can post based on limits."""
