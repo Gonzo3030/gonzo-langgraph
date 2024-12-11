@@ -18,24 +18,12 @@ class QueueManager:
         # Get highest priority post
         post = sorted(state.post_queue, key=lambda x: x.priority, reverse=True)[0]
         
-        # Check if it's time to post scheduled content
-        if post.scheduled_time and post.scheduled_time > datetime.now():
-            return None
-            
-        try:
-            # Remove from queue
-            state.post_queue.remove(post)
-            
-            # Post to X
-            posted = await self.client.post_update(state, post)
-            return posted
-            
-        except Exception as e:
-            state.log_error(f"Error processing post queue: {str(e)}", {
-                'post_content': post.content,
-                'scheduled_time': post.scheduled_time
-            })
-            return None
+        # Remove from queue
+        state.post_queue.remove(post)
+        
+        # Post to X
+        posted = await self.client.post_update(state, post)
+        return posted
     
     async def process_interaction_queue(self, state: XState) -> Optional[Post]:
         """Process the next interaction in the queue."""
@@ -43,13 +31,13 @@ class QueueManager:
         if not next_interaction:
             return None
             
+        # Remove from pending
+        state.interaction_queue.pending.remove(next_interaction)
+        
+        # Add to processing
+        state.interaction_queue.processing.append(next_interaction.reply_to_id)
+        
         try:
-            # Remove from pending
-            state.interaction_queue.pending.remove(next_interaction)
-            
-            # Add to processing
-            state.interaction_queue.processing.append(next_interaction.reply_to_id)
-            
             # Post reply
             posted = await self.client.post_update(state, next_interaction)
             
@@ -59,20 +47,15 @@ class QueueManager:
             return posted
             
         except Exception as e:
-            state.log_error(f"Error processing interaction queue: {str(e)}", {
-                'interaction': next_interaction.dict()
-            })
             if next_interaction.reply_to_id in state.interaction_queue.processing:
                 state.interaction_queue.processing.remove(next_interaction.reply_to_id)
-            return None
+            raise
     
-    def add_post(self, state: XState, content: str, priority: int = 1, 
-                scheduled_time: Optional[datetime] = None) -> None:
+    def add_post(self, state: XState, content: str, priority: int = 1) -> None:
         """Add a new post to the queue."""
         post = QueuedPost(
             content=content,
-            priority=priority,
-            scheduled_time=scheduled_time
+            priority=priority
         )
         state.add_to_post_queue(post)
         
