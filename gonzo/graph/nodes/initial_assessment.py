@@ -6,12 +6,10 @@ from langsmith import traceable
 from langchain_core.runnables import RunnableConfig
 from ...config import MODEL_NAME
 from ...types.base import GonzoState
+from ...utils.llm import get_llm
 from .base import update_state, log_step, get_latest_message
 
 StateType = TypeVar("StateType")
-
-# Initialize LLM
-llm = ChatOpenAI(model_name=MODEL_NAME)
 
 # Define prompt template
 ASSESSMENT_PROMPT = ChatPromptTemplate.from_messages([
@@ -39,6 +37,7 @@ async def initial_assessment(state: GonzoState, config: Optional[RunnableConfig]
             raise ValueError("No message found in state")
         
         # Get LLM assessment
+        llm = get_llm()
         chain = ASSESSMENT_PROMPT | llm
         result = await chain.ainvoke(
             {"input": latest_message.content},
