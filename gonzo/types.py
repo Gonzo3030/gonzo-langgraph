@@ -3,7 +3,6 @@ from typing import Dict, List, Optional, Any
 from uuid import UUID
 from enum import Enum, auto
 from pydantic import BaseModel, Field
-from .state.x_state import XState, MonitoringState
 
 class EntityType(str, Enum):
     """Types of entities that can be extracted."""
@@ -78,9 +77,9 @@ class GonzoState(BaseModel):
     next_step: Optional[NextStep] = None
     errors: List[str] = Field(default_factory=list)
     
-    # X Integration State
-    x_state: Optional[XState] = None
-    monitoring_state: Optional[MonitoringState] = None
+    # Social media integration states
+    x_state: Optional['XState'] = None
+    monitoring_state: Optional['MonitoringState'] = None
     new_content: List[Any] = Field(default_factory=list)
     posted_content: List[Any] = Field(default_factory=list)
     interactions: List[Any] = Field(default_factory=list)
@@ -116,6 +115,7 @@ class GonzoState(BaseModel):
         
     def initialize_x_state(self) -> None:
         """Initialize X integration state if not already present."""
+        from .state import XState, MonitoringState
         if not self.x_state:
             self.x_state = XState()
         if not self.monitoring_state:
