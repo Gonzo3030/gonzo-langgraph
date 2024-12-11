@@ -23,6 +23,10 @@ class ContentDiscovery(BaseModel):
     client: XClient = Field(default_factory=XClient)
     max_results_per_query: int = 100
     min_engagement_threshold: int = 10
+    resistance_terms: List[str] = [
+        "resist", "control", "freedom", "decentralized", "manipulation",
+        "dystopia", "surveillance", "privacy", "rights", "democracy"
+    ]
     
     async def discover_content(self, state: MonitoringState) -> List[Post]:
         """Proactively discover content relevant to Gonzo's mission."""
@@ -45,6 +49,48 @@ class ContentDiscovery(BaseModel):
         ]
         
         return relevant_posts
+    
+    def _score_content(self, post: Post) -> ContentRelevanceScore:
+        """Score content based on relevance to Gonzo's mission."""
+        score = ContentRelevanceScore()
+        content_lower = post.content.lower()
+        words = set(content_lower.split())
+        
+        # Calculate topic match
+        topic_scores = []
+        for category in TopicConfiguration.get_all_categories():
+            # Check for topic matches
+            topic_matches = sum(
+                1 for topic in category.topics 
+                if any(word in topic.lower() for word in words)
+            )
+            # Check for keyword matches
+            keyword_matches = sum(
+                1 for keyword in category.keywords 
+                if any(word in keyword.lower() for word in words)
+            )
+            # Weight by category priority
+            category_score = (topic_matches + keyword_matches) * (category.priority / 5)
+            topic_scores.append(category_score)
+        
+        # Calculate normalized topic match score
+        if topic_scores:
+            score.topic_match = max(min(max(topic_scores), 1.0), 0.0)
+        
+        # Calculate resistance relevance
+        resistance_matches = sum(
+            1 for term in self.resistance_terms 
+            if term in content_lower
+        )
+        score.resistance_potential = min(resistance_matches / 3, 1.0)  # Cap at 1.0
+        
+        # Calculate overall score with weights
+        score.overall_score = (
+            score.topic_match * 0.7 +  # Topic matching most important
+            score.resistance_potential * 0.3  # Resistance terms boost score
+        )
+        
+        return score
     
     async def _get_category_content(self, category: TopicCategory, state: MonitoringState) -> List[Post]:
         """Get content for a specific topic category."""
@@ -76,25 +122,3 @@ class ContentDiscovery(BaseModel):
             except Exception as e:
                 state.log_error(f"Error fetching user {user_id}: {str(e)}")
         return posts
-    
-    def _score_content(self, post: Post) -> ContentRelevanceScore:
-        """Score content based on relevance to Gonzo's mission."""
-        score = ContentRelevanceScore()
-        
-        # Calculate topic match score
-        content_lower = post.content.lower()
-        
-        # Check topic matches
-        topics = TopicConfiguration.get_all_topics()
-        topic_matches = sum(1 for topic in topics if topic.lower() in content_lower)
-        
-        # Check keyword matches
-        keywords = TopicConfiguration.get_all_keywords()
-        keyword_matches = sum(1 for kw in keywords if kw.lower() in content_lower)
-        
-        # Calculate normalized scores
-        if topics and keywords:  # Avoid division by zero
-            score.topic_match = (topic_matches + keyword_matches) / (len(topics) + len(keywords))
-            score.overall_score = score.topic_match  # For now, use topic match as overall score
-        
-        return score
