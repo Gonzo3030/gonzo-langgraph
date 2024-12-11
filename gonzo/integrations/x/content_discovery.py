@@ -4,14 +4,18 @@ from pydantic import BaseModel, Field
 from .client import XClient
 from ...types.social import Post
 from ...state.x_state import MonitoringState
+from ...config.topics import TopicConfiguration
+
+class ContentRelevanceScore(BaseModel):
+    """Scoring model for content relevance to Gonzo's mission."""
+    topic_match: float = 0.0  # How well it matches monitored topics
+    dystopia_relevance: float = 0.0  # Relevance to preventing dystopian future
+    manipulation_indicator: float = 0.0  # Indicates potential manipulation/control
+    resistance_potential: float = 0.0  # Potential for supporting resistance
+    overall_score: float = 0.0
 
 class ContentDiscovery(BaseModel):
-    """Proactive content discovery for X platform.
-    
-    This component actively searches for relevant content based on configured
-    topics, trends, and user interests. It serves as the primary input source
-    for Gonzo's analysis pipeline.
-    """
+    """Proactive content discovery aligned with Gonzo's mission."""
     
     class Config:
         arbitrary_types_allowed = True
@@ -21,57 +25,76 @@ class ContentDiscovery(BaseModel):
     min_engagement_threshold: int = 10
     
     async def discover_content(self, state: MonitoringState) -> List[Post]:
-        """Proactively discover relevant content across different sources."""
+        """Proactively discover content relevant to Gonzo's mission."""
         discovered_posts = []
         
-        # Get trending topics if we haven't recently
+        # Update trending topics if needed
         if self._should_refresh_trends(state):
             await self._update_trending_topics(state)
         
-        # Discover content from multiple sources
-        trending_posts = await self._get_trending_content(state)
-        topic_posts = await self._get_topic_content(state)
-        user_posts = await self._get_user_content(state)
+        # Get content from each topic category
+        for category in TopicConfiguration.get_all_categories():
+            category_posts = await self._get_category_content(category, state)
+            discovered_posts.extend(category_posts)
         
-        discovered_posts.extend(trending_posts)
-        discovered_posts.extend(topic_posts)
+        # Get content from tracked resistance accounts
+        user_posts = await self._get_user_content(state)
         discovered_posts.extend(user_posts)
         
-        # Update state with discovery metrics
-        self._update_discovery_metrics(state, discovered_posts)
+        # Score and filter content
+        scored_posts = [(post, self._score_content(post)) for post in discovered_posts]
+        relevant_posts = [
+            post for post, score in scored_posts 
+            if score.overall_score >= 0.6  # Minimum relevance threshold
+        ]
         
-        return discovered_posts
+        # Update discovery metrics
+        self._update_discovery_metrics(state, relevant_posts)
+        
+        return relevant_posts
     
-    async def _get_trending_content(self, state: MonitoringState) -> List[Post]:
-        """Get content from current trending topics."""
+    async def _get_category_content(self, category: TopicConfiguration.TopicCategory, state: MonitoringState) -> List[Post]:
+        """Get content for a specific topic category."""
         posts = []
-        for trend in state.current_trends:
+        
+        # Search using both topics and keywords
+        search_terms = category.topics + category.keywords
+        for term in search_terms:
             try:
-                trend_posts = await self.client.search_recent(
-                    query=trend,
-                    max_results=self.max_results_per_query
+                # Weight queries by category priority
+                max_results = self.max_results_per_query * (category.priority / 5)
+                term_posts = await self.client.search_recent(
+                    query=term,
+                    max_results=int(max_results)
                 )
-                posts.extend(trend_posts)
+                posts.extend(term_posts)
             except Exception as e:
-                state.log_error(f"Error fetching trend {trend}: {str(e)}")
+                state.log_error(f"Error fetching content for {term}: {str(e)}")
+        
         return posts
     
-    async def _get_topic_content(self, state: MonitoringState) -> List[Post]:
-        """Get content from tracked topics."""
-        posts = []
-        for topic in state.tracked_topics:
-            try:
-                topic_posts = await self.client.search_recent(
-                    query=topic,
-                    max_results=self.max_results_per_query
-                )
-                posts.extend(topic_posts)
-            except Exception as e:
-                state.log_error(f"Error fetching topic {topic}: {str(e)}")
-        return posts
+    def _score_content(self, post: Post) -> ContentRelevanceScore:
+        """Score content based on relevance to Gonzo's mission."""
+        score = ContentRelevanceScore()
+        
+        # Topic matching
+        topics = TopicConfiguration.get_all_topics()
+        keywords = TopicConfiguration.get_all_keywords()
+        content_lower = post.content.lower()
+        
+        # Calculate topic match score
+        topic_matches = sum(1 for topic in topics if topic.lower() in content_lower)
+        keyword_matches = sum(1 for kw in keywords if kw.lower() in content_lower)
+        score.topic_match = (topic_matches + keyword_matches) / (len(topics) + len(keywords))
+        
+        # TODO: Implement more sophisticated scoring using NLP
+        # For MVP, we'll use topic matching as the primary score
+        score.overall_score = score.topic_match
+        
+        return score
     
     async def _get_user_content(self, state: MonitoringState) -> List[Post]:
-        """Get content from tracked users."""
+        """Get content from tracked resistance-aligned users."""
         posts = []
         for user_id in state.tracked_users:
             try:
@@ -80,32 +103,3 @@ class ContentDiscovery(BaseModel):
             except Exception as e:
                 state.log_error(f"Error fetching user {user_id}: {str(e)}")
         return posts
-    
-    async def _update_trending_topics(self, state: MonitoringState) -> None:
-        """Update the list of trending topics."""
-        try:
-            trends = await self.client.get_trends()
-            state.current_trends = trends
-            state.last_trends_update = datetime.now()
-        except Exception as e:
-            state.log_error(f"Error updating trends: {str(e)}")
-    
-    def _should_refresh_trends(self, state: MonitoringState) -> bool:
-        """Check if we should refresh trending topics."""
-        if not state.last_trends_update:
-            return True
-        hours_since_update = (datetime.now() - state.last_trends_update).total_seconds() / 3600
-        return hours_since_update >= 1  # Refresh trends hourly
-    
-    def _update_discovery_metrics(self, state: MonitoringState, posts: List[Post]) -> None:
-        """Update content discovery metrics in state."""
-        now = datetime.now()
-        state.discovery_metrics.update({
-            'last_discovery_time': now,
-            'posts_discovered': len(posts),
-            'discovery_sources': {
-                'trends': len([p for p in posts if p.source == 'trend']),
-                'topics': len([p for p in posts if p.source == 'topic']),
-                'users': len([p for p in posts if p.source == 'user'])
-            }
-        })
