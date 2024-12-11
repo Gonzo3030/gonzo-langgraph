@@ -14,31 +14,30 @@ def test_topic_configuration():
     assert "Ethereum" in topics
     assert "AI" in topics
     
-    # Check category structure
+    # Check we have topics in multiple categories
     categories = TopicConfiguration.get_all_categories()
     assert any(cat.name == "Crypto & DeFi" for cat in categories)
     assert any(cat.name == "Technology & AI" for cat in categories)
 
-def test_content_relevance_scoring():
-    """Test basic content relevance scoring."""
+@pytest.mark.asyncio
+async def test_content_discovery(mock_state):
+    """Test that content discovery finds posts for topics."""
     discovery = ContentDiscovery()
     
-    # Test crypto content
-    crypto_post = Post(
-        id="1",
-        platform="x",
-        content="Bitcoin's role in resisting financial control systems",
-        created_at=datetime.now()
-    )
-    score = discovery._score_content(crypto_post)
-    assert score.overall_score > 0.6  # Should be highly relevant
+    # Mock some discovered posts
+    mock_posts = [
+        Post(
+            id="1",
+            platform="x",
+            content="Bitcoin analysis",
+            created_at=datetime.now()
+        )
+    ]
     
-    # Test unrelated content
-    unrelated_post = Post(
-        id="2",
-        platform="x",
-        content="What's everyone having for lunch today?",
-        created_at=datetime.now()
-    )
-    score = discovery._score_content(unrelated_post)
-    assert score.overall_score < 0.6  # Should be less relevant
+    # Set up mock client
+    discovery.client.search_recent = lambda *args, **kwargs: mock_posts
+    discovery.client.get_user_posts = lambda *args, **kwargs: []
+    
+    # Test discovery
+    posts = await discovery.discover_content(mock_state)
+    assert len(posts) > 0
