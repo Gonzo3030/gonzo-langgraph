@@ -1,77 +1,76 @@
-from typing import List, Optional, Dict, Any
-from datetime import datetime, timedelta
+from typing import List, Optional
+from datetime import datetime
 from ...state.x_state import XState, MonitoringState
 from ...types.social import Post, QueuedPost
 from .client import XClient
 from .content_filter import ContentFilter
+from .content_discovery import ContentDiscovery
 
 class ContentMonitor:
-    """Enhanced content monitor for X with filtering and state management."""
+    """Enhanced content monitor with proactive discovery and analysis capabilities."""
     
-    def __init__(self, check_interval: int = 300):
+    def __init__(self):
         self.client = XClient()
         self.content_filter = ContentFilter()
-        self.check_interval = check_interval  # Time between checks in seconds
+        self.content_discovery = ContentDiscovery()
     
-    async def check_topics(self, state: MonitoringState) -> List[Post]:
-        """Check tracked topics for new content with improved filtering.
+    async def monitor_cycle(self, state: XState) -> List[Post]:
+        """Run a complete monitoring cycle including discovery and interaction processing.
         
-        Args:
-            state: Current monitoring state
-            
-        Returns:
-            List of relevant filtered posts
+        This is the main entry point that coordinates content discovery, filtering,
+        and interaction processing.
         """
-        posts = []
-        current_time = datetime.now()
+        all_content = []
         
-        for topic in state.tracked_topics:
-            last_check = state.last_check_times.get(f'topic:{topic}')
-            should_check = not last_check or \
-                         (current_time - last_check).seconds >= self.check_interval
-            
-            if should_check:
-                try:
-                    # Get new posts for topic
-                    new_posts = await self.client.search_recent(topic)
-                    
-                    # Apply content filtering
-                    filtered_posts = self.content_filter.filter_content(
-                        new_posts,
-                        context={'topic': topic}
-                    )
-                    
-                    posts.extend(filtered_posts)
-                    state.last_check_times[f'topic:{topic}'] = current_time
-                    
-                except Exception as e:
-                    state.log_error(f"Error checking topic {topic}: {str(e)}")
+        # Proactively discover new content
+        discovered_content = await self.content_discovery.discover_content(state.monitoring)
+        filtered_discovered = self.content_filter.filter_content(
+            discovered_content,
+            context={'mode': 'discovery'}
+        )
+        all_content.extend(filtered_discovered)
         
-        return posts
+        # Process mentions and interactions
+        mentions = await self.process_mentions(state)
+        filtered_mentions = self.content_filter.filter_content(
+            mentions,
+            context={'mode': 'mention'}
+        )
+        all_content.extend(filtered_mentions)
+        
+        # Update metrics for existing content
+        await self.update_metrics(state)
+        
+        # Update state
+        state.last_monitor_time = datetime.now()
+        
+        return all_content
     
-    async def process_mentions(self, state: XState) -> None:
-        """Process new mentions with improved handling."""
+    async def process_mentions(self, state: XState) -> List[Post]:
+        """Process new mentions and add to interaction queue."""
         try:
             mentions = await self.client.fetch_mentions(state)
-            filtered_mentions = self.content_filter.filter_content(
-                mentions,
-                context={'is_mention': True}
-            )
             
-            for mention in filtered_mentions:
+            for mention in mentions:
                 queued = QueuedPost(
                     content="",  # To be filled by response generator
                     reply_to_id=mention.id,
                     priority=self._calculate_priority(mention),
-                    context={'mention': mention.dict()}
+                    context={
+                        'type': 'mention',
+                        'mention_data': mention.dict()
+                    }
                 )
                 state.interaction_queue.add_interaction(queued)
-                
+            
+            return mentions
+            
         except Exception as e:
             state.log_error(f"Error processing mentions: {str(e)}")
+            return []
     
     async def update_metrics(self, state: XState) -> None:
-        """Update metrics for recent posts with error handling."""
+        """Update metrics for tracked content."""
         recent_posts = state.post_history.get_recent_posts()
         
         for post in recent_posts:
@@ -85,11 +84,10 @@ class ContentMonitor:
                 )
     
     def _calculate_priority(self, post: Post) -> int:
-        """Calculate interaction priority based on post metrics."""
+        """Calculate interaction priority based on post metrics and content."""
         if not post.metrics:
             return 1
         
-        # Basic priority calculation
         priority = 1
         
         # Increase priority based on engagement
