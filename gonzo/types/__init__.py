@@ -10,6 +10,7 @@ from .state import (
     GonzoState,
     create_initial_state
 )
+from .workflow import NextStep
 
 __all__ = [
     'BaseState',
@@ -19,5 +20,6 @@ __all__ = [
     'InteractionState',
     'ResponseState',
     'GonzoState',
-    'create_initial_state'
+    'create_initial_state',
+    'NextStep'
 ]
