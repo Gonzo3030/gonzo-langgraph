@@ -1,41 +1,57 @@
 """Knowledge-enhanced assessment node."""
 
-from typing import Any, Dict, List, Optional
+from typing import Dict, Any, Optional
 from datetime import datetime
 from langchain_core.language_models import BaseLLM
+from langchain_core.messages import SystemMessage, HumanMessage
 
-from .new_assessment import assess_input
-from ..types import BaseState
+from ..types import GonzoState
 
-def enhance_assessment(state: BaseState, 
-                     assessment: Dict[str, Any],
-                     knowledge_base: Any,
-                     llm: BaseLLM) -> Dict[str, Any]:
+async def enhance_assessment(state: GonzoState, llm: Optional[BaseLLM] = None) -> Dict[str, Any]:
     """Enhance assessment with knowledge base context.
     
     Args:
-        state: Current system state
-        assessment: Initial assessment results
-        knowledge_base: Knowledge base for enhancement
-        llm: Language model for analysis
+        state: Current state
+        llm: Optional language model (for testing)
         
     Returns:
-        Enhanced assessment
+        Enhanced assessment results
     """
-    # Get relevant knowledge
-    if 'patterns' in assessment:
-        for pattern in assessment['patterns']:
-            # Search knowledge base for related patterns
-            related_knowledge = knowledge_base.search(
-                query=pattern,
-                limit=3
-            )
+    try:
+        if not state.patterns:
+            return {"state": state, "next": "error"}
             
-            # Enhance pattern with historical context
-            pattern['historical_context'] = related_knowledge
-    
-    # Update significance based on knowledge
-    if related_knowledge:
-        assessment['significance'] *= 1.2  # Increase significance if we have relevant knowledge
-    
-    return assessment
+        # Use patterns to get relevant knowledge
+        knowledge_context = {}
+        for pattern in state.patterns:
+            if pattern.get('type') == 'manipulation':
+                knowledge_context['manipulation_tactics'] = [
+                    "Media reality distortion",
+                    "Corporate narrative control",
+                    "Digital consciousness manipulation"
+                ]
+                
+        # Enhance pattern analysis
+        if llm:
+            system_prompt = """You are Dr. Gonzo's analytical engine. 
+            Enhance pattern analysis with your knowledge spanning 1974-3030."""
+            
+            human_prompt = f"""Original patterns: {state.patterns}
+            Knowledge context: {knowledge_context}
+            
+            Enhance the analysis with temporal connections and dystopian implications."""
+            
+            response = await llm.ainvoke([
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=human_prompt)
+            ])
+            
+            # Update patterns with enhanced analysis
+            for pattern in state.patterns:
+                pattern['enhanced_analysis'] = response
+                pattern['knowledge_enhanced'] = True
+                
+        return {"state": state, "next": "respond"}
+        
+    except Exception as e:
+        return {"state": state, "next": "error"}
