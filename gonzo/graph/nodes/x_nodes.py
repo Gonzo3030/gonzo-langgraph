@@ -1,37 +1,26 @@
-from typing import Dict, Optional
-from langchain_core.runnables import RunnableConfig
-from ...types.base import GonzoState
-from ...integrations.x.client import XClient
+"""X (Twitter) integration nodes."""
+
+from typing import Dict, Any, Optional
+from datetime import datetime, UTC
+from ...types import GonzoState
 
 class XNodes:
-    """Collection of X-related graph nodes."""
+    """Handles X (Twitter) interactions."""
     
     def __init__(self):
-        """Initialize X nodes."""
-        self._client = None
+        self.last_check = datetime.now(UTC)
     
-    @property
-    def client(self) -> XClient:
-        """Lazy initialization of X client."""
-        if self._client is None:
-            self._client = XClient()
-        return self._client
+    async def monitor_content(self, state: GonzoState) -> Dict[str, Any]:
+        """Monitor for new X content."""
+        # This is a placeholder - implement actual X monitoring
+        return {"state": state}
     
-    async def process_mentions(self, state: GonzoState, config: Optional[RunnableConfig] = None) -> Dict[str, GonzoState]:
-        """Process new mentions."""
-        try:
-            mentions = await self.client.fetch_mentions()
-            # Process mentions logic here
-            return {"state": state}
-        except Exception as e:
-            state.add_error(f"Error processing mentions: {str(e)}")
-            return {"state": state}
+    async def process_mentions(self, state: GonzoState) -> Dict[str, Any]:
+        """Process X mentions."""
+        # This is a placeholder - implement mention processing
+        return {"state": state}
     
-    async def update_metrics(self, state: GonzoState, config: Optional[RunnableConfig] = None) -> Dict[str, GonzoState]:
-        """Update metrics for tracked posts."""
-        try:
-            # Update metrics logic here
-            return {"state": state}
-        except Exception as e:
-            state.add_error(f"Error updating metrics: {str(e)}")
-            return {"state": state}
+    async def send_response(self, state: GonzoState) -> Dict[str, Any]:
+        """Send response to X."""
+        # This is a placeholder - implement response sending
+        return {"state": state}
