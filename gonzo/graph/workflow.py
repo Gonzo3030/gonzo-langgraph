@@ -9,87 +9,16 @@ from ..state.x_state import XState, MonitoringState
 
 StateType = TypeVar("StateType", bound=BaseModel)
 
-# Initialize components
-x_nodes = XNodes()
-rag_nodes = RAGNodes()
-
-async def handle_content_monitor(state: GonzoState) -> Dict[str, Any]:
-    """Content monitoring node handler."""
-    # Ensure X state exists
-    if not hasattr(state, 'x_state'):
-        state.x_state = XState()
-    if not hasattr(state, 'monitoring_state'):
-        state.monitoring_state = MonitoringState()
+def create_workflow(test_mode: bool = False) -> StateGraph:
+    """Create the main Gonzo workflow graph.
     
-    # Run content monitoring
-    state_dict = state.dict()
-    updated_state = await x_nodes.monitor_content(state_dict)
+    Args:
+        test_mode: Whether to run in test mode
+    """
+    # Initialize components
+    x_nodes = XNodes()
+    rag_nodes = RAGNodes(test_mode=test_mode)
     
-    # Update state with monitoring results
-    state.x_state = updated_state['x_state']
-    if 'new_content' in updated_state:
-        state.discovered_content = updated_state['new_content']
-        state.next_step = NextStep.RAG  # Proceed to RAG analysis
-    else:
-        state.next_step = NextStep.QUEUE  # No new content, check queues
-    
-    return {"state": state}
-
-async def handle_rag_analysis(state: GonzoState) -> Dict[str, Any]:
-    """RAG analysis node handler."""
-    # Run RAG analysis on discovered content
-    updated_state = await rag_nodes.analyze_content(state)
-    
-    # Move to next step
-    state = updated_state['state']
-    state.next_step = NextStep.ASSESSMENT
-    
-    return {"state": state}
-
-async def handle_assessment(state: GonzoState) -> Dict[str, Any]:
-    """Assessment node handler."""
-    # Use RAG analysis results to determine response strategy
-    state.next_step = NextStep.QUEUE
-    return {"state": state}
-
-async def handle_queue_processing(state: GonzoState) -> Dict[str, Any]:
-    """Queue processing node handler."""
-    if not hasattr(state, 'x_state'):
-        state.x_state = XState()
-    
-    # Process queues
-    state_dict = state.dict()
-    updated_state = await x_nodes.process_queues(state_dict)
-    
-    # Update state with queue results
-    state.x_state = updated_state['x_state']
-    if 'posted_content' in updated_state:
-        state.posted_content = updated_state['posted_content']
-    if 'interactions' in updated_state:
-        state.interactions = updated_state['interactions']
-    
-    # Back to monitoring
-    state.next_step = NextStep.MONITOR
-    
-    return {"state": state}
-
-def router(state: GonzoState) -> str:
-    """Router node for the workflow."""
-    if not state.next_step:
-        state.next_step = NextStep.MONITOR
-    
-    next_steps = {
-        NextStep.MONITOR: "content_monitor",
-        NextStep.RAG: "rag_analysis",
-        NextStep.ASSESSMENT: "assessment",
-        NextStep.QUEUE: "queue_processing",
-        NextStep.END: "end"
-    }
-    
-    return next_steps.get(state.next_step, "end")
-
-def create_workflow() -> StateGraph:
-    """Create the main Gonzo workflow graph."""
     # Initialize the graph
     workflow = StateGraph(GonzoState)
     
