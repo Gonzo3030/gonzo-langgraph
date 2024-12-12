@@ -3,6 +3,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 from pydantic import BaseModel
 from langchain_core.messages import BaseMessage
+from .social import Post
 
 class NextStep(str, Enum):
     """Possible next steps in the workflow."""
@@ -19,6 +20,7 @@ class GonzoState(BaseModel):
     data: Dict[str, Any] = {}
     error_log: List[Dict[str, Any]] = []
     step_log: List[Dict[str, Any]] = []
+    discovered_content: List[Post] = []  # Added for content discovery
     
     def add_error(self, error: str, context: Dict[str, Any] = {}):
         """Log an error with timestamp."""
