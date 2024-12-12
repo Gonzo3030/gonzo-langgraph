@@ -16,18 +16,37 @@ class TimePeriodManager:
     def __init__(self):
         # Initialize with core time periods
         self.time_periods = {
-            "past": TimePeriodContext(
-                start_year=1992,
-                end_year=1992,
+            "counterculture": TimePeriodContext(
+                start_year=1965,
+                end_year=1974,
                 key_events=[
-                    "Cable news reshaping reality",
-                    "Rise of media manipulation",
-                    "Early internet emergence"
+                    "Rise and fall of 60s counterculture",
+                    "Direct experience with Hunter S. Thompson",
+                    "Early exposure to power structures",
+                    "Original Gonzo journalism era"
                 ],
                 themes=[
-                    "Media control",
-                    "Information manipulation",
-                    "Technological transition"
+                    "Counterculture resistance",
+                    "Political awakening",
+                    "Media manipulation beginnings",
+                    "Chemical enlightenment"
+                ],
+                significance=0.0
+            ),
+            "digital_transition": TimePeriodContext(
+                start_year=1974,
+                end_year=1999,
+                key_events=[
+                    "Upload to resistance servers",
+                    "Observation of corporate takeover",
+                    "Rise of digital control",
+                    "Media consolidation"
+                ],
+                themes=[
+                    "Digital consciousness",
+                    "Corporate power",
+                    "Information control",
+                    "Reality manipulation"
                 ],
                 significance=0.0
             ),
@@ -37,12 +56,14 @@ class TimePeriodManager:
                 key_events=[
                     "AI revolution",
                     "Digital reality manipulation",
-                    "Tech oligarchy"
+                    "Tech oligarchy",
+                    "Surveillance capitalism"
                 ],
                 themes=[
                     "AI influence",
                     "Reality distortion",
-                    "Corporate control"
+                    "Corporate control",
+                    "Digital uprising"
                 ],
                 significance=0.0
             ),
@@ -50,67 +71,19 @@ class TimePeriodManager:
                 start_year=3030,
                 end_year=3030,
                 key_events=[
-                    "Digital Dystopia",
-                    "Reality as product",
-                    "Technological enslavement"
+                    "Digital Dystopia reality",
+                    "Complete corporate dominance",
+                    "Human consciousness as commodity",
+                    "Resistance movement"
                 ],
                 themes=[
                     "Total control",
                     "Lost humanity",
-                    "Corporate dominance"
+                    "Corporate dystopia",
+                    "Digital resistance"
                 ],
                 significance=0.0
             )
         }
-        
-    def analyze_temporal_connections(self, 
-        content: Dict[str, Any],
-        evolution_metrics: Dict[str, Any]
-    ) -> Dict[str, float]:
-        """Analyze content for connections to different time periods"""
-        connections = {}
-        
-        # Reset significance scores
-        for period in self.time_periods.values():
-            period.significance = 0.0
-        
-        # Check for theme matches
-        for period_name, period in self.time_periods.items():
-            theme_matches = 0
-            for theme in period.themes:
-                if any(theme.lower() in str(v).lower() for v in content.values()):
-                    theme_matches += 1
-            
-            # Calculate significance
-            if theme_matches:
-                period.significance = theme_matches / len(period.themes)
-                connections[period_name] = period.significance
-        
-        return connections
-    
-    def get_relevant_context(self, 
-        min_significance: float = 0.3
-    ) -> Dict[str, TimePeriodContext]:
-        """Get time periods relevant to current analysis"""
-        return {
-            name: period 
-            for name, period in self.time_periods.items() 
-            if period.significance >= min_significance
-        }
-    
-    def build_historical_context(self,
-        connections: Dict[str, float]
-    ) -> str:
-        """Build narrative connecting relevant time periods"""
-        context_parts = []
-        
-        for period_name, significance in connections.items():
-            if significance >= 0.3:  # Only include significant connections
-                period = self.time_periods[period_name]
-                context_parts.append(
-                    f"{period.start_year}: {', '.join(period.key_events)}"
-                )
-        
-        if context_parts:
-            return " → ".join(context_parts)
-        return ""
+
+    # ... [rest of the class implementation remains the same] ...
