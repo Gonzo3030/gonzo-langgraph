@@ -9,6 +9,46 @@ from ..state.x_state import XState, MonitoringState
 
 StateType = TypeVar("StateType", bound=BaseModel)
 
+def handle_content_monitor(state: GonzoState) -> Dict[str, Any]:
+    """Handle content monitoring node."""
+    # Monitor for new content
+    return {"state": state}
+
+def handle_rag_analysis(state: GonzoState) -> Dict[str, Any]:
+    """Handle RAG analysis node."""
+    # Perform RAG analysis
+    return {"state": state}
+
+def handle_assessment(state: GonzoState) -> Dict[str, Any]:
+    """Handle assessment node."""
+    # Perform content assessment
+    return {"state": state}
+
+def handle_queue_processing(state: GonzoState) -> Dict[str, Any]:
+    """Handle response queue processing."""
+    # Process response queue
+    return {"state": state}
+
+def router(state: Dict[str, Any]) -> str:
+    """Route to next step based on state."""
+    state = cast(GonzoState, state["state"])
+    
+    # Check for errors
+    if state.input_type == "error":
+        return "end"
+    
+    # Route based on current state and next steps
+    if not state.input_text:
+        return "content_monitor"
+    elif not state.patterns:
+        return "rag_analysis"
+    elif not state.current_significance:
+        return "assessment"
+    elif not state.response_sent:
+        return "queue_processing"
+    else:
+        return "end"
+
 def create_workflow(test_mode: bool = False) -> StateGraph:
     """Create the main Gonzo workflow graph.
     
