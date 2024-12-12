@@ -1,13 +1,22 @@
-"""Model configurations for language models."""
+"""Model configuration for Gonzo's LLM interface."""
 
-# Core models
-MODEL_NAME = "claude-3-sonnet-20241022"  # Default model - Latest Claude 3.5 Sonnet
+from typing import Dict, Any
 
-# Model configurations
-MODEL_CONFIGS = {
-    "claude-3-sonnet-20241022": {
-        "max_tokens": 4096,
-        "temperature": 0.7,
-        "top_p": 1.0
+# Core model configuration
+MODEL_CONFIG = {
+    "model": "claude-3-sonnet-20241022",
+    "max_tokens": 4096,
+    "temperature": 0.7,
+    "top_p": 1.0
+}
+
+# Model name constant
+MODEL_NAME = MODEL_CONFIG["model"]
+
+# Runtime configuration for graph
+GRAPH_CONFIG = {
+    "configurable": {
+        "model": MODEL_NAME,
+        "streaming": True
     }
 }
