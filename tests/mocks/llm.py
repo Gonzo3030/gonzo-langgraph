@@ -1,7 +1,8 @@
 from typing import List, Any, Optional
 from langchain_core.embeddings import Embeddings
-from langchain_core.language_models import LLM
-from langchain_core.outputs import LLMResult
+from langchain_core.outputs import Generation, GenerationChunk, LLMResult
+from langchain_core.language_models import BaseLLM
+from langchain_core.callbacks.manager import CallbackManagerForLLMRun
 
 class MockEmbeddings(Embeddings):
     """Mock embeddings that implement the Embeddings interface."""
@@ -14,25 +15,25 @@ class MockEmbeddings(Embeddings):
         """Return mock embedding for query."""
         return [0.1, 0.2, 0.3]
 
-class MockLLM(LLM):
-    """Mock LLM that implements the LLM interface."""
+class MockLLM(BaseLLM):
+    """Mock LLM that implements the BaseLLM interface."""
     
-    def _call(self, prompt: str, stop: Optional[List[str]] = None, **kwargs) -> str:
-        """Mock LLM call."""
-        if 'Bitcoin' in prompt:
-            return "Analysis: Potential narrative manipulation around cryptocurrency adoption"
-        elif 'AI' in prompt:
-            return "Analysis: Appeal to authority pattern in AI regulation discussion"
-        return "Analysis: No clear manipulation patterns detected"
+    def _generate(self, prompts: List[str], stop: Optional[List[str]] = None, run_manager: Optional[CallbackManagerForLLMRun] = None, **kwargs) -> LLMResult:
+        generations = []
+        for prompt in prompts:
+            if 'Bitcoin' in prompt:
+                text = "Analysis: Potential narrative manipulation around cryptocurrency adoption"
+            elif 'AI' in prompt:
+                text = "Analysis: Appeal to authority pattern in AI regulation discussion"
+            else:
+                text = "Analysis: No clear manipulation patterns detected"
+            generations.append([Generation(text=text)])
+        return LLMResult(generations=generations)
     
     @property
     def _llm_type(self) -> str:
         """Return identifier for mock LLM."""
         return "mock"
-    
-    def _identifying_params(self) -> dict:
-        """Return empty params for mock."""
-        return {}
 
 class MockVectorStore:
     """Mock vector store for testing."""
