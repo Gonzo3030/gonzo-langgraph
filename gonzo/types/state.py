@@ -1,7 +1,8 @@
-from typing import Dict, List, Optional, Any, Set
+from typing import Dict, List, Optional, Any, Set, Sequence
 from datetime import datetime
 from pydantic import BaseModel, Field
 from enum import Enum
+from langchain_core.messages import BaseMessage
 
 class BaseState(BaseModel):
     """Base state for graph nodes"""
@@ -31,6 +32,7 @@ class GonzoState(BaseModel):
     input_text: Optional[str] = None
     input_type: Optional[str] = None
     source_id: Optional[str] = None
+    messages: List[BaseMessage] = Field(default_factory=list)
     
     # Analysis state
     patterns: List[Dict[str, Any]] = Field(default_factory=list)
@@ -66,3 +68,18 @@ class GonzoState(BaseModel):
             
     class Config:
         arbitrary_types_allowed = True
+
+def create_initial_state(messages: Sequence[BaseMessage]) -> GonzoState:
+    """Create initial state with messages.
+    
+    Args:
+        messages: Initial message sequence
+        
+    Returns:
+        Initial GonzoState
+    """
+    return GonzoState(
+        messages=list(messages),
+        timestamp=datetime.now(),
+        input_type="message"
+    )
