@@ -8,9 +8,27 @@ from ...rag.base import MediaAnalysisRAG
 class RAGNodes:
     """Collection of RAG analysis nodes."""
     
-    def __init__(self):
-        """Initialize RAG nodes."""
-        self.rag = MediaAnalysisRAG()
+    def __init__(self, test_mode: bool = False):
+        """Initialize RAG nodes.
+        
+        Args:
+            test_mode: Whether to run in test mode with mocks
+        """
+        self.rag = None  # Initialize later to allow mock injection
+        self.test_mode = test_mode
+    
+    def init_rag(self, mock_embeddings=None, mock_llm=None):
+        """Initialize or update RAG system.
+        
+        Args:
+            mock_embeddings: Mock embeddings for testing
+            mock_llm: Mock LLM for testing
+        """
+        self.rag = MediaAnalysisRAG(
+            test_mode=self.test_mode,
+            mock_embeddings=mock_embeddings,
+            mock_llm=mock_llm
+        )
     
     async def analyze_content(self, state: GonzoState, config: Optional[RunnableConfig] = None) -> Dict[str, GonzoState]:
         """Run RAG analysis on new content.
@@ -26,6 +44,9 @@ class RAGNodes:
             Updated state dict
         """
         try:
+            if not self.rag:
+                self.init_rag()
+                
             # Get unanalyzed content
             unanalyzed = self._get_unanalyzed_content(state)
             
