@@ -3,6 +3,14 @@ name = "gonzo-langgraph"
 version = "0.1.0"
 description = "A dystopian attorney from 3030, here to analyze media and prevent catastrophic timelines."
 requires-python = ">=3.10,<3.13"
+dependencies = [
+    "langgraph>=0.0.15",
+    "langchain",
+    "langchain-core",
+    "pydantic>=2.0",
+    "youtube-transcript-api",
+    "google-api-python-client"
+]
 
 [build-system]
 requires = ["setuptools>=61.0"]
