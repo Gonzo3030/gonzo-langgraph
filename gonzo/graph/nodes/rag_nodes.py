@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from datetime import datetime
 from langchain_core.runnables import RunnableConfig
 from ...types.base import GonzoState
@@ -15,31 +15,45 @@ class RAGNodes:
     async def analyze_content(self, state: GonzoState, config: Optional[RunnableConfig] = None) -> Dict[str, GonzoState]:
         """Run RAG analysis on new content.
         
-        Analyzes content for manipulation patterns and updates state with results.
+        Uses MediaAnalysisRAG to analyze content for manipulation patterns.
+        Updates state with analysis results.
+        
+        Args:
+            state: Current workflow state
+            config: Optional runnable config
+            
+        Returns:
+            Updated state dict
         """
         try:
-            # Get new content from state that hasn't been analyzed
-            new_content = self._get_unanalyzed_content(state)
+            # Get unanalyzed content
+            unanalyzed = self._get_unanalyzed_content(state)
             
-            # Analyze each piece of content
-            for content in new_content:
-                analysis = self.rag.analyze_text(content.content)
-                
-                # Store analysis in state
+            if unanalyzed:
+                # Initialize content analysis dict if needed
                 if 'content_analysis' not in state.data:
                     state.data['content_analysis'] = {}
                 
-                state.data['content_analysis'][content.id] = {
-                    'timestamp': datetime.now().isoformat(),
-                    'content': content.dict(),
-                    'analysis': analysis
-                }
-                
-                # Log the analysis step
-                state.log_step('rag_analysis', {
-                    'content_id': content.id,
-                    'has_analysis': True
-                })
+                # Analyze each piece of content
+                for content in unanalyzed:
+                    # Run RAG analysis
+                    analysis = self.rag.analyze_text(content.content)
+                    
+                    # Store analysis results
+                    state.data['content_analysis'][content.id] = {
+                        'timestamp': datetime.now().isoformat(),
+                        'content': content.dict(),
+                        'analysis': analysis
+                    }
+                    
+                    # Log the step
+                    state.log_step('rag_analysis', {
+                        'content_id': content.id,
+                        'has_analysis': True
+                    })
+            
+            # Move to next step
+            state.next_step = 'assessment'
             
             return {"state": state}
             
@@ -48,14 +62,17 @@ class RAGNodes:
             return {"state": state}
     
     def _get_unanalyzed_content(self, state: GonzoState) -> List[Post]:
-        """Get content that hasn't been analyzed yet."""
+        """Get content that hasn't been analyzed yet.
+        
+        Args:
+            state: Current workflow state
+            
+        Returns:
+            List of unanalyzed posts
+        """
+        # Get set of already analyzed content IDs
         analyzed_ids = set(state.data.get('content_analysis', {}).keys())
         
-        # Get all discovered content
-        discovered_content = []
-        if hasattr(state, 'discovered_content'):
-            discovered_content.extend(state.discovered_content)
-        
         # Filter for unanalyzed content
-        return [content for content in discovered_content 
+        return [content for content in state.discovered_content 
                 if content.id not in analyzed_ids]
