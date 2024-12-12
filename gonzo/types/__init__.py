@@ -1,13 +1,12 @@
-from .base import GonzoState, NextStep, create_initial_state
-from .social import Post, PostMetrics, QueuedPost, PostHistory, InteractionQueue
+from .base import EntityType, TimeAwareEntity, Property, Relationship
+from .state import BaseState, EvolutionState, InteractionState
 
 __all__ = [
-    'GonzoState',
-    'NextStep',
-    'create_initial_state',
-    'Post',
-    'PostMetrics',
-    'QueuedPost',
-    'PostHistory',
-    'InteractionQueue'
+    'EntityType',
+    'TimeAwareEntity',
+    'Property',
+    'Relationship',
+    'BaseState',
+    'EvolutionState',
+    'InteractionState'
 ]
