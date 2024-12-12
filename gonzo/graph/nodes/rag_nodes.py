@@ -24,11 +24,14 @@ class RAGNodes:
             mock_embeddings: Mock embeddings for testing
             mock_llm: Mock LLM for testing
         """
-        self.rag = MediaAnalysisRAG(
-            test_mode=self.test_mode,
-            mock_embeddings=mock_embeddings,
-            mock_llm=mock_llm
-        )
+        try:
+            self.rag = MediaAnalysisRAG(
+                test_mode=self.test_mode,
+                mock_embeddings=mock_embeddings,
+                mock_llm=mock_llm
+            )
+        except Exception as e:
+            raise ValueError(f"Failed to initialize RAG system: {e}")
     
     async def analyze_content(self, state: GonzoState, config: Optional[RunnableConfig] = None) -> Dict[str, GonzoState]:
         """Run RAG analysis on new content.
@@ -57,21 +60,26 @@ class RAGNodes:
                 
                 # Analyze each piece of content
                 for content in unanalyzed:
-                    # Run RAG analysis
-                    analysis = self.rag.analyze_text(content.content)
-                    
-                    # Store analysis results
-                    state.data['content_analysis'][content.id] = {
-                        'timestamp': datetime.now().isoformat(),
-                        'content': content.dict(),
-                        'analysis': analysis
-                    }
-                    
-                    # Log the step
-                    state.log_step('rag_analysis', {
-                        'content_id': content.id,
-                        'has_analysis': True
-                    })
+                    try:
+                        # Run RAG analysis
+                        analysis = self.rag.analyze_text(content.content)
+                        
+                        # Store analysis results
+                        state.data['content_analysis'][content.id] = {
+                            'timestamp': datetime.now().isoformat(),
+                            'content': content.model_dump(),  # Use model_dump instead of dict
+                            'analysis': analysis
+                        }
+                        
+                        # Log the step
+                        state.log_step('rag_analysis', {
+                            'content_id': content.id,
+                            'has_analysis': True
+                        })
+                        
+                    except Exception as e:
+                        error_msg = f"Error analyzing content {content.id}: {str(e)}"
+                        state.add_error(error_msg)
             
             # Move to next step
             state.next_step = 'assessment'
