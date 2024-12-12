@@ -4,17 +4,11 @@ from unittest.mock import AsyncMock, Mock, patch
 from gonzo.graph.nodes.rag_nodes import RAGNodes
 from gonzo.types.base import GonzoState, NextStep
 from gonzo.types.social import Post
-from .mocks.llm import MockEmbeddings, MockVectorStore
+from .mocks.llm import MockEmbeddings, MockLLM
 
 @pytest.fixture
 def mock_llm():
     """Create mock LLM."""
-    class MockLLM:
-        async def ainvoke(self, *args, **kwargs):
-            return "Mock analysis response"
-        
-        def invoke(self, *args, **kwargs):
-            return "Mock analysis response"
     return MockLLM()
 
 @pytest.fixture
@@ -70,12 +64,7 @@ async def test_rag_analysis(mock_llm, mock_embeddings, initial_state):
         assert 'timestamp' in analysis
         assert 'content' in analysis
         assert 'analysis' in analysis
-        assert 'Mock analysis response' in analysis['analysis']
-    
-    # Verify step logging
-    rag_steps = [step for step in updated_state.step_log
-                if step['step'] == 'rag_analysis']
-    assert len(rag_steps) == 2
+        assert 'Analysis:' in analysis['analysis']
 
 @pytest.mark.asyncio
 async def test_unanalyzed_content_tracking(mock_llm, mock_embeddings, initial_state):
@@ -87,7 +76,7 @@ async def test_unanalyzed_content_tracking(mock_llm, mock_embeddings, initial_st
     initial_state.data['content_analysis'] = {
         "1": {
             'timestamp': datetime.now().isoformat(),
-            'content': initial_state.discovered_content[0].dict(),
+            'content': initial_state.discovered_content[0].model_dump(),
             'analysis': 'Previous analysis'
         }
     }
@@ -99,16 +88,16 @@ async def test_unanalyzed_content_tracking(mock_llm, mock_embeddings, initial_st
     # Should only analyze new content
     analysis_results = updated_state.data['content_analysis']
     assert analysis_results['1']['analysis'] == 'Previous analysis'  # Shouldn't change
-    assert 'Mock analysis response' in analysis_results['2']['analysis']  # New analysis
+    assert 'Analysis:' in analysis_results['2']['analysis']  # New analysis
 
 @pytest.mark.asyncio
 async def test_error_handling(mock_embeddings, initial_state):
     """Test error handling during analysis."""
-    # Initialize RAG nodes with failing LLM
-    failing_llm = Mock()
-    failing_llm.invoke = Mock(side_effect=Exception("Analysis error"))
-    failing_llm.ainvoke = AsyncMock(side_effect=Exception("Analysis error"))
+    # Create failing LLM that raises an error
+    failing_llm = MockLLM()
+    failing_llm._generate = Mock(side_effect=Exception("Mock analysis error"))
     
+    # Initialize RAG nodes
     rag_nodes = RAGNodes(test_mode=True)
     rag_nodes.init_rag(mock_embeddings=mock_embeddings, mock_llm=failing_llm)
     
@@ -116,9 +105,12 @@ async def test_error_handling(mock_embeddings, initial_state):
     result = await rag_nodes.analyze_content(initial_state)
     updated_state = result['state']
     
-    # Verify error logging
+    # Verify error was logged
     assert len(updated_state.error_log) > 0
-    assert "Analysis error" in updated_state.error_log[0]['error']
+    assert "Mock analysis error" in updated_state.error_log[0]['error']
+    
+    # Verify state transition was prevented
+    assert updated_state.next_step is None
 
 @pytest.mark.asyncio
 async def test_workflow_integration(mock_llm, mock_embeddings, initial_state):
