@@ -4,18 +4,23 @@ from unittest.mock import AsyncMock, Mock, patch
 from gonzo.graph.nodes.rag_nodes import RAGNodes
 from gonzo.types.base import GonzoState, NextStep
 from gonzo.types.social import Post
+from .mocks.llm import MockEmbeddings, MockVectorStore
 
 @pytest.fixture
-def mock_rag():
-    """Create mock RAG analyzer."""
-    class MockMediaAnalysisRAG:
-        def analyze_text(self, text: str) -> str:
-            if 'Bitcoin' in text:
-                return "Analysis: Potential narrative manipulation around cryptocurrency adoption"
-            elif 'AI' in text:
-                return "Analysis: Appeal to authority pattern in AI regulation discussion"
-            return "Analysis: No clear manipulation patterns detected"
-    return MockMediaAnalysisRAG()
+def mock_llm():
+    """Create mock LLM."""
+    class MockLLM:
+        async def ainvoke(self, *args, **kwargs):
+            return "Mock analysis response"
+        
+        def invoke(self, *args, **kwargs):
+            return "Mock analysis response"
+    return MockLLM()
+
+@pytest.fixture
+def mock_embeddings():
+    """Create mock embeddings."""
+    return MockEmbeddings()
 
 @pytest.fixture
 def sample_content():
@@ -44,11 +49,11 @@ def initial_state(sample_content):
     )
 
 @pytest.mark.asyncio
-async def test_rag_analysis(mock_rag, initial_state):
+async def test_rag_analysis(mock_llm, mock_embeddings, initial_state):
     """Test RAG analysis of discovered content."""
-    # Initialize RAG nodes with mock analyzer
-    rag_nodes = RAGNodes()
-    rag_nodes.rag = mock_rag
+    # Initialize RAG nodes in test mode
+    rag_nodes = RAGNodes(test_mode=True)
+    rag_nodes.init_rag(mock_embeddings=mock_embeddings, mock_llm=mock_llm)
     
     # Run analysis
     result = await rag_nodes.analyze_content(initial_state)
@@ -59,13 +64,13 @@ async def test_rag_analysis(mock_rag, initial_state):
     analysis_results = updated_state.data['content_analysis']
     assert len(analysis_results) == 2
     
-    # Check Bitcoin content analysis
-    bitcoin_analysis = analysis_results['1']
-    assert 'cryptocurrency' in bitcoin_analysis['analysis'].lower()
-    
-    # Check AI content analysis
-    ai_analysis = analysis_results['2']
-    assert 'authority' in ai_analysis['analysis'].lower()
+    # Check analysis entries
+    for content_id in ['1', '2']:
+        analysis = analysis_results[content_id]
+        assert 'timestamp' in analysis
+        assert 'content' in analysis
+        assert 'analysis' in analysis
+        assert 'Mock analysis response' in analysis['analysis']
     
     # Verify step logging
     rag_steps = [step for step in updated_state.step_log
@@ -73,10 +78,10 @@ async def test_rag_analysis(mock_rag, initial_state):
     assert len(rag_steps) == 2
 
 @pytest.mark.asyncio
-async def test_unanalyzed_content_tracking(mock_rag, initial_state):
+async def test_unanalyzed_content_tracking(mock_llm, mock_embeddings, initial_state):
     """Test that we only analyze new content."""
-    rag_nodes = RAGNodes()
-    rag_nodes.rag = mock_rag
+    rag_nodes = RAGNodes(test_mode=True)
+    rag_nodes.init_rag(mock_embeddings=mock_embeddings, mock_llm=mock_llm)
     
     # Add pre-existing analysis
     initial_state.data['content_analysis'] = {
@@ -92,19 +97,20 @@ async def test_unanalyzed_content_tracking(mock_rag, initial_state):
     updated_state = result['state']
     
     # Should only analyze new content
-    new_analyses = [k for k, v in updated_state.data['content_analysis'].items()
-                   if v['analysis'].startswith('Analysis:')]
-    assert len(new_analyses) == 1
-    assert "2" in new_analyses
+    analysis_results = updated_state.data['content_analysis']
+    assert analysis_results['1']['analysis'] == 'Previous analysis'  # Shouldn't change
+    assert 'Mock analysis response' in analysis_results['2']['analysis']  # New analysis
 
 @pytest.mark.asyncio
-async def test_error_handling(mock_rag, initial_state):
+async def test_error_handling(mock_embeddings, initial_state):
     """Test error handling during analysis."""
-    rag_nodes = RAGNodes()
+    # Initialize RAG nodes with failing LLM
+    failing_llm = Mock()
+    failing_llm.invoke = Mock(side_effect=Exception("Analysis error"))
+    failing_llm.ainvoke = AsyncMock(side_effect=Exception("Analysis error"))
     
-    # Make RAG analyzer raise an error
-    mock_rag.analyze_text = Mock(side_effect=Exception("Analysis error"))
-    rag_nodes.rag = mock_rag
+    rag_nodes = RAGNodes(test_mode=True)
+    rag_nodes.init_rag(mock_embeddings=mock_embeddings, mock_llm=failing_llm)
     
     # Run analysis
     result = await rag_nodes.analyze_content(initial_state)
@@ -113,3 +119,20 @@ async def test_error_handling(mock_rag, initial_state):
     # Verify error logging
     assert len(updated_state.error_log) > 0
     assert "Analysis error" in updated_state.error_log[0]['error']
+
+@pytest.mark.asyncio
+async def test_workflow_integration(mock_llm, mock_embeddings, initial_state):
+    """Test RAG integration in workflow."""
+    rag_nodes = RAGNodes(test_mode=True)
+    rag_nodes.init_rag(mock_embeddings=mock_embeddings, mock_llm=mock_llm)
+    
+    # Run analysis
+    result = await rag_nodes.analyze_content(initial_state)
+    updated_state = result['state']
+    
+    # Verify state transition
+    assert updated_state.next_step == 'assessment'  # Should move to assessment
+    
+    # Verify analysis results are ready for assessment
+    assert 'content_analysis' in updated_state.data
+    assert len(updated_state.data['content_analysis']) == 2
