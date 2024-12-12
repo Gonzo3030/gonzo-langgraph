@@ -1,15 +1,37 @@
-# API Configuration
-MAX_BATCH_SIZE = 100
-API_TIMEOUT = 30
+"""Constant values used across the system."""
 
-# Content Discovery Configuration
-MIN_RELEVANCE_SCORE = 0.6
-CHECK_INTERVAL = 300  # 5 minutes
+# Time periods
+COUNTERCULTURE_START = 1965
+COUNTERCULTURE_END = 1974
+DIGITAL_TRANSITION_START = 1974
+DIGITAL_TRANSITION_END = 1999
+PRESENT_YEAR = 2024
+FUTURE_YEAR = 3030
 
-# State Management
-STATE_SAVE_INTERVAL = 600  # 10 minutes
-MAX_HISTORY_SIZE = 1000
+# Entity types
+ENTITY_TYPES = [
+    "person",
+    "organization",
+    "location",
+    "event",
+    "concept",
+    "narrative",
+    "pattern",
+    "manipulation"
+]
 
-# Error Handling
-MAX_CONSECUTIVE_ERRORS = 5
-ERROR_COOLDOWN = 300  # 5 minutes
+# Response types
+RESPONSE_TYPES = [
+    "quick_take",
+    "thread_analysis",
+    "historical_bridge",
+    "interaction"
+]
+
+# State keys
+STATE_KEYS = [
+    "evolution",
+    "interaction",
+    "memory",
+    "pattern"
+]
