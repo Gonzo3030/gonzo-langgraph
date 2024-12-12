@@ -1,10 +1,12 @@
+"""Workflow types for Gonzo system."""
+
 from enum import Enum
 
 class NextStep(str, Enum):
-    """Possible next steps in the workflow"""
+    """Possible next steps in workflow."""
+    ASSESS = "assess"
     ANALYZE = "analyze"
-    EVOLVE = "evolve"
-    GENERATE_RESPONSE = "generate_response"
-    SEND_RESPONSE = "send_response"
+    RESPOND = "respond"
+    MONITOR = "monitor"
     END = "end"
     ERROR = "error"
