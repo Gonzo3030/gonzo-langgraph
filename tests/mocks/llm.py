@@ -1,18 +1,30 @@
-from typing import Any, List, Optional
-from langchain_core.messages import BaseMessage
-from langchain_core.outputs import ChatResult
+from typing import List, Any
+from unittest.mock import MagicMock
 
-class MockChatOpenAI:
-    """Mock ChatOpenAI for testing."""
+class MockEmbeddings:
+    """Mock embeddings for testing."""
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        """Return mock embeddings."""
+        return [[0.1, 0.2, 0.3] for _ in texts]
     
-    def __init__(self, *args, **kwargs):
-        self.args = args
-        self.kwargs = kwargs
-        
-    async def invoke(self, messages: List[BaseMessage], **kwargs) -> ChatResult:
-        """Mock invoke method."""
-        return ChatResult(content="Mock response")
+    def embed_query(self, text: str) -> List[float]:
+        """Return mock query embedding."""
+        return [0.1, 0.2, 0.3]
+
+class MockVectorStore:
+    """Mock vector store for testing."""
+    def add_texts(self, texts: List[str], metadatas: List[dict] = None):
+        """Mock adding texts."""
+        pass
     
-    async def ainvoke(self, messages: List[BaseMessage], **kwargs) -> ChatResult:
-        """Mock async invoke method."""
-        return ChatResult(content="Mock async response")
+    def similarity_search(self, query: str, k: int = 4) -> List[Any]:
+        """Return mock similar documents."""
+        return [{
+            'page_content': 'Mock content',
+            'metadata': {'source': 'test'}
+        }]
+    
+    @classmethod
+    def from_texts(cls, texts: List[str], embedding, metadatas: List[dict] = None):
+        """Create mock store."""
+        return cls()
