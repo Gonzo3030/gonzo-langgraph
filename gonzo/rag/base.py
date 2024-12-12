@@ -1,6 +1,6 @@
 """Base RAG implementation for media analysis."""
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 import json
 from pathlib import Path
 import logging
@@ -19,7 +19,10 @@ class MediaAnalysisRAG:
         self,
         patterns_path: Optional[str] = None,
         embeddings_model: Optional[str] = None,
-        llm_model: Optional[str] = None
+        llm_model: Optional[str] = None,
+        test_mode: bool = False,
+        mock_embeddings: Any = None,
+        mock_llm: Any = None
     ):
         """Initialize the RAG system.
         
@@ -27,6 +30,9 @@ class MediaAnalysisRAG:
             patterns_path: Path to patterns JSON file
             embeddings_model: Name of embeddings model to use
             llm_model: Name of LLM model to use
+            test_mode: Whether to run in test mode
+            mock_embeddings: Mock embeddings for testing
+            mock_llm: Mock LLM for testing
         """
         # Load patterns
         if patterns_path:
@@ -37,8 +43,12 @@ class MediaAnalysisRAG:
         self.patterns = self._load_patterns()
         
         # Initialize models
-        self.embeddings = OpenAIEmbeddings(model=embeddings_model or "text-embedding-ada-002")
-        self.llm = ChatOpenAI(model_name=llm_model or "gpt-3.5-turbo")
+        if test_mode:
+            self.embeddings = mock_embeddings
+            self.llm = mock_llm
+        else:
+            self.embeddings = OpenAIEmbeddings(model=embeddings_model or "text-embedding-ada-002")
+            self.llm = ChatOpenAI(model_name=llm_model or "gpt-3.5-turbo")
         
         # Create vector store
         self.vectorstore = self._create_vectorstore()
