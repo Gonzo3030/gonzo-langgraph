@@ -1,121 +1,72 @@
-from typing import Dict, Any, TypeVar, Annotated, Sequence, cast
+"""Core workflow definition for Gonzo system."""
+
+from typing import Dict, Any, TypeVar, Annotated
+from langchain_core.language_models import BaseLLM
 from langgraph.graph import StateGraph, END
-from pydantic import BaseModel
 
-from ..types import GonzoState, NextStep
-from .nodes.x_nodes import XNodes
-from .nodes.rag_nodes import RAGNodes
-from ..state.x_state import XState, MonitoringState
+from ..config import MODEL_CONFIG, GRAPH_CONFIG
+from ..types import GonzoState
+from .nodes import initial_assessment, analyze_patterns, generate_response
 
-StateType = TypeVar("StateType", bound=BaseModel)
-
-def handle_content_monitor(state: GonzoState) -> Dict[str, Any]:
-    """Handle content monitoring node."""
-    # Monitor for new content
-    return {"state": state}
-
-def handle_rag_analysis(state: GonzoState) -> Dict[str, Any]:
-    """Handle RAG analysis node."""
-    # Perform RAG analysis
-    return {"state": state}
-
-def handle_assessment(state: GonzoState) -> Dict[str, Any]:
-    """Handle assessment node."""
-    # Perform content assessment
-    return {"state": state}
-
-def handle_queue_processing(state: GonzoState) -> Dict[str, Any]:
-    """Handle response queue processing."""
-    # Process response queue
-    return {"state": state}
-
-def router(state: Dict[str, Any]) -> str:
-    """Route to next step based on state."""
-    state = cast(GonzoState, state["state"])
-    
-    # Check for errors
-    if state.input_type == "error":
-        return "end"
-    
-    # Route based on current state and next steps
-    if not state.input_text:
-        return "content_monitor"
-    elif not state.patterns:
-        return "rag_analysis"
-    elif not state.current_significance:
-        return "assessment"
-    elif not state.response_sent:
-        return "queue_processing"
-    else:
-        return "end"
-
-def create_workflow(test_mode: bool = False) -> StateGraph:
-    """Create the main Gonzo workflow graph.
+def create_workflow(
+    llm: Optional[BaseLLM] = None,
+    config: Optional[Dict[str, Any]] = None
+) -> StateGraph:
+    """Create the main workflow graph.
     
     Args:
-        test_mode: Whether to run in test mode
+        llm: Optional language model override
+        config: Optional configuration override
+        
+    Returns:
+        Compiled workflow graph
     """
-    # Initialize components
-    x_nodes = XNodes()
-    rag_nodes = RAGNodes(test_mode=test_mode)
-    
-    # Initialize the graph
+    # Initialize graph with state type
     workflow = StateGraph(GonzoState)
     
     # Add nodes
     workflow.add_node("start", lambda x: {"state": x})
-    workflow.add_node("content_monitor", handle_content_monitor)
-    workflow.add_node("rag_analysis", handle_rag_analysis)
-    workflow.add_node("assessment", handle_assessment)
-    workflow.add_node("queue_processing", handle_queue_processing)
+    workflow.add_node("assess", initial_assessment)
+    workflow.add_node("analyze", analyze_patterns)
+    workflow.add_node("respond", generate_response)
     workflow.add_node("end", lambda x: {"state": x})
     
-    # Set up the entry point
+    # Set entry point
     workflow.set_entry_point("start")
     
-    # Add conditional edges
+    # Add edges with conditional routing
     workflow.add_conditional_edges(
         "start",
-        lambda x: "content_monitor",
-        {"content_monitor": "content_monitor"}
-    )
-    
-    workflow.add_conditional_edges(
-        "content_monitor",
-        router,
+        lambda x: x["state"].messages.current_message is not None,
         {
-            "rag_analysis": "rag_analysis",
-            "queue_processing": "queue_processing",
-            "end": "end"
+            True: "assess",
+            False: "end"
         }
     )
     
     workflow.add_conditional_edges(
-        "rag_analysis",
-        router,
+        "assess",
+        lambda x: len(x["state"].analysis.patterns) > 0,
         {
-            "assessment": "assessment",
-            "queue_processing": "queue_processing",
-            "end": "end"
+            True: "analyze",
+            False: "end"
         }
     )
     
     workflow.add_conditional_edges(
-        "assessment",
-        router,
+        "analyze",
+        lambda x: x["state"].analysis.significance > 0.5,
         {
-            "queue_processing": "queue_processing",
-            "end": "end"
+            True: "respond",
+            False: "end"
         }
     )
     
-    workflow.add_conditional_edges(
-        "queue_processing",
-        router,
-        {
-            "content_monitor": "content_monitor",
-            "end": "end"
-        }
-    )
+    workflow.add_edge("respond", "end")
     
+    # Compile with config
+    final_config = {**GRAPH_CONFIG}
+    if config:
+        final_config.update(config)
+        
     return workflow.compile()
