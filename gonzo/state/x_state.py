@@ -1,56 +1,38 @@
-from typing import List, Optional, Dict, Any
+"""State management for X integration."""
+
+from typing import Dict, List, Optional, Any
 from datetime import datetime
 from pydantic import BaseModel, Field
-from ..types.social import PostHistory, InteractionQueue, QueuedPost, Post
 
 class MonitoringState(BaseModel):
     """State for content monitoring."""
-    tracked_topics: List[str] = Field(default_factory=list)
-    tracked_users: List[str] = Field(default_factory=list)
-    last_check_times: Dict[str, datetime] = Field(default_factory=dict)
-    
-    def add_topic(self, topic: str):
-        """Add a topic to track."""
-        if topic not in self.tracked_topics:
-            self.tracked_topics.append(topic)
-            self.last_check_times[f'topic:{topic}'] = datetime.now()
-    
-    def add_user(self, user_id: str):
-        """Add a user to track."""
-        if user_id not in self.tracked_users:
-            self.tracked_users.append(user_id)
-            self.last_check_times[f'user:{user_id}'] = datetime.now()
+    last_check: datetime = Field(default_factory=datetime.now)
+    monitored_keywords: List[str] = Field(default_factory=list)
+    monitored_accounts: List[str] = Field(default_factory=list)
+    active_threads: Dict[str, List[str]] = Field(default_factory=dict)
 
 class XState(BaseModel):
-    """State management for X integration."""
-    post_history: PostHistory = Field(default_factory=PostHistory)
-    post_queue: List[QueuedPost] = Field(default_factory=list)
-    interaction_queue: InteractionQueue = Field(default_factory=InteractionQueue)
-    rate_limit_state: Dict[str, Any] = Field(default_factory=dict)
-    last_monitor_time: Optional[datetime] = None
-    active_searches: List[str] = Field(default_factory=list)
-    error_log: List[Dict[str, Any]] = Field(default_factory=list)
+    """State for X interactions."""
+    monitoring: MonitoringState = Field(default_factory=MonitoringState)
+    pending_responses: List[Dict[str, Any]] = Field(default_factory=list)
+    active_conversations: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    rate_limit_info: Dict[str, Any] = Field(default_factory=dict)
     
-    def log_error(self, error: str, context: Dict[str, Any] = {}):
-        """Log an error with timestamp and context."""
-        self.error_log.append({
-            'timestamp': datetime.now(),
-            'error': error,
-            'context': context
-        })
-    
-    def add_to_post_queue(self, post: QueuedPost):
-        """Add post to queue with priority handling."""
-        self.post_queue.append(post)
-        self.post_queue.sort(key=lambda x: x.priority, reverse=True)
-    
-    def record_post(self, post: Post):
-        """Record a published post in history."""
-        self.post_history.add_post(post)
-    
-    def update_rate_limits(self, endpoint: str, remaining: int, reset_time: datetime):
-        """Update rate limit information for an endpoint."""
-        self.rate_limit_state[endpoint] = {
-            'remaining': remaining,
-            'reset_time': reset_time
-        }
+    def update_monitoring(self, keywords: Optional[List[str]] = None, accounts: Optional[List[str]] = None):
+        """Update monitoring configuration."""
+        if keywords:
+            self.monitoring.monitored_keywords = keywords
+        if accounts:
+            self.monitoring.monitored_accounts = accounts
+            
+    def add_pending_response(self, response_data: Dict[str, Any]):
+        """Add response to pending queue."""
+        self.pending_responses.append(response_data)
+        
+    def start_conversation(self, thread_id: str, conversation_data: Dict[str, Any]):
+        """Start tracking a new conversation."""
+        self.active_conversations[thread_id] = conversation_data
+        
+    def update_rate_limits(self, limits: Dict[str, Any]):
+        """Update rate limit information."""
+        self.rate_limit_info = limits
