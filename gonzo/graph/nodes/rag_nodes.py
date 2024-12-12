@@ -104,3 +104,19 @@ class RAGNodes:
             state.add_error(f"Error in RAG analysis: {str(e)}")
             state.next_step = None
             return {"state": state}
+        
+    def _get_unanalyzed_content(self, state: GonzoState) -> List[Post]:
+        """Get content that hasn't been analyzed yet.
+        
+        Args:
+            state: Current workflow state
+            
+        Returns:
+            List of unanalyzed posts
+        """
+        # Get set of already analyzed content IDs
+        analyzed_ids = set(state.data.get('content_analysis', {}).keys())
+        
+        # Filter for unanalyzed content
+        return [content for content in state.discovered_content 
+                if content.id not in analyzed_ids]
