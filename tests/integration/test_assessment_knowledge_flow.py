@@ -2,7 +2,7 @@ import pytest
 import asyncio
 from datetime import datetime, timedelta
 
-from ..mocks.llm import MockLLM
+from tests.mocks.llm import MockLLM
 from gonzo.types import GonzoState
 from gonzo.nodes.pattern_detection import detect_patterns
 
