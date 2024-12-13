@@ -10,8 +10,7 @@ from ..config import (
     X_API_KEY,
     X_API_SECRET,
     X_ACCESS_TOKEN,
-    X_ACCESS_TOKEN_SECRET,
-    X_BEARER_TOKEN
+    X_ACCESS_SECRET  # Note: Using ACCESS_SECRET instead of ACCESS_TOKEN_SECRET
 )
 from ..state.x_state import XState
 
@@ -32,13 +31,12 @@ class XClient:
     
     def __init__(self):
         """Initialize X client."""
-        # Initialize API v2 client
         self.api = Api(
+            # Use only the required parameters for v2 API
             consumer_key=X_API_KEY,
             consumer_secret=X_API_SECRET,
-            oauth_token=X_ACCESS_TOKEN,
-            oauth_token_secret=X_ACCESS_TOKEN_SECRET,
-            bearer_token=X_BEARER_TOKEN
+            access_token=X_ACCESS_TOKEN,
+            access_token_secret=X_ACCESS_SECRET
         )
         
         # Initialize state
