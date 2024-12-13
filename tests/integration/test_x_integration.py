@@ -3,13 +3,13 @@
 import pytest
 from datetime import datetime, timezone
 from unittest.mock import patch
-from tests.mocks.x_api import MockXApi
+from tests.mocks.x_api import MockClient
 from gonzo.integrations.x_client import XClient, Tweet
 
 @pytest.fixture
 def x_client():
     """Provide X client with mock API."""
-    with patch('pytwitter.Api', MockXApi):
+    with patch('tweepy.Client', MockClient):
         return XClient()
 
 @pytest.mark.asyncio
