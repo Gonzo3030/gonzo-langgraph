@@ -7,40 +7,39 @@ from langchain_core.prompts import ChatPromptTemplate
 from .metrics import EvolutionMetrics
 from .memory import ContentMemoryManager
 from .state import EvolutionStateManager
-from ..patterns.detector import PatternDetector
-from ..types import TimeAwareEntity
+from ..types import TimeAwareEntity, GonzoState
+from ..nodes.pattern_detection import detect_patterns
 
 class GonzoEvolutionSystem:
     """Core system for managing Gonzo's evolution and learning"""
     
     def __init__(self, 
                  llm: BaseLLM,
-                 pattern_detector: PatternDetector,
                  storage_path: Optional[Path] = None):
+        """Initialize evolution system.
+        
+        Args:
+            llm: Language model for analysis
+            storage_path: Optional path for storing evolution data
+        """
         self.llm = llm
-        self.pattern_detector = pattern_detector
         self.content_memory = ContentMemoryManager(storage_path / 'content' if storage_path else None)
         self.evolution_state = EvolutionStateManager(storage_path / 'evolution' if storage_path else None)
         
-    async def process_youtube_content(self, analysis_result: Dict[str, Any]):
+    async def process_youtube_content(self, state: GonzoState):
         """Process analyzed YouTube content for evolution
         
         Args:
-            analysis_result: Results from YouTubeCollector.analyze_content()
+            state: Current Gonzo state
         """
-        if analysis_result.get('error'):
-            return
-            
-        # Extract entities and patterns
-        entities = analysis_result.get('entities', [])
-        segments = analysis_result.get('segments', [])
-        patterns = analysis_result.get('patterns', [])
+        # Extract entities and patterns from state
+        entities = state.analysis.entities
+        patterns = state.analysis.patterns
         
         # Store processed content
         await self.content_memory.store_content(
             content_type="youtube",
             entities=entities,
-            segments=segments,
             patterns=patterns,
             timestamp=datetime.now(UTC)
         )
@@ -50,6 +49,12 @@ class GonzoEvolutionSystem:
         
         # Evolve understanding
         await self.evolve_perspective()
+        
+        # Update state evolution metrics
+        metrics = await self.evolution_state.get_current_metrics()
+        state.evolution.pattern_confidence = metrics.pattern_confidence
+        state.evolution.narrative_consistency = metrics.narrative_consistency
+        state.evolution.prediction_accuracy = metrics.prediction_accuracy
     
     async def evolve_perspective(self):
         """Evolve Gonzo's understanding based on accumulated data"""
@@ -80,35 +85,32 @@ class GonzoEvolutionSystem:
             'temporal_connections': metrics.temporal_connections
         }
         
-        # Update pattern detector with evolved understanding
-        self.pattern_detector.update_detection_parameters(
-            confidence_threshold=metrics.pattern_confidence,
-            temporal_weight=sum(metrics.temporal_connections.values()) / len(metrics.temporal_connections) 
-                if metrics.temporal_connections else 0.5
-        )
+        # Store evolution context for later use
+        await self.evolution_state.store_context(evolution_context)
         
     async def get_current_metrics(self) -> EvolutionMetrics:
         """Get current evolution metrics"""
         return await self.evolution_state.get_current_metrics()
         
-    async def analyze_entities(self, entities: List[TimeAwareEntity]) -> Dict[str, Any]:
-        """Analyze a set of entities for patterns and relationships
+    async def analyze_entities(self, state: GonzoState) -> Dict[str, Any]:
+        """Analyze entities in state for patterns and relationships
         
         Args:
-            entities: List of entities to analyze
+            state: Current Gonzo state
             
         Returns:
             Analysis results
         """
-        # Use pattern detector to analyze entities
-        patterns = self.pattern_detector.detect_patterns(entities)
+        # Use pattern detection node
+        pattern_result = await detect_patterns(state, self.llm)
+        state = pattern_result["state"]
         
         # Get current evolution metrics
         metrics = await self.get_current_metrics()
         
-        # Enhance pattern detection with evolution context
+        # Enhance patterns with evolution context
         enhanced_patterns = []
-        for pattern in patterns:
+        for pattern in state.analysis.patterns:
             # Add confidence based on evolution metrics
             pattern['confidence'] = pattern.get('confidence', 0.5) * metrics.pattern_confidence
             
@@ -117,6 +119,12 @@ class GonzoEvolutionSystem:
                 pattern['temporal_strength'] = metrics.temporal_connections[pattern['temporal_key']]
                 
             enhanced_patterns.append(pattern)
+            
+        # Update state
+        state.analysis.patterns = enhanced_patterns
+        state.evolution.pattern_confidence = metrics.pattern_confidence
+        state.evolution.narrative_consistency = metrics.narrative_consistency
+        state.evolution.prediction_accuracy = metrics.prediction_accuracy
             
         return {
             'patterns': enhanced_patterns,
