@@ -13,47 +13,36 @@ class MockTweet:
         self.created_at = datetime.now(timezone.utc)
         self.referenced_tweets = None
         self.context_annotations = None
+        
+    def __dict__(self):
+        return {
+            'id': self.id,
+            'text': self.text,
+            'author_id': self.author_id,
+            'conversation_id': self.conversation_id,
+            'created_at': self.created_at,
+            'referenced_tweets': self.referenced_tweets,
+            'context_annotations': self.context_annotations
+        }
 
-class MockUser:
-    """Mock user data."""
-    def __init__(self):
-        self.id = '123456789'
-        self.name = 'Gonzo'
-        self.username = 'DrGonzo3030'
-
-class MockResponse:
-    """Mock API response."""
-    def __init__(self, data=None):
-        self.data = data
+class MockAccount:
+    """Mock Twitter account."""
+    
+    def __init__(self, client=None):
+        self.mock_tweet = MockTweet()
+    
+    def tweet(self, text, **kwargs):
+        return self.mock_tweet
+    
+    def mentions(self, **kwargs):
+        return [self.mock_tweet]
 
 class MockClient:
-    """Mock tweepy Client for testing."""
+    """Mock Twitter client."""
     
-    def __init__(self, consumer_key=None, consumer_secret=None, access_token=None,
-                 access_token_secret=None):
+    def __init__(self, consumer_key=None, consumer_secret=None, token=None,
+                 token_secret=None):
         self.mock_tweet = MockTweet()
-        self.mock_user = MockUser()
-    
-    def create_tweet(self, text, **kwargs):
-        return MockResponse(self.mock_tweet)
-    
-    def get_me(self, **kwargs):
-        return MockResponse(self.mock_user)
-    
-    def get_users_mentions(self, id, **kwargs):
-        return MockResponse([self.mock_tweet])
-    
-    def search_recent_tweets(self, query, **kwargs):
-        return MockResponse([self.mock_tweet])
-    
-    def get_rate_limit_status(self, **kwargs):
-        return {
-            'resources': {
-                'tweets': {
-                    '/tweets': {
-                        'limit': 100,
-                        'remaining': 50
-                    }
-                }
-            }
-        }
+        
+    def search_tweets(self, query, **kwargs):
+        return [self.mock_tweet]
