@@ -1,30 +1,58 @@
+"""Test configuration and fixtures."""
+
 import pytest
+from pathlib import Path
 from datetime import datetime
-from pydantic import BaseModel
-from typing import List, Dict, Optional
-
-# Test-specific state models
-class TestMonitoringState(BaseModel):
-    tracked_topics: List[str] = []
-    tracked_users: List[str] = []
-    last_check_times: Dict[str, datetime] = {}
-    current_trends: List[str] = []
-    last_trends_update: Optional[datetime] = None
-    error_log: List[Dict] = []
-
-    def log_error(self, message: str, context: dict = None):
-        self.error_log.append({
-            'timestamp': datetime.now(),
-            'message': message,
-            'context': context or {}
-        })
+from .mocks import MockLLM
+from gonzo.patterns.detector import PatternDetector
+from gonzo.evolution import GonzoEvolutionSystem
 
 @pytest.fixture
-def mock_state():
-    """Create a mock state for testing."""
-    return TestMonitoringState(
-        tracked_topics=["bitcoin", "ai"],
-        tracked_users=["resistance_user"],
-        current_trends=["crypto", "tech"],
-        last_trends_update=datetime.now()
+def mock_llm():
+    """Provide mock language model."""
+    return MockLLM()
+
+@pytest.fixture
+def test_storage_path(tmp_path):
+    """Provide test storage path."""
+    return tmp_path / "test_storage"
+
+@pytest.fixture
+def pattern_detector():
+    """Provide pattern detector."""
+    return PatternDetector()
+
+@pytest.fixture
+def evolution_system(mock_llm, pattern_detector, test_storage_path):
+    """Provide evolution system."""
+    return GonzoEvolutionSystem(
+        llm=mock_llm,
+        pattern_detector=pattern_detector,
+        storage_path=test_storage_path
     )
+
+@pytest.fixture
+def mock_transcript_data():
+    """Provide mock transcript data."""
+    return [
+        {
+            'text': 'This reeks of the same manipulation we fought in the 60s',
+            'start': 0.0,
+            'duration': 2.0
+        },
+        {
+            'text': 'The corporate control systems have just gone digital',
+            'start': 2.0,
+            'duration': 2.0
+        }
+    ]
+
+@pytest.fixture
+def mock_video_data():
+    """Provide mock video data."""
+    return {
+        'video_id': 'test_video',
+        'title': 'Test Video',
+        'description': 'Testing corporate control patterns',
+        'published_at': datetime.now().isoformat()
+    }
