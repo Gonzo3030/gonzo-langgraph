@@ -8,22 +8,24 @@ class ContentMemoryManager:
     
     def __init__(self, storage_path: Optional[Path] = None):
         self.storage_path = storage_path or Path('memory')
-        self.storage_path.mkdir(exist_ok=True)
+        self.storage_path.mkdir(parents=True, exist_ok=True)
         
     async def store_content(self,
                            content_type: str,
                            entities: List[Dict[str, Any]],
-                           segments: List[Dict[str, Any]],
                            patterns: List[Dict[str, Any]],
-                           timestamp: datetime):
+                           timestamp: datetime,
+                           segments: Optional[List[Dict[str, Any]]] = None):
         """Store processed content with metadata"""
         content_data = {
             'type': content_type,
             'timestamp': timestamp.isoformat(),
             'entities': entities,
-            'segments': segments,
             'patterns': patterns
         }
+        
+        if segments:
+            content_data['segments'] = segments
         
         # Store in date-based directory structure
         date_path = self.storage_path / timestamp.strftime('%Y/%m/%d')
@@ -42,14 +44,21 @@ class ContentMemoryManager:
         context = []
         current = datetime.now(UTC)
         
-        # Iterate through recent days
-        for day in range(days_back):
-            date_path = self.storage_path / current.strftime('%Y/%m/%d')
-            if date_path.exists():
-                for file_path in date_path.glob('*.json'):
-                    with open(file_path) as f:
-                        data = json.load(f)
-                        if not content_type or data['type'] == content_type:
-                            context.append(data)
+        try:
+            # Iterate through recent days
+            for day in range(days_back):
+                date_path = self.storage_path / current.strftime('%Y/%m/%d')
+                if date_path.exists():
+                    for file_path in date_path.glob('*.json'):
+                        try:
+                            with open(file_path) as f:
+                                data = json.load(f)
+                                if not content_type or data['type'] == content_type:
+                                    context.append(data)
+                        except (json.JSONDecodeError, IOError) as e:
+                            continue  # Skip problematic files
                             
-        return sorted(context, key=lambda x: x['timestamp'])
+            return sorted(context, key=lambda x: x['timestamp'])
+            
+        except Exception:
+            return []  # Return empty list if anything goes wrong
