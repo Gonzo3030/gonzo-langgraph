@@ -1,5 +1,6 @@
 """Type definitions for Gonzo LangGraph system."""
 
+from .base import EntityType, TimeAwareEntity, Property, Relationship
 from .state import (
     BaseState,
     MessageState,
@@ -13,6 +14,10 @@ from .state import (
 from .workflow import NextStep
 
 __all__ = [
+    'EntityType',
+    'TimeAwareEntity', 
+    'Property',
+    'Relationship',
     'BaseState',
     'MessageState',
     'AnalysisState',
@@ -20,6 +25,6 @@ __all__ = [
     'InteractionState',
     'ResponseState',
     'GonzoState',
-    'create_initial_state',
-    'NextStep'
+    'NextStep',
+    'create_initial_state'
 ]
