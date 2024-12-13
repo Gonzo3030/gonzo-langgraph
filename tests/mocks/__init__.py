@@ -1,4 +1,4 @@
-"""Mock objects for testing."""
+"""Test mocks package."""
 
 from .llm import MockLLM
 
