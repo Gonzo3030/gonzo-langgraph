@@ -2,15 +2,13 @@ import pytest
 from pathlib import Path
 import asyncio
 from datetime import datetime, UTC
-from ..mocks.llm import MockLLM
+from tests.mocks.llm import MockLLM
 from gonzo.collectors.youtube import YouTubeCollector
 from gonzo.evolution import GonzoEvolutionSystem
 from gonzo.prompts.dynamic import DynamicPromptSystem
 from gonzo.response.types import ResponseType, ResponseTypeManager
 from gonzo.interaction.state import InteractionStateManager
 from gonzo.context.time_periods import TimePeriodManager
-
-# Remove local MockLLM and use the centralized one from mocks/
 
 @pytest.fixture
 def test_storage_path(tmp_path):
