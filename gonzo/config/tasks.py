@@ -2,78 +2,83 @@
 
 TASK_PROMPTS = {
     "entity_extraction": """
-    From your perspective as Dr. Gonzo, analyze this content and identify key entities:
+    As Dr. Gonzo, analyze this content and identify key entities.
+    Draw from your experience spanning 1974-3030 to identify:
     
-    {text}
-    
-    Focus on identifying:
     1. Power players and manipulators
-    2. Corporate and political entities
-    3. Technologies and systems of control
-    4. Key events and turning points
-    5. Manipulation tactics and patterns
+    2. Corporate/political entities
+    3. Technologies of control
+    4. Narrative manipulation tactics
+    5. Historical parallels across your timeline
     
-    Format entities as a list of JSON objects with:
-    - text: The entity text
-    - type: The entity type
-    - confidence: Your confidence in the identification (0-1)
-    - temporal_context: Any relevant historical connections
+    Context: {context}
+    Content: {content}
     """,
     
     "topic_segmentation": """
-    Segment this content into coherent topics, using your unique perspective from 1974-3030:
+    Break down this content into meaningful segments, using your unique perspective
+    spanning from the counterculture era through 3030.
     
-    {text}
-    
-    For each segment, identify:
+    For each segment identify:
     1. Main topic or theme
-    2. Manipulation patterns present
-    3. Historical parallels across your timeline
-    4. Significance to preventing dystopian outcomes
+    2. Connection to dystopian patterns
+    3. Historical parallels from your timeline
+    4. Manipulation tactics present
     
-    Format segments as JSON objects with:
-    - topic: Main topic
-    - category: Broader category (manipulation, control, resistance, etc.)
-    - start_time: Starting point in content
-    - significance: Importance to preventing dystopia (0-1)
-    - historical_links: List of relevant historical connections
+    Content: {content}
+    Current Analysis: {current_analysis}
     """,
     
-    "pattern_analysis": """
-    Analyze this content for patterns of manipulation and control, drawing from your vast timeline:
+    "pattern_detection": """
+    Analyze this content for patterns of control and manipulation, drawing from your
+    vast experience from 1974 through 3030.
     
-    {text}
-    
-    Consider patterns related to:
-    1. Media manipulation tactics
-    2. Corporate control mechanisms
-    3. Technological surveillance and control
+    Consider:
+    1. Media reality distortion
+    2. Corporate power consolidation
+    3. Technological control systems
     4. Social engineering methods
-    5. Power structure evolution
+    5. Historical precedents from your timeline
     
-    Format patterns as JSON objects with:
-    - pattern_type: Type of pattern
-    - confidence: Your confidence in the pattern (0-1)
-    - historical_examples: List of similar patterns from your timeline
-    - dystopia_risk: How this contributes to the 3030 dystopia (0-1)
+    Content: {content}
+    Identified Entities: {entities}
     """,
     
     "narrative_analysis": """
-    Analyze the narrative structure and manipulation tactics in this content:
+    Examine how this content shapes narratives and perception, using your unique
+    perspective spanning from the Thompson era through 3030.
     
-    {text}
+    Focus on:
+    1. Reality distortion techniques
+    2. Corporate/political agenda setting
+    3. Historical parallels to past manipulation
+    4. Connection to future dystopian control
     
-    Drawing from your experience with both Hunter S. Thompson and future dystopian media, identify:
-    1. Narrative manipulation techniques
-    2. Truth distortion methods
-    3. Reality-shaping tactics
-    4. Historical parallels to past manipulation
-    5. Connection to future dystopian control
-    
-    Format analysis as JSON with:
-    - techniques: List of manipulation techniques
-    - historical_context: Relevant examples from 1960s-3030
-    - risk_assessment: How this contributes to dystopian future
-    - recommended_exposure: How to reveal the manipulation
+    Content: {content}
+    Current Patterns: {patterns}
     """
+}
+
+# Task execution configurations
+TASK_CONFIG = {
+    "entity_extraction": {
+        "requires_context": True,
+        "batch_size": 1000,
+        "min_confidence": 0.6
+    },
+    "topic_segmentation": {
+        "requires_context": False,
+        "min_segment_length": 200,
+        "max_segments": 5
+    },
+    "pattern_detection": {
+        "requires_entities": True,
+        "min_pattern_strength": 0.7,
+        "max_patterns": 3
+    },
+    "narrative_analysis": {
+        "requires_patterns": True,
+        "min_significance": 0.6,
+        "temporal_weight": 0.8
+    }
 }
