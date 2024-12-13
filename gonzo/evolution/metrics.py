@@ -38,6 +38,14 @@ class EvolutionMetrics(BaseModel):
             'timestamp': self.timestamp.isoformat() if self.timestamp else None
         }
         
+    def __getitem__(self, key: str) -> Any:
+        """Get item by key."""
+        return getattr(self, key)
+    
+    def __contains__(self, key: str) -> bool:
+        """Check if key exists."""
+        return key in self.__dict__
+        
     def __iter__(self):
         """Make metrics iterable."""
         yield from self.to_dict().items()
