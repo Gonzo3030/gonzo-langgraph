@@ -3,21 +3,22 @@
 import pytest
 from datetime import datetime, timezone
 from unittest.mock import patch
-from tests.mocks.x_api import MockClient
+from tests.mocks.x_api import MockClient, MockAccount
 from gonzo.integrations.x_client import XClient, Tweet
 
 @pytest.fixture
 def x_client():
     """Provide X client with mock API."""
-    with patch('tweepy.Client', MockClient):
+    with patch('twitter.client.Client', MockClient), \
+         patch('twitter.account.Account', MockAccount):
         return XClient()
 
 @pytest.mark.asyncio
 async def test_post_tweet(x_client):
     """Test posting a tweet."""
     response = await x_client.post_tweet("Test tweet")
-    assert response.id == '123456789'
-    assert 'manipulation patterns' in response.text
+    assert response['id'] == '123456789'
+    assert 'manipulation patterns' in response['text']
 
 @pytest.mark.asyncio
 async def test_monitor_mentions(x_client):
