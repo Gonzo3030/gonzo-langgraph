@@ -34,10 +34,10 @@ class XClient:
         """Initialize X client."""
         # Initialize API v2 client
         self.api = Api(
-            api_key=X_API_KEY,
-            api_secret=X_API_SECRET,
-            access_token=X_ACCESS_TOKEN,
-            token_secret=X_ACCESS_TOKEN_SECRET,
+            consumer_key=X_API_KEY,
+            consumer_secret=X_API_SECRET,
+            oauth_token=X_ACCESS_TOKEN,
+            oauth_token_secret=X_ACCESS_TOKEN_SECRET,
             bearer_token=X_BEARER_TOKEN
         )
         
