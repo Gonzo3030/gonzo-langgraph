@@ -1,3 +1,7 @@
+"""Node implementations for Gonzo workflow."""
+
+from typing import Dict, Any
+
 from .initial_assessment import initial_assessment
 from .pattern_analysis import analyze_patterns
 from .response_generation import generate_response
