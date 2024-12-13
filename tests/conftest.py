@@ -3,7 +3,7 @@
 import pytest
 from pathlib import Path
 from datetime import datetime
-from .mocks import MockLLM
+from .mocks.llm import MockLLM
 from gonzo.patterns.detector import PatternDetector
 from gonzo.evolution import GonzoEvolutionSystem
 
