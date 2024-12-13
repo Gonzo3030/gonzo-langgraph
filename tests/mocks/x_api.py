@@ -7,8 +7,8 @@ from pytwitter.models import Response, Tweet, User
 class MockXApi:
     """Mock X API client for testing."""
     
-    def __init__(self, consumer_key=None, consumer_secret=None, oauth_token=None,
-                 oauth_token_secret=None, bearer_token=None):
+    def __init__(self, consumer_key=None, consumer_secret=None, access_token=None,
+                 access_token_secret=None):
         self.mock_user = User(
             id='123456789',
             name='Gonzo',
