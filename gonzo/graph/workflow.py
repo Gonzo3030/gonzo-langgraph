@@ -6,7 +6,9 @@ from langgraph.graph import StateGraph, END
 
 from ..config import MODEL_CONFIG, GRAPH_CONFIG
 from ..types import GonzoState
-from .nodes import initial_assessment, analyze_patterns, generate_response
+from ..nodes.initial_assessment import initial_assessment
+from ..nodes.pattern_detection import detect_patterns
+from ..nodes.response_generation import generate_response
 
 def create_workflow(
     llm: Optional[BaseLLM] = None,
@@ -26,9 +28,9 @@ def create_workflow(
     
     # Add nodes
     workflow.add_node("start", lambda x: {"state": x})
-    workflow.add_node("assess", initial_assessment)
-    workflow.add_node("analyze", analyze_patterns)
-    workflow.add_node("respond", generate_response)
+    workflow.add_node("assess", lambda x: initial_assessment(x["state"], llm))
+    workflow.add_node("detect_patterns", lambda x: detect_patterns(x["state"], llm))
+    workflow.add_node("generate_response", lambda x: generate_response(x["state"], llm))
     workflow.add_node("end", lambda x: {"state": x})
     
     # Set entry point
@@ -46,23 +48,23 @@ def create_workflow(
     
     workflow.add_conditional_edges(
         "assess",
-        lambda x: len(x["state"].analysis.patterns) > 0,
+        lambda x: "next" in x and x["next"] != "error",
         {
-            True: "analyze",
+            True: "detect_patterns",
             False: "end"
         }
     )
     
     workflow.add_conditional_edges(
-        "analyze",
+        "detect_patterns",
         lambda x: x["state"].analysis.significance > 0.5,
         {
-            True: "respond",
+            True: "generate_response",
             False: "end"
         }
     )
     
-    workflow.add_edge("respond", "end")
+    workflow.add_edge("generate_response", "end")
     
     # Compile with config
     final_config = {**GRAPH_CONFIG}
