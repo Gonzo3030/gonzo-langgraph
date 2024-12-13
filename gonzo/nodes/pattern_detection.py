@@ -18,9 +18,10 @@ async def detect_patterns(state: GonzoState, llm: Any) -> Dict[str, Any]:
         Updated state and next step
     """
     try:
-        if not state.analysis.entities:
-            return {"state": state, "next": NextStep.ERROR}
-            
+        # Initialize entities if None
+        if state.analysis.entities is None:
+            state.analysis.entities = []
+
         # Prepare analysis prompt
         entities_text = "\n".join(
             f"- {e.get('text', 'Unknown entity')}: {e.get('type', 'Unknown type')}" 
@@ -48,6 +49,10 @@ async def detect_patterns(state: GonzoState, llm: Any) -> Dict[str, Any]:
             "confidence": 0.9 if "manipulation" in response.lower() else 0.8
         }
         
+        # Initialize patterns list if None
+        if state.analysis.patterns is None:
+            state.analysis.patterns = []
+            
         state.analysis.patterns.append(pattern)
         
         # Use state's significance calculation
@@ -56,5 +61,5 @@ async def detect_patterns(state: GonzoState, llm: Any) -> Dict[str, Any]:
         return {"state": state, "next": NextStep.ANALYZE}
         
     except Exception as e:
-        state.messages.current_message = f"Pattern detection error: {str(e)}"
+        state.add_error(f"Pattern detection error: {str(e)}")
         return {"state": state, "next": NextStep.ERROR}
