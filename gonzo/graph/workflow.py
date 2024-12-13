@@ -1,6 +1,6 @@
 """Core workflow definition for Gonzo system."""
 
-from typing import Dict, Any, TypeVar, Annotated
+from typing import Dict, Any, TypeVar, Annotated, Optional
 from langchain_core.language_models import BaseLLM
 from langgraph.graph import StateGraph, END
 
