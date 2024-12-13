@@ -1,6 +1,6 @@
 """Evolution metrics for tracking system growth."""
 
-from typing import Dict, Any
+from typing import Dict, Any, ClassMethod
 from pydantic import BaseModel
 from datetime import datetime
 
@@ -16,6 +16,17 @@ class EvolutionMetrics(BaseModel):
         super().__init__(**data)
         if self.timestamp is None:
             self.timestamp = datetime.now()
+            
+    @classmethod
+    def create_default(cls) -> 'EvolutionMetrics':
+        """Create default metrics instance."""
+        return cls(
+            pattern_confidence=0.5,
+            narrative_consistency=0.5,
+            prediction_accuracy=0.5,
+            temporal_connections={},
+            timestamp=datetime.now()
+        )
             
     def to_dict(self) -> Dict[str, Any]:
         """Convert metrics to dictionary."""
