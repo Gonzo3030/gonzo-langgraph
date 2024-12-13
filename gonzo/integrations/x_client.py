@@ -32,11 +32,12 @@ class XClient:
     
     def __init__(self):
         """Initialize X client."""
+        # Initialize API v2 client
         self.api = Api(
-            consumer_key=X_API_KEY,
-            consumer_secret=X_API_SECRET,
+            api_key=X_API_KEY,
+            api_secret=X_API_SECRET,
             access_token=X_ACCESS_TOKEN,
-            access_token_secret=X_ACCESS_TOKEN_SECRET,
+            token_secret=X_ACCESS_TOKEN_SECRET,
             bearer_token=X_BEARER_TOKEN
         )
         
