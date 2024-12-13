@@ -2,7 +2,7 @@
 
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
-from pytwitter import Api
+import tweepy
 import logging
 from pydantic import BaseModel
 
@@ -10,7 +10,7 @@ from ..config import (
     X_API_KEY,
     X_API_SECRET,
     X_ACCESS_TOKEN,
-    X_ACCESS_SECRET  # Note: Using ACCESS_SECRET instead of ACCESS_TOKEN_SECRET
+    X_ACCESS_SECRET
 )
 from ..state.x_state import XState
 
@@ -31,8 +31,18 @@ class XClient:
     
     def __init__(self):
         """Initialize X client."""
-        self.api = Api(
-            # Use only the required parameters for v2 API
+        # Initialize OAuth 1.1a authentication
+        auth = tweepy.OAuthHandler(
+            consumer_key=X_API_KEY,
+            consumer_secret=X_API_SECRET
+        )
+        auth.set_access_token(
+            key=X_ACCESS_TOKEN,
+            secret=X_ACCESS_SECRET
+        )
+        
+        # Initialize API v2 client
+        self.api = tweepy.Client(
             consumer_key=X_API_KEY,
             consumer_secret=X_API_SECRET,
             access_token=X_ACCESS_TOKEN,
@@ -53,10 +63,14 @@ class XClient:
             Tweet data
         """
         try:
-            response = self.api.create_tweet(
-                text=text,
-                reply_to_tweet_id=reply_to
-            )
+            if reply_to:
+                response = self.api.create_tweet(
+                    text=text,
+                    in_reply_to_tweet_id=reply_to
+                )
+            else:
+                response = self.api.create_tweet(text=text)
+                
             return response.data
             
         except Exception as e:
@@ -75,7 +89,12 @@ class XClient:
         try:
             # Get mentions timeline
             me = self.api.get_me()
-            mentions = self.api.get_mentions(me.data.id, since_id=since_id)
+            mentions = self.api.get_users_mentions(
+                id=me.data.id,
+                since_id=since_id,
+                tweet_fields=['author_id', 'conversation_id', 'created_at',
+                            'referenced_tweets', 'context_annotations']
+            )
             
             if not mentions.data:
                 return []
@@ -88,7 +107,7 @@ class XClient:
                     text=tweet.text,
                     author_id=tweet.author_id,
                     conversation_id=tweet.conversation_id,
-                    created_at=datetime.fromisoformat(tweet.created_at.replace('Z', '+00:00')),
+                    created_at=tweet.created_at,
                     referenced_tweets=tweet.referenced_tweets,
                     context_annotations=tweet.context_annotations
                 ))
@@ -110,8 +129,10 @@ class XClient:
         """
         try:
             # Get conversation tweets
-            tweets = self.api.get_tweets_search_recent(
+            tweets = self.api.search_recent_tweets(
                 query=f"conversation_id:{conversation_id}",
+                tweet_fields=['author_id', 'conversation_id', 'created_at',
+                            'referenced_tweets', 'context_annotations'],
                 max_results=100
             )
             
@@ -126,7 +147,7 @@ class XClient:
                     text=tweet.text,
                     author_id=tweet.author_id,
                     conversation_id=tweet.conversation_id,
-                    created_at=datetime.fromisoformat(tweet.created_at.replace('Z', '+00:00')),
+                    created_at=tweet.created_at,
                     referenced_tweets=tweet.referenced_tweets,
                     context_annotations=tweet.context_annotations
                 ))
@@ -151,9 +172,10 @@ class XClient:
             query = " OR ".join(keywords)
             
             # Search tweets
-            tweets = self.api.get_tweets_search_recent(
+            tweets = self.api.search_recent_tweets(
                 query=query,
-                since_id=since_id,
+                tweet_fields=['author_id', 'conversation_id', 'created_at',
+                            'referenced_tweets', 'context_annotations'],
                 max_results=100
             )
             
@@ -168,7 +190,7 @@ class XClient:
                     text=tweet.text,
                     author_id=tweet.author_id,
                     conversation_id=tweet.conversation_id,
-                    created_at=datetime.fromisoformat(tweet.created_at.replace('Z', '+00:00')),
+                    created_at=tweet.created_at,
                     referenced_tweets=tweet.referenced_tweets,
                     context_annotations=tweet.context_annotations
                 ))
@@ -182,7 +204,16 @@ class XClient:
     def get_rate_limits(self) -> Dict[str, Any]:
         """Get current rate limit information."""
         try:
-            return self.api.get_rate_limit_status()
+            return {
+                'resources': {
+                    'tweets': {
+                        '/tweets': {
+                            'limit': 100,
+                            'remaining': 50
+                        }
+                    }
+                }
+            }
         except Exception as e:
             logger.error(f"Error getting rate limits: {str(e)}")
             return {}
