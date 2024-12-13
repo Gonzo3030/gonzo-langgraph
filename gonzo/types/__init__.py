@@ -2,7 +2,7 @@
 
 from typing import Dict, Any
 from enum import Enum
-from gonzo.state.base import GonzoState  # Re-export from new location
+from gonzo.state.base import GonzoState, create_initial_state  # Re-export both
 
 class NextStep(str, Enum):
     """Next step in workflow."""
@@ -15,4 +15,4 @@ class TimeAwareEntity:
     """Base class for time-aware entities."""
     timestamp: str
 
-__all__ = ['GonzoState', 'NextStep', 'TimeAwareEntity']
+__all__ = ['GonzoState', 'NextStep', 'TimeAwareEntity', 'create_initial_state']
