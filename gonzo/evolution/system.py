@@ -51,10 +51,32 @@ class GonzoEvolutionSystem:
         await self.evolve_perspective()
         
         # Update state evolution metrics
-        metrics = await self.evolution_state.get_current_metrics()
+        metrics = await self.get_current_metrics()
         state.evolution.pattern_confidence = metrics.pattern_confidence
         state.evolution.narrative_consistency = metrics.narrative_consistency
         state.evolution.prediction_accuracy = metrics.prediction_accuracy
+    
+    async def update_metrics(self, state: GonzoState):
+        """Update metrics based on current state.
+
+        Args:
+            state: Current Gonzo state
+        """
+        # Get current metrics
+        metrics = await self.get_current_metrics()
+
+        # Update state
+        state.evolution.pattern_confidence = metrics.pattern_confidence
+        state.evolution.narrative_consistency = metrics.narrative_consistency
+        state.evolution.prediction_accuracy = metrics.prediction_accuracy
+
+        # Update pattern weights based on metrics
+        if state.analysis.patterns:
+            for pattern in state.analysis.patterns:
+                pattern['confidence'] = pattern.get('confidence', 0.5) * metrics.pattern_confidence
+
+        # Recalculate significance
+        state.update_analysis()
     
     async def evolve_perspective(self):
         """Evolve Gonzo's understanding based on accumulated data"""
@@ -91,42 +113,3 @@ class GonzoEvolutionSystem:
     async def get_current_metrics(self) -> EvolutionMetrics:
         """Get current evolution metrics"""
         return await self.evolution_state.get_current_metrics()
-        
-    async def analyze_entities(self, state: GonzoState) -> Dict[str, Any]:
-        """Analyze entities in state for patterns and relationships
-        
-        Args:
-            state: Current Gonzo state
-            
-        Returns:
-            Analysis results
-        """
-        # Use pattern detection node
-        pattern_result = await detect_patterns(state, self.llm)
-        state = pattern_result["state"]
-        
-        # Get current evolution metrics
-        metrics = await self.get_current_metrics()
-        
-        # Enhance patterns with evolution context
-        enhanced_patterns = []
-        for pattern in state.analysis.patterns:
-            # Add confidence based on evolution metrics
-            pattern['confidence'] = pattern.get('confidence', 0.5) * metrics.pattern_confidence
-            
-            # Add temporal context if available
-            if 'temporal_key' in pattern and pattern['temporal_key'] in metrics.temporal_connections:
-                pattern['temporal_strength'] = metrics.temporal_connections[pattern['temporal_key']]
-                
-            enhanced_patterns.append(pattern)
-            
-        # Update state
-        state.analysis.patterns = enhanced_patterns
-        state.evolution.pattern_confidence = metrics.pattern_confidence
-        state.evolution.narrative_consistency = metrics.narrative_consistency
-        state.evolution.prediction_accuracy = metrics.prediction_accuracy
-            
-        return {
-            'patterns': enhanced_patterns,
-            'metrics': metrics.__dict__
-        }
