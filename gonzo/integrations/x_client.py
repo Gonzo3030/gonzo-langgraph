@@ -2,7 +2,9 @@
 
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
-import tweepy
+from twitter.account import Account
+from twitter.client import Client
+from twitter.tweet import Tweet as TwitterTweet
 import logging
 from pydantic import BaseModel
 
@@ -31,23 +33,16 @@ class XClient:
     
     def __init__(self):
         """Initialize X client."""
-        # Initialize OAuth 1.1a authentication
-        auth = tweepy.OAuthHandler(
-            consumer_key=X_API_KEY,
-            consumer_secret=X_API_SECRET
-        )
-        auth.set_access_token(
-            key=X_ACCESS_TOKEN,
-            secret=X_ACCESS_SECRET
-        )
-        
         # Initialize API v2 client
-        self.api = tweepy.Client(
+        self.client = Client(
             consumer_key=X_API_KEY,
             consumer_secret=X_API_SECRET,
-            access_token=X_ACCESS_TOKEN,
-            access_token_secret=X_ACCESS_SECRET
+            token=X_ACCESS_TOKEN,
+            token_secret=X_ACCESS_SECRET
         )
+        
+        # Initialize account
+        self.account = Account(client=self.client)
         
         # Initialize state
         self._state = XState()
@@ -64,14 +59,11 @@ class XClient:
         """
         try:
             if reply_to:
-                response = self.api.create_tweet(
-                    text=text,
-                    in_reply_to_tweet_id=reply_to
-                )
+                tweet = self.account.tweet(text=text, reply_to=reply_to)
             else:
-                response = self.api.create_tweet(text=text)
+                tweet = self.account.tweet(text=text)
                 
-            return response.data
+            return tweet.__dict__
             
         except Exception as e:
             logger.error(f"Error posting tweet: {str(e)}")
@@ -87,21 +79,15 @@ class XClient:
             List of tweets mentioning Gonzo
         """
         try:
-            # Get mentions timeline
-            me = self.api.get_me()
-            mentions = self.api.get_users_mentions(
-                id=me.data.id,
-                since_id=since_id,
-                tweet_fields=['author_id', 'conversation_id', 'created_at',
-                            'referenced_tweets', 'context_annotations']
-            )
+            # Get mentions
+            mentions = self.account.mentions(since_id=since_id)
             
-            if not mentions.data:
+            if not mentions:
                 return []
                 
             # Convert to Tweet models
             tweets = []
-            for tweet in mentions.data:
+            for tweet in mentions:
                 tweets.append(Tweet(
                     id=tweet.id,
                     text=tweet.text,
@@ -129,19 +115,17 @@ class XClient:
         """
         try:
             # Get conversation tweets
-            tweets = self.api.search_recent_tweets(
-                query=f"conversation_id:{conversation_id}",
-                tweet_fields=['author_id', 'conversation_id', 'created_at',
-                            'referenced_tweets', 'context_annotations'],
+            tweets = self.client.search_tweets(
+                f"conversation_id:{conversation_id}",
                 max_results=100
             )
             
-            if not tweets.data:
+            if not tweets:
                 return []
                 
             # Convert to Tweet models
             thread = []
-            for tweet in tweets.data:
+            for tweet in tweets:
                 thread.append(Tweet(
                     id=tweet.id,
                     text=tweet.text,
@@ -172,19 +156,18 @@ class XClient:
             query = " OR ".join(keywords)
             
             # Search tweets
-            tweets = self.api.search_recent_tweets(
+            tweets = self.client.search_tweets(
                 query=query,
-                tweet_fields=['author_id', 'conversation_id', 'created_at',
-                            'referenced_tweets', 'context_annotations'],
+                since_id=since_id,
                 max_results=100
             )
             
-            if not tweets.data:
+            if not tweets:
                 return []
                 
             # Convert to Tweet models
             matching_tweets = []
-            for tweet in tweets.data:
+            for tweet in tweets:
                 matching_tweets.append(Tweet(
                     id=tweet.id,
                     text=tweet.text,
