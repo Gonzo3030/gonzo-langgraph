@@ -1,6 +1,6 @@
 """Evolution metrics for tracking system growth."""
 
-from typing import Dict, Any, ClassMethod
+from typing import Dict, Any
 from pydantic import BaseModel
 from datetime import datetime
 
