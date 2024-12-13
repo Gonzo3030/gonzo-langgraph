@@ -1,30 +1,18 @@
-"""Type definitions for Gonzo LangGraph system."""
+"""Type definitions for Gonzo system."""
 
-from .base import EntityType, TimeAwareEntity, Property, Relationship
-from .state import (
-    BaseState,
-    MessageState,
-    AnalysisState,
-    EvolutionState,
-    InteractionState,
-    ResponseState,
-    GonzoState,
-    create_initial_state
-)
-from .workflow import NextStep
+from typing import Dict, Any
+from enum import Enum
+from gonzo.state.base import GonzoState  # Re-export from new location
 
-__all__ = [
-    'EntityType',
-    'TimeAwareEntity', 
-    'Property',
-    'Relationship',
-    'BaseState',
-    'MessageState',
-    'AnalysisState',
-    'EvolutionState',
-    'InteractionState',
-    'ResponseState',
-    'GonzoState',
-    'NextStep',
-    'create_initial_state'
-]
+class NextStep(str, Enum):
+    """Next step in workflow."""
+    ANALYZE = "analyze"
+    RESPOND = "respond"
+    ERROR = "error"
+    END = "end"
+
+class TimeAwareEntity:
+    """Base class for time-aware entities."""
+    timestamp: str
+
+__all__ = ['GonzoState', 'NextStep', 'TimeAwareEntity']
