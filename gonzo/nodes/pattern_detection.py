@@ -34,20 +34,24 @@ async def detect_patterns(state: GonzoState, llm: Any) -> Dict[str, Any]:
         
         # Get pattern analysis
         response = await llm.ainvoke([
-            SystemMessage(content="You are Dr. Gonzo's pattern recognition system."),
+            SystemMessage(content="You are Dr. Gonzo's pattern recognition system. "
+                                "Pay special attention to manipulation patterns, distortion techniques, "
+                                "and coordinated narrative control."),
             HumanMessage(content=prompt)
         ])
         
         # Add pattern to state
-        state.analysis.patterns.append({
-            "type": "detected_pattern",
+        pattern = {
+            "type": "manipulation" if "manipulation" in response.lower() else "detected_pattern",
             "content": response,
             "timestamp": datetime.now().isoformat(),
-            "confidence": 0.8  # Base confidence, could be dynamically calculated
-        })
+            "confidence": 0.9 if "manipulation" in response.lower() else 0.8
+        }
         
-        # Update state significance based on patterns
-        state.analysis.significance = min(1.0, len(state.analysis.patterns) * 0.2)
+        state.analysis.patterns.append(pattern)
+        
+        # Use state's significance calculation
+        state.update_analysis()
         
         return {"state": state, "next": NextStep.ANALYZE}
         
