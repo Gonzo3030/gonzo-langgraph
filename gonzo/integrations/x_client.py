@@ -1,10 +1,11 @@
+            logger.error(f"Error monitoring mentions: {str(e)}")
             return []
     
     async def get_conversation_thread(self, conversation_id: str, use_agent: bool = False) -> List[Tweet]:
         """Get conversation thread.
         
         Args:
-            conversation_id: Conversation ID to fetch
+            conversation_id: Conversation ID to retrieve
             use_agent: Whether to use OpenAPI agent
         """
         try:
