@@ -3,13 +3,13 @@
 import pytest
 from datetime import datetime, timezone
 from unittest.mock import patch
-from tests.mocks.x_api import MockOAuthSession
+from tests.mocks.x_api import mock_session
 from gonzo.integrations.x_client import XClient, Tweet
 
 @pytest.fixture(autouse=True)
-def mock_oauth():
+def mock_oauth_session():
     """Mock OAuth session for all tests."""
-    with patch('requests_oauthlib.OAuth1Session', MockOAuthSession):
+    with patch('requests_oauthlib.OAuth1Session', mock_session):
         yield
 
 @pytest.fixture
