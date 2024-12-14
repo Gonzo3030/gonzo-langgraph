@@ -17,11 +17,10 @@ class MockResponse:
         if self.status_code != 200:
             raise Exception(f"HTTP {self.status_code}")
 
-class MockOAuthSession:
-    """Mock OAuth session."""
-    
-    def __init__(self, client_key=None, client_secret=None,
-                 resource_owner_key=None, resource_owner_secret=None):
+class MockSession(MagicMock):
+    """Mock requests session with stored data."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.tweet_data = {
             "id": "123456789",
             "text": "Test tweet about manipulation patterns",
@@ -38,9 +37,6 @@ class MockOAuthSession:
             "username": "DrGonzo3030"
         }
         
-    def post(self, url, **kwargs):
-        return MockResponse(json_data={"data": self.tweet_data})
-        
     def get(self, url, **kwargs):
         if "users/me" in url:
             return MockResponse(json_data={"data": self.user_data})
@@ -55,3 +51,6 @@ class MockOAuthSession:
                 }
             )
         return MockResponse()
+        
+    def post(self, url, **kwargs):
+        return MockResponse(json_data={"data": self.tweet_data})
