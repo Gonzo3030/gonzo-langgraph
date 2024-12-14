@@ -1,20 +1,21 @@
-            logger.error(f"Error monitoring mentions: {str(e)}")
-            return []
-    
-    async def get_conversation_thread(self, conversation_id: str, use_agent: bool = False) -> List[Tweet]:
-        """Get conversation thread.
+    async def monitor_keywords(self, keywords: List[str], since_id: Optional[str] = None, use_agent: bool = False) -> List[Tweet]:
+        """Monitor tweets containing keywords.
         
         Args:
-            conversation_id: Conversation ID to retrieve
+            keywords: List of keywords to monitor
+            since_id: Optional tweet ID to start from
             use_agent: Whether to use OpenAPI agent
         """
         try:
+            query = " OR ".join(keywords)
             params = {
-                "query": f"conversation_id:{conversation_id}",
+                "query": query,
                 "tweet.fields": "author_id,conversation_id,created_at,referenced_tweets,context_annotations",
                 "max_results": 100
             }
-            
+            if since_id:
+                params["since_id"] = since_id
+                
             response = await self._make_request(
                 "GET",
                 "/tweets/search/recent",
@@ -27,7 +28,7 @@
             else:
                 data = response.json().get("data", [])
             
-            tweets = [
+            return [
                 Tweet(
                     id=tweet["id"],
                     text=tweet["text"],
@@ -39,9 +40,7 @@
                 )
                 for tweet in data
             ]
-            
-            return sorted(tweets, key=lambda x: x.created_at)
                 
         except Exception as e:
-            logger.error(f"Error getting conversation: {str(e)}")
+            logger.error(f"Error monitoring keywords: {str(e)}")
             return []
