@@ -1,38 +1,53 @@
-    async def post_tweet(self, text: str, reply_to: Optional[str] = None) -> Dict[str, Any]:
-        """Post a tweet with rate limit handling."""
+    async def get_conversation_thread(self, conversation_id: str) -> List[Tweet]:
+        """Get conversation thread."""
         try:
-            data = {"text": text}
-            if reply_to:
-                data["reply"] = {"in_reply_to_tweet_id": reply_to}
-                
-            response = await self._make_request(
-                "POST",
-                "/tweets",
-                json=data
-            )
-            return response.json()["data"]
-            
-        except Exception as e:
-            logger.error(f"Error posting tweet: {str(e)}")
-            raise
-    
-    async def monitor_mentions(self, since_id: Optional[str] = None) -> List[Tweet]:
-        """Monitor mentions of Gonzo."""
-        try:
-            # First get user ID
-            me_response = await self._make_request("GET", "/users/me")
-            user_id = me_response.json()["data"]["id"]
-            
-            # Get mentions
             params = {
-                "tweet.fields": "author_id,conversation_id,created_at,referenced_tweets,context_annotations"
+                "query": f"conversation_id:{conversation_id}",
+                "tweet.fields": "author_id,conversation_id,created_at,referenced_tweets,context_annotations",
+                "max_results": 100
+            }
+            
+            response = await self._make_request(
+                "GET",
+                "/tweets/search/recent",
+                params=params
+            )
+            data = response.json().get("data", [])
+            
+            tweets = [
+                Tweet(
+                    id=tweet["id"],
+                    text=tweet["text"],
+                    author_id=tweet["author_id"],
+                    conversation_id=tweet.get("conversation_id"),
+                    created_at=datetime.fromisoformat(tweet["created_at"].replace('Z', '+00:00')),
+                    referenced_tweets=tweet.get("referenced_tweets"),
+                    context_annotations=tweet.get("context_annotations")
+                )
+                for tweet in data
+            ]
+            
+            return sorted(tweets, key=lambda x: x.created_at)
+                
+        except Exception as e:
+            logger.error(f"Error getting conversation: {str(e)}")
+            return []
+    
+    async def monitor_keywords(self, keywords: List[str], since_id: Optional[str] = None) -> List[Tweet]:
+        """Monitor tweets containing keywords."""
+        try:
+            query = " OR ".join(keywords)
+            params = {
+                "query": query,
+                "tweet.fields": "author_id,conversation_id,created_at,referenced_tweets,context_annotations",
+                "max_results": 100
             }
             if since_id:
                 params["since_id"] = since_id
                 
             response = await self._make_request(
                 "GET",
-                f"/users/{user_id}/mentions",
+                "/tweets/search/recent",
                 params=params
             )
             data = response.json().get("data", [])
@@ -51,5 +66,5 @@
             ]
                 
         except Exception as e:
-            logger.error(f"Error monitoring mentions: {str(e)}")
+            logger.error(f"Error monitoring keywords: {str(e)}")
             return []
