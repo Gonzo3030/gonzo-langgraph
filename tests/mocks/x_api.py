@@ -1,26 +1,11 @@
 """Mock X API response for testing."""
 
 from datetime import datetime, timezone
-from unittest.mock import MagicMock
 
-class MockResponse:
-    """Mock requests response."""
-    def __init__(self, status_code=200, json_data=None, headers=None):
-        self.status_code = status_code
-        self._json_data = json_data or {}
-        self.headers = headers or {}
-        
-    def json(self):
-        return self._json_data
-        
-    def raise_for_status(self):
-        if self.status_code != 200:
-            raise Exception(f"HTTP {self.status_code}")
-
-class MockSession(MagicMock):
-    """Mock requests session with stored data."""
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+class MockOAuthSession:
+    """Mock OAuth session for testing."""
+    def __init__(self, client_key=None, client_secret=None,
+                 resource_owner_key=None, resource_owner_secret=None):
         self.tweet_data = {
             "id": "123456789",
             "text": "Test tweet about manipulation patterns",
@@ -37,7 +22,10 @@ class MockSession(MagicMock):
             "username": "DrGonzo3030"
         }
         
-    def get(self, url, **kwargs):
+    def post(self, url, json=None, params=None):
+        return MockResponse(json_data={"data": self.tweet_data})
+        
+    def get(self, url, params=None):
         if "users/me" in url:
             return MockResponse(json_data={"data": self.user_data})
         elif "mentions" in url:
@@ -51,6 +39,20 @@ class MockSession(MagicMock):
                 }
             )
         return MockResponse()
+
+class MockResponse:
+    """Mock requests response."""
+    def __init__(self, status_code=200, json_data=None, headers=None):
+        self.status_code = status_code
+        self._json_data = json_data or {}
+        self.headers = headers or {
+            'x-rate-limit-limit': '100',
+            'x-rate-limit-remaining': '50'
+        }
         
-    def post(self, url, **kwargs):
-        return MockResponse(json_data={"data": self.tweet_data})
+    def json(self):
+        return self._json_data
+        
+    def raise_for_status(self):
+        if self.status_code != 200:
+            raise Exception(f"HTTP {self.status_code}")
