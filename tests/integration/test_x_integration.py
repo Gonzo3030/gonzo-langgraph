@@ -1,6 +1,6 @@
 """Integration tests for X client."""
 import pytest
-from unittest.mock import patch, Mock
+from unittest.mock import patch, Mock, AsyncMock
 from datetime import datetime, timezone
 
 from gonzo.integrations.x_client import XClient, RateLimitError, AuthenticationError
@@ -15,90 +15,114 @@ from ..fixtures.x_responses import (
 )
 
 @pytest.fixture
-def mock_session():
+def oauth_session():
+    """Mock OAuth session for testing."""
     with patch('requests_oauthlib.OAuth1Session') as mock:
-        session = Mock()
-        mock.return_value = session
-        yield session
+        mock_session = Mock()
+        mock.return_value = mock_session
+        yield mock_session
+
+@pytest.fixture
+def x_client(oauth_session):
+    """Provide configured X client for testing."""
+    with patch('gonzo.integrations.x_client.X_API_KEY', 'test_key'), \
+         patch('gonzo.integrations.x_client.X_API_SECRET', 'test_secret'), \
+         patch('gonzo.integrations.x_client.X_ACCESS_TOKEN', 'test_token'), \
+         patch('gonzo.integrations.x_client.X_ACCESS_SECRET', 'test_token_secret'):
+        client = XClient()
+        return client
 
 @pytest.mark.asyncio
-async def test_post_tweet(mock_session):
+async def test_post_tweet(x_client, oauth_session):
     """Test successful tweet posting."""
-    mock_session.post.return_value.json.return_value = TWEET_RESPONSE
-    mock_session.post.return_value.headers = STANDARD_HEADERS
-    mock_session.post.return_value.status_code = 200
+    # Setup mock response
+    mock_response = Mock()
+    mock_response.json.return_value = TWEET_RESPONSE
+    mock_response.headers = STANDARD_HEADERS
+    mock_response.status_code = 200
+    oauth_session.post.return_value = mock_response
     
-    x_client = XClient()
     response = await x_client.post_tweet("Test tweet")
     
     assert response["id"] == "1234567890"
     assert response["text"] == "Test tweet"
 
 @pytest.mark.asyncio
-async def test_monitor_mentions(mock_session):
+async def test_monitor_mentions(x_client, oauth_session):
     """Test mentions monitoring."""
-    mock_session.get.return_value.json.return_value = MENTIONS_RESPONSE
-    mock_session.get.return_value.headers = STANDARD_HEADERS
-    mock_session.get.return_value.status_code = 200
+    # Mock user ID response
+    user_response = Mock()
+    user_response.json.return_value = {"data": {"id": "123"}}
+    user_response.status_code = 200
+    user_response.headers = STANDARD_HEADERS
+
+    # Mock mentions response
+    mentions_response = Mock()
+    mentions_response.json.return_value = MENTIONS_RESPONSE
+    mentions_response.status_code = 200
+    mentions_response.headers = STANDARD_HEADERS
+
+    oauth_session.get.side_effect = [user_response, mentions_response]
     
-    x_client = XClient()
     mentions = await x_client.monitor_mentions()
     
     assert len(mentions) == 1
     assert mentions[0].text == "@gonzo test mention"
 
 @pytest.mark.asyncio
-async def test_get_conversation_thread(mock_session):
+async def test_get_conversation_thread(x_client, oauth_session):
     """Test conversation thread retrieval."""
-    mock_session.get.return_value.json.return_value = CONVERSATION_RESPONSE
-    mock_session.get.return_value.headers = STANDARD_HEADERS
-    mock_session.get.return_value.status_code = 200
+    mock_response = Mock()
+    mock_response.json.return_value = CONVERSATION_RESPONSE
+    mock_response.status_code = 200
+    mock_response.headers = STANDARD_HEADERS
+    oauth_session.get.return_value = mock_response
     
-    x_client = XClient()
     thread = await x_client.get_conversation_thread("1234567892")
     
     assert len(thread) == 1
     assert thread[0].text == "Test conversation tweet"
 
 @pytest.mark.asyncio
-async def test_rate_limit_handling(mock_session):
+async def test_rate_limit_handling(x_client, oauth_session):
     """Test rate limit handling and retries."""
-    mock_session.post.side_effect = [
-        Mock(
-            status_code=429,
-            headers=EXHAUSTED_HEADERS,
-            json=lambda: RATE_LIMIT_RESPONSE
-        ),
-        Mock(
-            status_code=200,
-            headers=STANDARD_HEADERS,
-            json=lambda: TWEET_RESPONSE
-        )
-    ]
+    # First call hits rate limit, second succeeds
+    rate_limit_response = Mock()
+    rate_limit_response.status_code = 429
+    rate_limit_response.headers = EXHAUSTED_HEADERS
+    rate_limit_response.json.return_value = RATE_LIMIT_RESPONSE
+
+    success_response = Mock()
+    success_response.status_code = 200
+    success_response.headers = STANDARD_HEADERS
+    success_response.json.return_value = TWEET_RESPONSE
+
+    oauth_session.post.side_effect = [rate_limit_response, success_response]
     
-    x_client = XClient()
     response = await x_client.post_tweet("Test tweet")
     
     assert response["id"] == "1234567890"
-    assert mock_session.post.call_count == 2
+    assert oauth_session.post.call_count == 2
 
 @pytest.mark.asyncio
-async def test_auth_error_handling(mock_session):
+async def test_auth_error_handling(x_client, oauth_session):
     """Test authentication error handling."""
-    mock_session.post.return_value.status_code = 403
-    mock_session.post.return_value.text = "Forbidden"
+    mock_response = Mock()
+    mock_response.status_code = 403
+    mock_response.text = "Forbidden"
+    mock_response.headers = STANDARD_HEADERS
+    oauth_session.post.return_value = mock_response
     
-    x_client = XClient()
     with pytest.raises(AuthenticationError):
         await x_client.post_tweet("Test tweet")
 
-def test_rate_limits(mock_session):
+def test_rate_limits(x_client, oauth_session):
     """Test rate limit information."""
-    mock_session.get.return_value.headers = STANDARD_HEADERS
-    mock_session.get.return_value.status_code = 200
+    mock_response = Mock()
+    mock_response.headers = STANDARD_HEADERS
+    mock_response.status_code = 200
+    oauth_session.get.return_value = mock_response
     
-    x_client = XClient()
     limits = x_client.get_rate_limits()
     
-    assert '/tweets/search/recent' in limits
-    assert limits['/tweets/search/recent']['limit'] == 100
+    assert limits["/tweets/search/recent"]["limit"] == 100
