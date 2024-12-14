@@ -2,14 +2,27 @@
 
 import pytest
 from datetime import datetime, timezone
-from unittest.mock import patch, MagicMock
-from tests.mocks.x_api import MockSession, MockResponse
+from unittest.mock import patch
 from gonzo.integrations.x_client import XClient, Tweet
 
-def get_mock_response(*args, **kwargs):
-    """Helper to get appropriate mock response based on URL."""
-    url = args[0] if args else kwargs.get('url', '')
-    
+@pytest.fixture
+def mock_response():
+    """Create mock response with test data."""
+    class MockResponse:
+        def __init__(self, data=None, headers=None):
+            self.data = data
+            self.headers = headers or {}
+            
+        def json(self):
+            return {"data": self.data}
+            
+        def raise_for_status(self):
+            pass
+    return MockResponse
+
+@pytest.fixture
+def mock_session(mock_response):
+    """Create mock session that returns test data."""
     tweet_data = {
         "id": "123456789",
         "text": "Test tweet about manipulation patterns",
@@ -26,32 +39,29 @@ def get_mock_response(*args, **kwargs):
         "username": "DrGonzo3030"
     }
     
-    if "/tweets" in url and kwargs.get('json'):
-        return MockResponse(json_data={"data": tweet_data})
-    elif "users/me" in url:
-        return MockResponse(json_data={"data": user_data})
-    elif "mentions" in url:
-        return MockResponse(json_data={"data": [tweet_data]})
-    elif "search/recent" in url:
-        return MockResponse(
-            json_data={"data": [tweet_data]},
-            headers={
-                'x-rate-limit-limit': '100',
-                'x-rate-limit-remaining': '50'
-            }
-        )
-    return MockResponse()
+    class MockSession:
+        def get(self, url, **kwargs):
+            if "users/me" in url:
+                return mock_response(user_data)
+            elif "mentions" in url:
+                return mock_response([tweet_data])
+            elif "search/recent" in url:
+                return mock_response([tweet_data], headers={
+                    'x-rate-limit-limit': '100',
+                    'x-rate-limit-remaining': '50'
+                })
+            return mock_response()
+            
+        def post(self, url, **kwargs):
+            return mock_response(tweet_data)
+    
+    return MockSession
 
 @pytest.fixture
-def x_client():
-    """Provide X client with mock API."""
-    mock_session = MagicMock()
-    mock_session.post = get_mock_response
-    mock_session.get = get_mock_response
-    
-    with patch('requests_oauthlib.OAuth1Session', return_value=mock_session):
-        client = XClient()
-        return client
+def x_client(mock_session):
+    """Provide X client with mocked API."""
+    with patch('requests_oauthlib.OAuth1Session', mock_session):
+        return XClient()
 
 @pytest.mark.asyncio
 async def test_post_tweet(x_client):
