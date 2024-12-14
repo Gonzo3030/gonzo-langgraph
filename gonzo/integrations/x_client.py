@@ -1,10 +1,11 @@
-"""X (Twitter) API v2 client for Gonzo."""
+"""X (Twitter) API v2 client for Gonzo using OpenAPI integration."""
 
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
 import requests
 import logging
 import time
+from pathlib import Path
 from requests_oauthlib import OAuth1Session
 from pydantic import BaseModel
 
@@ -18,9 +19,9 @@ from ..config.x import (
     X_MAX_DELAY
 )
 from ..state.x_state import XState
+from ..api.openapi_agent import OpenAPIAgentTool
 
 logger = logging.getLogger(__name__)
-
 
 class RateLimitError(Exception):
     """Custom exception for rate limit handling."""
@@ -28,11 +29,9 @@ class RateLimitError(Exception):
         super().__init__(message)
         self.reset_time = reset_time
 
-
 class AuthenticationError(Exception):
     """Custom exception for authentication issues."""
     pass
-
 
 class Tweet(BaseModel):
     """Tweet data model."""
@@ -44,15 +43,20 @@ class Tweet(BaseModel):
     referenced_tweets: Optional[List[Dict[str, str]]] = None
     context_annotations: Optional[List[Dict[str, Any]]] = None
 
-
 class XClient:
-    """Client for X API v2 interactions."""
+    """Client for X API v2 interactions with OpenAPI integration."""
     
-    def __init__(self):
-        """Initialize X client."""
+    def __init__(self, llm, spec_path: Optional[str] = None):
+        """Initialize X client with OpenAPI support.
+        
+        Args:
+            llm: Language model for OpenAPI agent
+            spec_path: Path to OpenAPI spec file (defaults to package location)
+        """
         if not all([X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET]):
             raise AuthenticationError("Missing required X API credentials")
-            
+
+        # Initialize standard OAuth session
         self.session = OAuth1Session(
             client_key=X_API_KEY,
             client_secret=X_API_SECRET,
@@ -60,8 +64,22 @@ class XClient:
             resource_owner_secret=X_ACCESS_SECRET
         )
         self.base_url = "https://api.twitter.com/2"
+        
+        # Initialize state tracking
         self._state = XState()
         self.rate_limits = {}
+        
+        # Initialize OpenAPI agent
+        if spec_path is None:
+            spec_path = str(Path(__file__).parent.parent / 'api' / 'specs' / 'x_api.yaml')
+        
+        self.api_agent = OpenAPIAgentTool(
+            llm=llm,
+            cache_duration=300,  # 5 minutes
+            max_retries=X_MAX_RETRIES
+        )
+        self.api_agent.create_agent_for_api(spec_path, 'x')
+        self.api_agent.add_rate_limit('x', X_BASE_DELAY)
 
     def _calculate_wait_time(self, headers: Dict[str, str], attempt: int) -> float:
         """Calculate wait time based on rate limit headers and retry attempt."""
@@ -80,9 +98,26 @@ class XClient:
                 'remaining': int(headers['x-rate-limit-remaining']),
                 'reset': int(headers['x-rate-limit-reset'])
             }
+            # Update OpenAPI agent rate limits
+            self.api_agent.add_rate_limit('x', int(headers['x-rate-limit-reset']) - int(time.time()))
 
-    async def _make_request(self, method: str, endpoint: str, **kwargs) -> requests.Response:
-        """Make an API request with rate limit handling and retries."""
+    async def _make_request(self, method: str, endpoint: str, use_agent: bool = False, **kwargs) -> Any:
+        """Make an API request with rate limit handling and retries.
+        
+        Args:
+            method: HTTP method to use
+            endpoint: API endpoint to call
+            use_agent: Whether to use OpenAPI agent instead of direct request
+            **kwargs: Additional arguments for request
+        """
+        if use_agent:
+            try:
+                return await self.api_agent.query_api('x', f"{method} {endpoint} {kwargs}")
+            except Exception as e:
+                logger.error(f"OpenAPI agent error: {str(e)}")
+                # Fall back to direct request
+                logger.info("Falling back to direct request")
+
         url = f"{self.base_url}{endpoint}"
         
         for attempt in range(X_MAX_RETRIES):
@@ -122,151 +157,3 @@ class XClient:
                 time.sleep(wait_time)
         
         raise Exception(f"Max retries ({X_MAX_RETRIES}) exceeded for {endpoint}")
-
-    async def post_tweet(self, text: str, reply_to: Optional[str] = None) -> Dict[str, Any]:
-        """Post a tweet with rate limit handling."""
-        try:
-            data = {"text": text}
-            if reply_to:
-                data["reply"] = {"in_reply_to_tweet_id": reply_to}
-                
-            response = await self._make_request(
-                "POST",
-                "/tweets",
-                json=data
-            )
-            return response.json()["data"]
-            
-        except Exception as e:
-            logger.error(f"Error posting tweet: {str(e)}")
-            raise
-
-    async def monitor_mentions(self, since_id: Optional[str] = None) -> List[Tweet]:
-        """Monitor mentions of Gonzo."""
-        try:
-            # First get user ID
-            me_response = await self._make_request("GET", "/users/me")
-            user_id = me_response.json()["data"]["id"]
-            
-            # Get mentions
-            params = {
-                "tweet.fields": "author_id,conversation_id,created_at,referenced_tweets,context_annotations"
-            }
-            if since_id:
-                params["since_id"] = since_id
-                
-            response = await self._make_request(
-                "GET",
-                f"/users/{user_id}/mentions",
-                params=params
-            )
-            data = response.json().get("data", [])
-            
-            return [
-                Tweet(
-                    id=tweet["id"],
-                    text=tweet["text"],
-                    author_id=tweet["author_id"],
-                    conversation_id=tweet.get("conversation_id"),
-                    created_at=datetime.fromisoformat(tweet["created_at"].replace('Z', '+00:00')),
-                    referenced_tweets=tweet.get("referenced_tweets"),
-                    context_annotations=tweet.get("context_annotations")
-                )
-                for tweet in data
-            ]
-                
-        except Exception as e:
-            logger.error(f"Error monitoring mentions: {str(e)}")
-            return []
-
-    async def get_conversation_thread(self, conversation_id: str) -> List[Tweet]:
-        """Get conversation thread."""
-        try:
-            params = {
-                "query": f"conversation_id:{conversation_id}",
-                "tweet.fields": "author_id,conversation_id,created_at,referenced_tweets,context_annotations",
-                "max_results": 100
-            }
-            
-            response = await self._make_request(
-                "GET",
-                "/tweets/search/recent",
-                params=params
-            )
-            data = response.json().get("data", [])
-            
-            tweets = [
-                Tweet(
-                    id=tweet["id"],
-                    text=tweet["text"],
-                    author_id=tweet["author_id"],
-                    conversation_id=tweet.get("conversation_id"),
-                    created_at=datetime.fromisoformat(tweet["created_at"].replace('Z', '+00:00')),
-                    referenced_tweets=tweet.get("referenced_tweets"),
-                    context_annotations=tweet.get("context_annotations")
-                )
-                for tweet in data
-            ]
-            
-            return sorted(tweets, key=lambda x: x.created_at)
-                
-        except Exception as e:
-            logger.error(f"Error getting conversation: {str(e)}")
-            return []
-
-    async def monitor_keywords(self, keywords: List[str], since_id: Optional[str] = None) -> List[Tweet]:
-        """Monitor tweets containing keywords."""
-        try:
-            query = " OR ".join(keywords)
-            params = {
-                "query": query,
-                "tweet.fields": "author_id,conversation_id,created_at,referenced_tweets,context_annotations",
-                "max_results": 100
-            }
-            if since_id:
-                params["since_id"] = since_id
-                
-            response = await self._make_request(
-                "GET",
-                "/tweets/search/recent",
-                params=params
-            )
-            data = response.json().get("data", [])
-            
-            return [
-                Tweet(
-                    id=tweet["id"],
-                    text=tweet["text"],
-                    author_id=tweet["author_id"],
-                    conversation_id=tweet.get("conversation_id"),
-                    created_at=datetime.fromisoformat(tweet["created_at"].replace('Z', '+00:00')),
-                    referenced_tweets=tweet.get("referenced_tweets"),
-                    context_annotations=tweet.get("context_annotations")
-                )
-                for tweet in data
-            ]
-                
-        except Exception as e:
-            logger.error(f"Error monitoring keywords: {str(e)}")
-            return []
-
-    def get_rate_limits(self) -> Dict[str, Any]:
-        """Get current rate limit information."""
-        try:
-            # Make a simple request to check rate limits
-            endpoint = "/tweets/search/recent"
-            params = {"query": "test", "max_results": 10}
-            
-            response = self.session.get(f"{self.base_url}{endpoint}", params=params)
-            self._update_rate_limits(endpoint, response.headers)
-            
-            return self.rate_limits
-            
-        except Exception as e:
-            logger.error(f"Error getting rate limits: {str(e)}")
-            return {}
-
-    @property
-    def state(self) -> XState:
-        """Get current X state."""
-        return self._state
