@@ -2,15 +2,56 @@
 
 import pytest
 from datetime import datetime, timezone
-from unittest.mock import patch
-from tests.mocks.x_api import MockOAuthSession
+from unittest.mock import patch, MagicMock
+from tests.mocks.x_api import MockOAuthSession, MockResponse
 from gonzo.integrations.x_client import XClient, Tweet
+
+def get_mock_response(*args, **kwargs):
+    """Helper to get appropriate mock response based on URL."""
+    url = args[0] if args else kwargs.get('url', '')
+    
+    tweet_data = {
+        "id": "123456789",
+        "text": "Test tweet about manipulation patterns",
+        "author_id": "987654321",
+        "conversation_id": "123456789",
+        "created_at": datetime.now(timezone.utc).isoformat() + 'Z',
+        "referenced_tweets": None,
+        "context_annotations": None
+    }
+    
+    user_data = {
+        "id": "987654321",
+        "name": "Dr. Gonzo",
+        "username": "DrGonzo3030"
+    }
+    
+    if "/tweets" in url and kwargs.get('json'):
+        return MockResponse(json_data={"data": tweet_data})
+    elif "users/me" in url:
+        return MockResponse(json_data={"data": user_data})
+    elif "mentions" in url:
+        return MockResponse(json_data={"data": [tweet_data]})
+    elif "search/recent" in url:
+        return MockResponse(
+            json_data={"data": [tweet_data]},
+            headers={
+                'x-rate-limit-limit': '100',
+                'x-rate-limit-remaining': '50'
+            }
+        )
+    return MockResponse()
 
 @pytest.fixture
 def x_client():
     """Provide X client with mock API."""
-    with patch('requests_oauthlib.OAuth1Session', MockOAuthSession):
-        return XClient()
+    mock_session = MagicMock()
+    mock_session.post = get_mock_response
+    mock_session.get = get_mock_response
+    
+    with patch('requests_oauthlib.OAuth1Session', return_value=mock_session):
+        client = XClient()
+        return client
 
 @pytest.mark.asyncio
 async def test_post_tweet(x_client):
