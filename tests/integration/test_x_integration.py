@@ -3,65 +3,19 @@
 import pytest
 from datetime import datetime, timezone
 from unittest.mock import patch
+from tests.mocks.x_api import MockOAuthSession
 from gonzo.integrations.x_client import XClient, Tweet
 
-@pytest.fixture
-def mock_response():
-    """Create mock response with test data."""
-    class MockResponse:
-        def __init__(self, data=None, headers=None):
-            self.data = data
-            self.headers = headers or {}
-            
-        def json(self):
-            return {"data": self.data}
-            
-        def raise_for_status(self):
-            pass
-    return MockResponse
+@pytest.fixture(autouse=True)
+def mock_oauth():
+    """Mock OAuth session for all tests."""
+    with patch('requests_oauthlib.OAuth1Session', MockOAuthSession):
+        yield
 
 @pytest.fixture
-def mock_session(mock_response):
-    """Create mock session that returns test data."""
-    tweet_data = {
-        "id": "123456789",
-        "text": "Test tweet about manipulation patterns",
-        "author_id": "987654321",
-        "conversation_id": "123456789",
-        "created_at": datetime.now(timezone.utc).isoformat() + 'Z',
-        "referenced_tweets": None,
-        "context_annotations": None
-    }
-    
-    user_data = {
-        "id": "987654321",
-        "name": "Dr. Gonzo",
-        "username": "DrGonzo3030"
-    }
-    
-    class MockSession:
-        def get(self, url, **kwargs):
-            if "users/me" in url:
-                return mock_response(user_data)
-            elif "mentions" in url:
-                return mock_response([tweet_data])
-            elif "search/recent" in url:
-                return mock_response([tweet_data], headers={
-                    'x-rate-limit-limit': '100',
-                    'x-rate-limit-remaining': '50'
-                })
-            return mock_response()
-            
-        def post(self, url, **kwargs):
-            return mock_response(tweet_data)
-    
-    return MockSession
-
-@pytest.fixture
-def x_client(mock_session):
-    """Provide X client with mocked API."""
-    with patch('requests_oauthlib.OAuth1Session', mock_session):
-        return XClient()
+def x_client():
+    """Provide X client for testing."""
+    return XClient()
 
 @pytest.mark.asyncio
 async def test_post_tweet(x_client):
