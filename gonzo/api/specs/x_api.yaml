@@ -1,0 +1,143 @@
+openapi: 3.0.0
+info:
+  title: X (Twitter) API v2
+  version: '2.0'
+  description: X API endpoints for Gonzo social interaction
+
+servers:
+  - url: https://api.twitter.com/2
+    description: X API v2 Production Server
+
+components:
+  securitySchemes:
+    OAuth1:
+      type: oauth1
+      description: OAuth 1.0a authentication
+
+  schemas:
+    Tweet:
+      type: object
+      properties:
+        id:
+          type: string
+        text:
+          type: string
+        author_id:
+          type: string
+        conversation_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        referenced_tweets:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [replied_to, quoted, retweeted]
+              id:
+                type: string
+
+paths:
+  /tweets:
+    post:
+      summary: Create a Tweet
+      operationId: createTweet
+      security:
+        - OAuth1: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+                  maxLength: 280
+                reply:
+                  type: object
+                  properties:
+                    in_reply_to_tweet_id:
+                      type: string
+      responses:
+        '201':
+          description: Tweet created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tweet'
+        '429':
+          description: Rate limit exceeded
+
+  /users/me:
+    get:
+      summary: Get authenticated user
+      operationId: getAuthenticatedUser
+      security:
+        - OAuth1: []
+      responses:
+        '200':
+          description: User details retrieved successfully
+
+  /users/{id}/mentions:
+    get:
+      summary: Get user mentions
+      operationId: getUserMentions
+      security:
+        - OAuth1: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: since_id
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Mentions retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Tweet'
+
+  /tweets/search/recent:
+    get:
+      summary: Search recent tweets
+      operationId: searchRecentTweets
+      security:
+        - OAuth1: []
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: max_results
+          in: query
+          schema:
+            type: integer
+            maximum: 100
+            default: 10
+      responses:
+        '200':
+          description: Search results retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Tweet'
