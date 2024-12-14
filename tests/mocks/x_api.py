@@ -1,48 +1,57 @@
-"""Mock X API for testing."""
+"""Mock X API response for testing."""
 
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
-class MockTweet:
-    """Mock tweet data."""
-    def __init__(self):
-        self.id = '123456789'
-        self.text = 'Test tweet about manipulation patterns'
-        self.author_id = '987654321'
-        self.conversation_id = '123456789'
-        self.created_at = datetime.now(timezone.utc)
-        self.referenced_tweets = None
-        self.context_annotations = None
+class MockResponse:
+    """Mock requests response."""
+    def __init__(self, status_code=200, json_data=None, headers=None):
+        self.status_code = status_code
+        self._json_data = json_data or {}
+        self.headers = headers or {}
         
-    def __dict__(self):
-        return {
-            'id': self.id,
-            'text': self.text,
-            'author_id': self.author_id,
-            'conversation_id': self.conversation_id,
-            'created_at': self.created_at,
-            'referenced_tweets': self.referenced_tweets,
-            'context_annotations': self.context_annotations
+    def json(self):
+        return self._json_data
+        
+    def raise_for_status(self):
+        if self.status_code != 200:
+            raise Exception(f"HTTP {self.status_code}")
+
+class MockOAuthSession:
+    """Mock OAuth session."""
+    
+    def __init__(self, client_key=None, client_secret=None,
+                 resource_owner_key=None, resource_owner_secret=None):
+        self.tweet_data = {
+            "id": "123456789",
+            "text": "Test tweet about manipulation patterns",
+            "author_id": "987654321",
+            "conversation_id": "123456789",
+            "created_at": datetime.now(timezone.utc).isoformat() + 'Z',
+            "referenced_tweets": None,
+            "context_annotations": None
         }
-
-class MockAccount:
-    """Mock Twitter account."""
-    
-    def __init__(self, client=None):
-        self.mock_tweet = MockTweet()
-    
-    def tweet(self, text, **kwargs):
-        return self.mock_tweet
-    
-    def mentions(self, **kwargs):
-        return [self.mock_tweet]
-
-class MockClient:
-    """Mock Twitter client."""
-    
-    def __init__(self, consumer_key=None, consumer_secret=None, token=None,
-                 token_secret=None):
-        self.mock_tweet = MockTweet()
         
-    def search_tweets(self, query, **kwargs):
-        return [self.mock_tweet]
+        self.user_data = {
+            "id": "987654321",
+            "name": "Dr. Gonzo",
+            "username": "DrGonzo3030"
+        }
+        
+    def post(self, url, **kwargs):
+        return MockResponse(json_data={"data": self.tweet_data})
+        
+    def get(self, url, **kwargs):
+        if "users/me" in url:
+            return MockResponse(json_data={"data": self.user_data})
+        elif "mentions" in url:
+            return MockResponse(json_data={"data": [self.tweet_data]})
+        elif "search/recent" in url:
+            return MockResponse(
+                json_data={"data": [self.tweet_data]},
+                headers={
+                    'x-rate-limit-limit': '100',
+                    'x-rate-limit-remaining': '50'
+                }
+            )
+        return MockResponse()
