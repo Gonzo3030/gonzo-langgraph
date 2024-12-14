@@ -25,8 +25,13 @@ ANTHROPIC_MODEL = "claude-3-sonnet-20240229"  # Latest Claude 3.5 Sonnet
 X_API_KEY = os.getenv("X_API_KEY")
 X_API_SECRET = os.getenv("X_API_SECRET")
 X_ACCESS_TOKEN = os.getenv("X_ACCESS_TOKEN")
-X_ACCESS_TOKEN_SECRET = os.getenv("X_ACCESS_TOKEN_SECRET")
+X_ACCESS_SECRET = os.getenv("X_ACCESS_SECRET")  # Changed to match .env
 X_BEARER_TOKEN = os.getenv("X_BEARER_TOKEN")
+
+# X API Rate Limiting Configuration
+X_MAX_RETRIES = 3
+X_BASE_DELAY = 5  # Base delay in seconds for exponential backoff
+X_MAX_DELAY = 300  # Maximum delay in seconds
 
 # Brave Search Configuration
 BRAVE_API_KEY = os.getenv("BRAVE_API_KEY")
@@ -37,7 +42,7 @@ def get_api_keys() -> Dict[str, str]:
         'x_api_key': X_API_KEY,
         'x_api_secret': X_API_SECRET,
         'x_access_token': X_ACCESS_TOKEN,
-        'x_access_token_secret': X_ACCESS_TOKEN_SECRET,
+        'x_access_secret': X_ACCESS_SECRET,  # Changed to match .env
         'x_bearer_token': X_BEARER_TOKEN,
         'openai_api_key': OPENAI_API_KEY,
         'anthropic_api_key': ANTHROPIC_API_KEY,
