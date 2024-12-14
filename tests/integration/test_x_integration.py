@@ -3,7 +3,7 @@
 import pytest
 from datetime import datetime, timezone
 from unittest.mock import patch, MagicMock
-from tests.mocks.x_api import MockOAuthSession, MockResponse
+from tests.mocks.x_api import MockSession, MockResponse
 from gonzo.integrations.x_client import XClient, Tweet
 
 def get_mock_response(*args, **kwargs):
