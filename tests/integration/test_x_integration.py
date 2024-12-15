@@ -23,15 +23,6 @@ def create_mock_response(status_code, json_data, headers):
     mock_response.json.return_value = json_data
     return mock_response
 
-@pytest.fixture(autouse=True)
-def mock_credentials():
-    """Mock API credentials."""
-    with patch('gonzo.config.x.X_API_KEY', 'test_key'), \
-         patch('gonzo.config.x.X_API_SECRET', 'test_secret'), \
-         patch('gonzo.config.x.X_ACCESS_TOKEN', 'test_token'), \
-         patch('gonzo.config.x.X_ACCESS_SECRET', 'test_secret'):
-        yield
-
 @pytest.fixture
 def mock_openapi_agent():
     """Mock OpenAPI agent."""
@@ -55,12 +46,13 @@ def x_client(mock_openapi_agent):
 @pytest.mark.asyncio
 async def test_post_tweet(x_client, mock_requests):
     """Test successful tweet posting."""
-    mock_response = create_mock_response(200, TWEET_RESPONSE, STANDARD_HEADERS)
-    mock_requests.post.return_value = mock_response
+    mock_requests.post.return_value = create_mock_response(
+        200, TWEET_RESPONSE, STANDARD_HEADERS
+    )
     
     response = await x_client.post_tweet("Test tweet")
-    assert response["id"] == "1234567890"
-    assert response["text"] == "Test tweet"
+    assert response == TWEET_RESPONSE
+    mock_requests.post.assert_called_once()
 
 @pytest.mark.asyncio
 async def test_monitor_mentions(x_client, mock_requests):
@@ -79,22 +71,21 @@ async def test_monitor_mentions(x_client, mock_requests):
     mock_requests.get.side_effect = [user_response, mentions_response]
     
     mentions = await x_client.monitor_mentions()
-    assert len(mentions) == 1
-    assert mentions[0].text == "@gonzo test mention"
+    assert mentions == MENTIONS_RESPONSE.get('data', [])
+    assert mock_requests.get.call_count == 2
 
 @pytest.mark.asyncio
 async def test_get_conversation_thread(x_client, mock_requests):
     """Test conversation thread retrieval."""
-    mock_response = create_mock_response(
+    mock_requests.get.return_value = create_mock_response(
         200,
         CONVERSATION_RESPONSE,
         STANDARD_HEADERS
     )
-    mock_requests.get.return_value = mock_response
     
     thread = await x_client.get_conversation_thread("1234567892")
-    assert len(thread) == 1
-    assert thread[0].text == "Test conversation tweet"
+    assert thread == CONVERSATION_RESPONSE.get('data', [])
+    mock_requests.get.assert_called_once()
 
 @pytest.mark.asyncio
 async def test_rate_limit_handling(x_client, mock_requests):
@@ -106,40 +97,30 @@ async def test_rate_limit_handling(x_client, mock_requests):
         EXHAUSTED_HEADERS
     )
     
-    # Second response: success
-    success_response = create_mock_response(
-        200,
-        TWEET_RESPONSE,
-        STANDARD_HEADERS
-    )
+    mock_requests.post.return_value = rate_limit_response
     
-    mock_requests.post.side_effect = [rate_limit_response, success_response]
-    response = await x_client.post_tweet("Test tweet")
+    with pytest.raises(RateLimitError) as exc:
+        await x_client.post_tweet("Test tweet")
     
-    assert response["id"] == "1234567890"
-    assert mock_requests.post.call_count == 2
+    assert exc.value.reset_time > 0
+    mock_requests.post.assert_called_once()
 
 @pytest.mark.asyncio
 async def test_auth_error_handling(x_client, mock_requests):
     """Test authentication error handling."""
-    mock_response = create_mock_response(
+    mock_requests.post.return_value = create_mock_response(
         403,
         AUTH_ERROR_RESPONSE,
         STANDARD_HEADERS
     )
-    mock_requests.post.return_value = mock_response
     
     with pytest.raises(AuthenticationError):
         await x_client.post_tweet("Test tweet")
+    
+    mock_requests.post.assert_called_once()
 
 def test_rate_limits(x_client, mock_requests):
     """Test rate limit information."""
-    mock_response = create_mock_response(
-        200,
-        {"data": []},
-        STANDARD_HEADERS
-    )
-    mock_requests.get.return_value = mock_response
-    
     limits = x_client.get_rate_limits()
     assert "/tweets/search/recent" in limits
+    assert limits["/tweets/search/recent"]["remaining"] == 100
