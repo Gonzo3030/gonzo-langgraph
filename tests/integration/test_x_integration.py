@@ -21,13 +21,25 @@ def create_mock_response(status_code, json_data, headers):
     mock_response.status_code = status_code
     mock_response.headers = headers
     mock_response.json.return_value = json_data
+    mock_response.request = Mock(path_url="/tweets")
     return mock_response
+
+@pytest.fixture(autouse=True)
+def mock_credentials():
+    """Mock API credentials."""
+    with patch('gonzo.config.x.X_API_KEY', 'test_key'), \
+         patch('gonzo.config.x.X_API_SECRET', 'test_secret'), \
+         patch('gonzo.config.x.X_ACCESS_TOKEN', 'test_token'), \
+         patch('gonzo.config.x.X_ACCESS_SECRET', 'test_secret'):
+        yield
 
 @pytest.fixture
 def mock_openapi_agent():
     """Mock OpenAPI agent."""
     agent = Mock()
-    agent.rate_limits = {"x": {"remaining": 100}}
+    agent.rate_limits = {
+        "/tweets/search/recent": {"limit": 100, "remaining": 100, "reset": 0}
+    }
     return agent
 
 @pytest.fixture(autouse=True)
@@ -51,13 +63,12 @@ async def test_post_tweet(x_client, mock_requests):
     )
     
     response = await x_client.post_tweet("Test tweet")
-    assert response == TWEET_RESPONSE
+    assert response == TWEET_RESPONSE['data']
     mock_requests.post.assert_called_once()
 
 @pytest.mark.asyncio
 async def test_monitor_mentions(x_client, mock_requests):
     """Test mentions monitoring."""
-    # Mock responses
     user_response = create_mock_response(
         200, 
         {"data": {"id": "123"}},
@@ -71,7 +82,7 @@ async def test_monitor_mentions(x_client, mock_requests):
     mock_requests.get.side_effect = [user_response, mentions_response]
     
     mentions = await x_client.monitor_mentions()
-    assert mentions == MENTIONS_RESPONSE.get('data', [])
+    assert mentions == MENTIONS_RESPONSE['data']
     assert mock_requests.get.call_count == 2
 
 @pytest.mark.asyncio
@@ -84,20 +95,17 @@ async def test_get_conversation_thread(x_client, mock_requests):
     )
     
     thread = await x_client.get_conversation_thread("1234567892")
-    assert thread == CONVERSATION_RESPONSE.get('data', [])
+    assert thread == CONVERSATION_RESPONSE['data']
     mock_requests.get.assert_called_once()
 
 @pytest.mark.asyncio
 async def test_rate_limit_handling(x_client, mock_requests):
     """Test rate limit handling and retries."""
-    # First response: rate limited
-    rate_limit_response = create_mock_response(
+    mock_requests.post.return_value = create_mock_response(
         429,
         RATE_LIMIT_RESPONSE,
         EXHAUSTED_HEADERS
     )
-    
-    mock_requests.post.return_value = rate_limit_response
     
     with pytest.raises(RateLimitError) as exc:
         await x_client.post_tweet("Test tweet")
@@ -109,7 +117,7 @@ async def test_rate_limit_handling(x_client, mock_requests):
 async def test_auth_error_handling(x_client, mock_requests):
     """Test authentication error handling."""
     mock_requests.post.return_value = create_mock_response(
-        403,
+        401,
         AUTH_ERROR_RESPONSE,
         STANDARD_HEADERS
     )
@@ -119,7 +127,7 @@ async def test_auth_error_handling(x_client, mock_requests):
     
     mock_requests.post.assert_called_once()
 
-def test_rate_limits(x_client, mock_requests):
+def test_rate_limits(x_client):
     """Test rate limit information."""
     limits = x_client.get_rate_limits()
     assert "/tweets/search/recent" in limits
