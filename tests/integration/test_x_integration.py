@@ -3,6 +3,7 @@ import pytest
 from unittest.mock import patch, Mock, AsyncMock
 from datetime import datetime, timezone
 import requests
+import requests_oauthlib
 
 from gonzo.integrations.x_client import XClient, RateLimitError, AuthenticationError
 from ..fixtures.x_responses import (
@@ -15,15 +16,28 @@ from ..fixtures.x_responses import (
     EXHAUSTED_HEADERS
 )
 
-@pytest.fixture(autouse=True)
+def create_mock_response(status_code, json_data, headers):
+    """Create a mock response with the given parameters."""
+    mock_response = Mock(spec=requests.Response)
+    mock_response.status_code = status_code
+    mock_response.headers = headers
+    mock_response.json.return_value = json_data
+    mock_response.request = Mock(path_url="/tweets")
+    return mock_response
+
+@pytest.fixture
 def mock_session():
     """Mock OAuth session."""
-    with patch('requests_oauthlib.OAuth1Session', autospec=True) as mock_oauth:
-        session = Mock()
-        session.post = Mock()
-        session.get = Mock()
-        mock_oauth.return_value = session
-        yield session
+    session = Mock(spec=requests_oauthlib.OAuth1Session)
+    session.post = Mock()
+    session.get = Mock()
+    return session
+
+@pytest.fixture
+def mock_oauth(mock_session):
+    """Mock OAuth1Session class."""
+    with patch('requests_oauthlib.OAuth1Session', return_value=mock_session):
+        yield mock_session
 
 @pytest.fixture
 def mock_openapi_agent():
@@ -35,18 +49,11 @@ def mock_openapi_agent():
     return agent
 
 @pytest.fixture
-def x_client(mock_openapi_agent):
+def x_client(mock_openapi_agent, mock_oauth):
     """Create X client instance."""
-    return XClient(api_key="test_key", api_agent=mock_openapi_agent)
-
-def create_mock_response(status_code, json_data, headers):
-    """Create a mock response with the given parameters."""
-    mock_response = Mock(spec=requests.Response)
-    mock_response.status_code = status_code
-    mock_response.headers = headers
-    mock_response.json.return_value = json_data
-    mock_response.request = Mock(path_url="/tweets")
-    return mock_response
+    client = XClient(api_key="test_key", api_agent=mock_openapi_agent)
+    client._session = mock_oauth  # Directly set the session to ensure it's mocked
+    return client
 
 @pytest.mark.asyncio
 async def test_post_tweet(x_client, mock_session):
