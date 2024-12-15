@@ -108,11 +108,16 @@ class XClient:
         """Post a tweet using either OpenAPI agent or direct API call."""
         try:
             if use_agent:
-                return await self._post_tweet_with_agent(text)
+                try:
+                    return await self._post_tweet_with_agent(text)
+                except Exception as e:
+                    if isinstance(e, (RateLimitError, AuthenticationError)):
+                        raise
+            return await self._post_tweet_direct(text)
         except Exception as e:
             if isinstance(e, (RateLimitError, AuthenticationError)):
                 raise
-        return await self._post_tweet_direct(text)
+            raise RuntimeError(f"Failed to post tweet: {str(e)}")
     
     async def _post_tweet_with_agent(self, text: str) -> Dict[str, Any]:
         """Post tweet using OpenAPI agent."""
@@ -134,3 +139,88 @@ class XClient:
         
         self._check_response(response)
         return response.json().get('data', {})
+    
+    async def monitor_mentions(self, use_agent: bool = False) -> List[Dict[str, Any]]:
+        """Monitor mentions using either OpenAPI agent or direct API call."""
+        try:
+            if use_agent:
+                try:
+                    return await self._monitor_mentions_with_agent()
+                except Exception as e:
+                    if isinstance(e, (RateLimitError, AuthenticationError)):
+                        raise
+            return await self._monitor_mentions_direct()
+        except Exception as e:
+            if isinstance(e, (RateLimitError, AuthenticationError)):
+                raise
+            return []
+    
+    async def _monitor_mentions_with_agent(self) -> List[Dict[str, Any]]:
+        """Monitor mentions using OpenAPI agent."""
+        # Get user ID first
+        user_data = self.api_agent.query_api({
+            "endpoint": "users/me",
+            "method": "GET"
+        })
+        if asyncio.iscoroutine(user_data):
+            user_data = await user_data
+        
+        # Then get mentions
+        mentions = self.api_agent.query_api({
+            "endpoint": f"users/{user_data['data']['id']}/mentions",
+            "method": "GET"
+        })
+        if asyncio.iscoroutine(mentions):
+            mentions = await mentions
+        return mentions.get('data', [])
+    
+    async def _monitor_mentions_direct(self) -> List[Dict[str, Any]]:
+        """Monitor mentions using direct API call."""
+        # Get user ID
+        user_response = self._session.get(
+            "https://api.twitter.com/2/users/me"
+        )
+        self._check_response(user_response)
+        user_data = user_response.json()
+        
+        # Get mentions
+        mentions_response = self._session.get(
+            f"https://api.twitter.com/2/users/{user_data['data']['id']}/mentions"
+        )
+        self._check_response(mentions_response)
+        return mentions_response.json().get('data', [])
+    
+    async def get_conversation_thread(
+        self, tweet_id: str, use_agent: bool = False
+    ) -> List[Dict[str, Any]]:
+        """Get conversation thread for a tweet."""
+        try:
+            if use_agent:
+                try:
+                    return await self._get_thread_with_agent(tweet_id)
+                except Exception as e:
+                    if isinstance(e, (RateLimitError, AuthenticationError)):
+                        raise
+            return await self._get_thread_direct(tweet_id)
+        except Exception as e:
+            if isinstance(e, (RateLimitError, AuthenticationError)):
+                raise
+            return []
+    
+    async def _get_thread_with_agent(self, tweet_id: str) -> List[Dict[str, Any]]:
+        """Get conversation thread using OpenAPI agent."""
+        response = self.api_agent.query_api({
+            "endpoint": f"tweets/{tweet_id}/conversation",
+            "method": "GET"
+        })
+        if asyncio.iscoroutine(response):
+            response = await response
+        return response.get('data', [])
+    
+    async def _get_thread_direct(self, tweet_id: str) -> List[Dict[str, Any]]:
+        """Get conversation thread using direct API call."""
+        response = self._session.get(
+            f"https://api.twitter.com/2/tweets/{tweet_id}/conversation"
+        )
+        self._check_response(response)
+        return response.json().get('data', [])
