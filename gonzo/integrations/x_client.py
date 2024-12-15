@@ -81,3 +81,56 @@ class XClient:
         if 'x-rate-limit-remaining' in response.headers:
             self._update_rate_limits(response.headers, 
                                    response.request.path_url if response.request else '/tweets')
+    
+    def clear_cache(self) -> None:
+        """Clear the OpenAPI agent cache."""
+        if hasattr(self.api_agent, 'clear_cache'):
+            self.api_agent.clear_cache('x')
+    
+    def health_check(self) -> bool:
+        """Check if the API client is healthy and operational."""
+        try:
+            limits = self.get_rate_limits()
+            return any(
+                limit.get('remaining', 0) > 0 
+                for limit in limits.values()
+            )
+        except Exception:
+            return False
+    
+    def get_rate_limits(self) -> Dict[str, Dict[str, int]]:
+        """Get current rate limits for the X API."""
+        if hasattr(self.api_agent, 'rate_limits'):
+            return getattr(self.api_agent, 'rate_limits')
+        return self._rate_limits
+    
+    async def post_tweet(self, text: str, use_agent: bool = False) -> Dict[str, Any]:
+        """Post a tweet using either OpenAPI agent or direct API call."""
+        try:
+            if use_agent:
+                return await self._post_tweet_with_agent(text)
+        except Exception as e:
+            if isinstance(e, (RateLimitError, AuthenticationError)):
+                raise
+        return await self._post_tweet_direct(text)
+    
+    async def _post_tweet_with_agent(self, text: str) -> Dict[str, Any]:
+        """Post tweet using OpenAPI agent."""
+        response = self.api_agent.query_api({
+            "endpoint": "tweets",
+            "method": "POST",
+            "data": {"text": text}
+        })
+        if asyncio.iscoroutine(response):
+            response = await response
+        return response.get('data', {})
+    
+    async def _post_tweet_direct(self, text: str) -> Dict[str, Any]:
+        """Post tweet using direct API call."""
+        response = self._session.post(
+            "https://api.twitter.com/2/tweets",
+            json={"text": text}
+        )
+        
+        self._check_response(response)
+        return response.json().get('data', {})
