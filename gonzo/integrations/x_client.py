@@ -18,12 +18,7 @@ class XClient:
     """Client for interacting with X API with OpenAPI integration."""
     
     def __init__(self, api_key: str, api_agent: Any):
-        """Initialize X client with API key and OpenAPI agent.
-        
-        Args:
-            api_key: X API authentication key
-            api_agent: OpenAPI agent instance for API interactions
-        """
+        """Initialize X client with API key and OpenAPI agent."""
         self.api_key = api_key
         self.api_agent = api_agent
         self._rate_limits: Dict[str, Dict[str, int]] = {
@@ -54,6 +49,30 @@ class XClient:
                 resource_owner_secret='test_secret'
             )
     
+    def _update_rate_limits(self, headers: Dict[str, str], endpoint: str) -> None:
+        """Update rate limits from response headers."""
+        self._rate_limits[endpoint] = {
+            "limit": int(headers.get('x-rate-limit-limit', 0)),
+            "remaining": int(headers.get('x-rate-limit-remaining', 0)),
+            "reset": int(headers.get('x-rate-limit-reset', 0))
+        }
+    
+    def _check_response(self, response: requests.Response) -> None:
+        """Check response for errors and update rate limits."""
+        if 'x-rate-limit-remaining' in response.headers:
+            self._update_rate_limits(response.headers, 
+                                   response.request.path_url)
+        
+        if response.status_code == 429:
+            reset_time = int(response.headers.get('x-rate-limit-reset', 0))
+            raise RateLimitError("Rate limit exceeded", reset_time)
+        elif response.status_code == 401:
+            raise AuthenticationError("Authentication failed")
+        elif response.status_code == 403:
+            raise AuthenticationError("Forbidden - Check credentials")
+        elif not 200 <= response.status_code < 300:
+            response.raise_for_status()
+    
     def clear_cache(self) -> None:
         """Clear the OpenAPI agent cache."""
         if hasattr(self.api_agent, 'clear_cache'):
@@ -73,7 +92,7 @@ class XClient:
     def get_rate_limits(self) -> Dict[str, Dict[str, int]]:
         """Get current rate limits for the X API."""
         if hasattr(self.api_agent, 'rate_limits'):
-            return self.api_agent.rate_limits
+            return getattr(self.api_agent, 'rate_limits')
         return self._rate_limits
     
     async def post_tweet(self, text: str, use_agent: bool = False) -> Dict[str, Any]:
@@ -94,7 +113,7 @@ class XClient:
         })
         if asyncio.iscoroutine(response):
             response = await response
-        return response
+        return response.get('data', {})
     
     async def _post_tweet_direct(self, text: str) -> Dict[str, Any]:
         """Post tweet using direct API call."""
@@ -103,13 +122,8 @@ class XClient:
             json={"text": text}
         )
         
-        if response.status_code == 429:
-            reset_time = int(response.headers.get('x-rate-limit-reset', 0))
-            raise RateLimitError("Rate limit exceeded", reset_time)
-        elif response.status_code == 403:
-            raise AuthenticationError("Authentication failed")
-            
-        return response.json()
+        self._check_response(response)
+        return response.json().get('data', {})
     
     async def monitor_mentions(self, use_agent: bool = False) -> List[Dict[str, Any]]:
         """Monitor mentions using either OpenAPI agent or direct API call."""
@@ -145,25 +159,15 @@ class XClient:
         user_response = self._session.get(
             "https://api.twitter.com/2/users/me"
         )
-        if user_response.status_code != 200:
-            return []
-
-        try:
-            user_id = user_response.json()["data"]["id"]
-        except (KeyError, ValueError):
-            return []
+        self._check_response(user_response)
+        user_data = user_response.json()
         
         # Get mentions
         mentions_response = self._session.get(
-            f"https://api.twitter.com/2/users/{user_id}/mentions"
+            f"https://api.twitter.com/2/users/{user_data['data']['id']}/mentions"
         )
-        if mentions_response.status_code != 200:
-            return []
-            
-        try:
-            return mentions_response.json().get('data', [])
-        except ValueError:
-            return []
+        self._check_response(mentions_response)
+        return mentions_response.json().get('data', [])
     
     async def get_conversation_thread(
         self, tweet_id: str, use_agent: bool = False
@@ -191,10 +195,5 @@ class XClient:
         response = self._session.get(
             f"https://api.twitter.com/2/tweets/{tweet_id}/conversation"
         )
-        if response.status_code != 200:
-            return []
-            
-        try:
-            return response.json().get('data', [])
-        except ValueError:
-            return []
+        self._check_response(response)
+        return response.json().get('data', [])
