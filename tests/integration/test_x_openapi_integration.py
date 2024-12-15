@@ -17,6 +17,11 @@ from ..fixtures.x_responses import (
 
 class MockLLM(BaseLLM):
     """Mock LLM for testing."""
+    @property
+    def _llm_type(self) -> str:
+        """Return identifier of llm."""
+        return "mock"
+        
     def _generate(self, prompts, stop=None):
         return [{"text": "mocked response"}]
 
@@ -36,15 +41,14 @@ def mock_credentials():
 @pytest.fixture
 def mock_openapi_agent():
     """Mock OpenAPI agent responses."""
-    with patch('gonzo.api.openapi_agent.OpenAPIAgentTool') as mock:
-        agent = Mock()
-        mock.return_value = agent
-        yield agent
+    agent = Mock()
+    agent.rate_limits = {"x": {"remaining": 100}}
+    return agent
 
 @pytest.fixture
 def x_client(mock_llm, mock_openapi_agent):
     """Create X client instance with mocked dependencies."""
-    return XClient(llm=mock_llm)
+    return XClient(api_key="test_key", api_agent=mock_openapi_agent)
 
 @pytest.mark.asyncio
 async def test_post_tweet_with_agent(x_client, mock_openapi_agent):
