@@ -15,23 +15,15 @@ from ..fixtures.x_responses import (
     EXHAUSTED_HEADERS
 )
 
-def create_mock_response(status_code, json_data, headers):
-    """Create a mock response with the given parameters."""
-    mock_response = Mock(spec=requests.Response)
-    mock_response.status_code = status_code
-    mock_response.headers = headers
-    mock_response.json.return_value = json_data
-    mock_response.request = Mock(path_url="/tweets")
-    return mock_response
-
 @pytest.fixture(autouse=True)
-def mock_credentials():
-    """Mock API credentials."""
-    with patch('gonzo.config.x.X_API_KEY', 'test_key'), \
-         patch('gonzo.config.x.X_API_SECRET', 'test_secret'), \
-         patch('gonzo.config.x.X_ACCESS_TOKEN', 'test_token'), \
-         patch('gonzo.config.x.X_ACCESS_SECRET', 'test_secret'):
-        yield
+def mock_session():
+    """Mock OAuth session."""
+    with patch('requests_oauthlib.OAuth1Session', autospec=True) as mock_oauth:
+        session = Mock()
+        session.post = Mock()
+        session.get = Mock()
+        mock_oauth.return_value = session
+        yield session
 
 @pytest.fixture
 def mock_openapi_agent():
@@ -43,20 +35,18 @@ def mock_openapi_agent():
     return agent
 
 @pytest.fixture
-def mock_session():
-    """Create mock OAuth session."""
-    session = Mock()
-    session.post = Mock()
-    session.get = Mock()
-    return session
+def x_client(mock_openapi_agent):
+    """Create X client instance."""
+    return XClient(api_key="test_key", api_agent=mock_openapi_agent)
 
-@pytest.fixture
-def x_client(mock_openapi_agent, mock_session):
-    """Create X client instance with mocked dependencies."""
-    with patch('requests_oauthlib.OAuth1Session') as mock_oauth:
-        mock_oauth.return_value = mock_session
-        client = XClient(api_key="test_key", api_agent=mock_openapi_agent)
-        return client
+def create_mock_response(status_code, json_data, headers):
+    """Create a mock response with the given parameters."""
+    mock_response = Mock(spec=requests.Response)
+    mock_response.status_code = status_code
+    mock_response.headers = headers
+    mock_response.json.return_value = json_data
+    mock_response.request = Mock(path_url="/tweets")
+    return mock_response
 
 @pytest.mark.asyncio
 async def test_post_tweet(x_client, mock_session):
@@ -75,10 +65,13 @@ async def test_post_tweet(x_client, mock_session):
 @pytest.mark.asyncio
 async def test_monitor_mentions(x_client, mock_session):
     """Test mentions monitoring."""
-    mock_session.get.side_effect = [
-        create_mock_response(200, {"data": {"id": "123"}}, STANDARD_HEADERS),
-        create_mock_response(200, MENTIONS_RESPONSE, STANDARD_HEADERS)
-    ]
+    user_response = create_mock_response(
+        200, {"data": {"id": "123"}}, STANDARD_HEADERS
+    )
+    mentions_response = create_mock_response(
+        200, MENTIONS_RESPONSE, STANDARD_HEADERS
+    )
+    mock_session.get.side_effect = [user_response, mentions_response]
     
     mentions = await x_client.monitor_mentions()
     assert mentions == MENTIONS_RESPONSE['data']
@@ -93,7 +86,9 @@ async def test_get_conversation_thread(x_client, mock_session):
     
     thread = await x_client.get_conversation_thread("1234567892")
     assert thread == CONVERSATION_RESPONSE['data']
-    mock_session.get.assert_called_once()
+    mock_session.get.assert_called_once_with(
+        "https://api.twitter.com/2/tweets/1234567892/conversation"
+    )
 
 @pytest.mark.asyncio
 async def test_rate_limit_handling(x_client, mock_session):
