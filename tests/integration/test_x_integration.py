@@ -42,90 +42,83 @@ def mock_openapi_agent():
     }
     return agent
 
-@pytest.fixture(autouse=True)
-def mock_requests():
-    """Mock all requests."""
-    with patch('requests_oauthlib.OAuth1Session') as mock:
-        session = Mock()
-        mock.return_value = session
-        yield session
+@pytest.fixture
+def mock_session():
+    """Create mock OAuth session."""
+    session = Mock()
+    session.post = Mock()
+    session.get = Mock()
+    return session
 
 @pytest.fixture
-def x_client(mock_openapi_agent):
-    """Create X client instance."""
-    return XClient(api_key="test_key", api_agent=mock_openapi_agent)
+def x_client(mock_openapi_agent, mock_session):
+    """Create X client instance with mocked dependencies."""
+    with patch('requests_oauthlib.OAuth1Session') as mock_oauth:
+        mock_oauth.return_value = mock_session
+        client = XClient(api_key="test_key", api_agent=mock_openapi_agent)
+        return client
 
 @pytest.mark.asyncio
-async def test_post_tweet(x_client, mock_requests):
+async def test_post_tweet(x_client, mock_session):
     """Test successful tweet posting."""
-    mock_requests.post.return_value = create_mock_response(
+    mock_session.post.return_value = create_mock_response(
         200, TWEET_RESPONSE, STANDARD_HEADERS
     )
     
     response = await x_client.post_tweet("Test tweet")
     assert response == TWEET_RESPONSE['data']
-    mock_requests.post.assert_called_once()
+    mock_session.post.assert_called_once_with(
+        "https://api.twitter.com/2/tweets",
+        json={"text": "Test tweet"}
+    )
 
 @pytest.mark.asyncio
-async def test_monitor_mentions(x_client, mock_requests):
+async def test_monitor_mentions(x_client, mock_session):
     """Test mentions monitoring."""
-    user_response = create_mock_response(
-        200, 
-        {"data": {"id": "123"}},
-        STANDARD_HEADERS
-    )
-    mentions_response = create_mock_response(
-        200,
-        MENTIONS_RESPONSE,
-        STANDARD_HEADERS
-    )
-    mock_requests.get.side_effect = [user_response, mentions_response]
+    mock_session.get.side_effect = [
+        create_mock_response(200, {"data": {"id": "123"}}, STANDARD_HEADERS),
+        create_mock_response(200, MENTIONS_RESPONSE, STANDARD_HEADERS)
+    ]
     
     mentions = await x_client.monitor_mentions()
     assert mentions == MENTIONS_RESPONSE['data']
-    assert mock_requests.get.call_count == 2
+    assert mock_session.get.call_count == 2
 
 @pytest.mark.asyncio
-async def test_get_conversation_thread(x_client, mock_requests):
+async def test_get_conversation_thread(x_client, mock_session):
     """Test conversation thread retrieval."""
-    mock_requests.get.return_value = create_mock_response(
-        200,
-        CONVERSATION_RESPONSE,
-        STANDARD_HEADERS
+    mock_session.get.return_value = create_mock_response(
+        200, CONVERSATION_RESPONSE, STANDARD_HEADERS
     )
     
     thread = await x_client.get_conversation_thread("1234567892")
     assert thread == CONVERSATION_RESPONSE['data']
-    mock_requests.get.assert_called_once()
+    mock_session.get.assert_called_once()
 
 @pytest.mark.asyncio
-async def test_rate_limit_handling(x_client, mock_requests):
-    """Test rate limit handling and retries."""
-    mock_requests.post.return_value = create_mock_response(
-        429,
-        RATE_LIMIT_RESPONSE,
-        EXHAUSTED_HEADERS
+async def test_rate_limit_handling(x_client, mock_session):
+    """Test rate limit handling."""
+    mock_session.post.return_value = create_mock_response(
+        429, RATE_LIMIT_RESPONSE, EXHAUSTED_HEADERS
     )
     
     with pytest.raises(RateLimitError) as exc:
         await x_client.post_tweet("Test tweet")
     
     assert exc.value.reset_time > 0
-    mock_requests.post.assert_called_once()
+    mock_session.post.assert_called_once()
 
 @pytest.mark.asyncio
-async def test_auth_error_handling(x_client, mock_requests):
+async def test_auth_error_handling(x_client, mock_session):
     """Test authentication error handling."""
-    mock_requests.post.return_value = create_mock_response(
-        401,
-        AUTH_ERROR_RESPONSE,
-        STANDARD_HEADERS
+    mock_session.post.return_value = create_mock_response(
+        401, AUTH_ERROR_RESPONSE, STANDARD_HEADERS
     )
     
     with pytest.raises(AuthenticationError):
         await x_client.post_tweet("Test tweet")
     
-    mock_requests.post.assert_called_once()
+    mock_session.post.assert_called_once()
 
 def test_rate_limits(x_client):
     """Test rate limit information."""
