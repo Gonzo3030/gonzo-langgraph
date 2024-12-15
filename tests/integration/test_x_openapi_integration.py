@@ -3,6 +3,8 @@ import pytest
 from unittest.mock import patch, Mock, AsyncMock
 from datetime import datetime, timezone
 from langchain.llms import BaseLLM
+from functools import wraps
+import asyncio
 
 from gonzo.integrations.x_client import XClient, RateLimitError, AuthenticationError
 from ..fixtures.x_responses import (
@@ -14,6 +16,12 @@ from ..fixtures.x_responses import (
     STANDARD_HEADERS,
     EXHAUSTED_HEADERS
 )
+
+def async_mock(return_value):
+    """Create an async mock that returns the given value."""
+    future = asyncio.Future()
+    future.set_result(return_value)
+    return Mock(return_value=future)
 
 class MockLLM(BaseLLM):
     """Mock LLM for testing."""
@@ -53,7 +61,7 @@ def x_client(mock_llm, mock_openapi_agent):
 @pytest.mark.asyncio
 async def test_post_tweet_with_agent(x_client, mock_openapi_agent):
     """Test posting tweet using OpenAPI agent."""
-    mock_openapi_agent.query_api.return_value = TWEET_RESPONSE["data"]
+    mock_openapi_agent.query_api.return_value = TWEET_RESPONSE
     
     response = await x_client.post_tweet("Test tweet", use_agent=True)
     assert response["id"] == "1234567890"
@@ -64,13 +72,13 @@ async def test_post_tweet_with_agent(x_client, mock_openapi_agent):
 async def test_monitor_mentions_with_agent(x_client, mock_openapi_agent):
     """Test monitoring mentions using OpenAPI agent."""
     mock_openapi_agent.query_api.side_effect = [
-        {"data": {"id": "123"}},  # User ID response
-        MENTIONS_RESPONSE  # Mentions response
+        {"data": {"id": "123"}},
+        MENTIONS_RESPONSE
     ]
     
     mentions = await x_client.monitor_mentions(use_agent=True)
     assert len(mentions) == 1
-    assert mentions[0].text == "@gonzo test mention"
+    assert mentions[0]["text"] == "@gonzo test mention"
     assert mock_openapi_agent.query_api.call_count == 2
 
 @pytest.mark.asyncio
@@ -80,7 +88,7 @@ async def test_get_conversation_thread_with_agent(x_client, mock_openapi_agent):
     
     thread = await x_client.get_conversation_thread("1234567892", use_agent=True)
     assert len(thread) == 1
-    assert thread[0].text == "Test conversation tweet"
+    assert thread[0]["text"] == "Test conversation tweet"
     mock_openapi_agent.query_api.assert_called_once()
 
 @pytest.mark.asyncio
@@ -100,13 +108,14 @@ async def test_fallback_to_direct_request(x_client, mock_openapi_agent):
     # Make agent fail
     mock_openapi_agent.query_api.side_effect = Exception("Agent failed")
     
-    # Mock direct request success
     with patch('requests_oauthlib.OAuth1Session') as mock_session:
         session = Mock()
         mock_session.return_value = session
-        session.post.return_value.json.return_value = TWEET_RESPONSE
-        session.post.return_value.headers = STANDARD_HEADERS
-        session.post.return_value.status_code = 200
+        session.post.return_value = Mock(
+            status_code=200,
+            json=lambda: TWEET_RESPONSE,
+            headers=STANDARD_HEADERS
+        )
         
         response = await x_client.post_tweet("Test tweet", use_agent=True)
         
@@ -117,7 +126,6 @@ async def test_fallback_to_direct_request(x_client, mock_openapi_agent):
 def test_health_check_with_agent(x_client, mock_openapi_agent):
     """Test health check using OpenAPI agent."""
     mock_openapi_agent.rate_limits = {"x": {"remaining": 100}}
-    
     assert x_client.health_check()
     
     mock_openapi_agent.rate_limits = {"x": {"remaining": 0}}
