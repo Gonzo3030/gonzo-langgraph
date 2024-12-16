@@ -2,7 +2,7 @@
 
 from typing import Dict, Any
 from langgraph.graph import StateGraph
-from langchain_openai import ChatOpenAI
+from langchain_anthropic import ChatAnthropic
 
 from .types import GonzoState, NextStep
 from .nodes.pattern_detection import detect_patterns
@@ -15,23 +15,39 @@ def create_workflow() -> StateGraph:
     workflow = StateGraph(GonzoState)
     
     # Initialize LLM
-    llm = ChatOpenAI()
+    llm = ChatAnthropic()
     
     # Add nodes
-    workflow.add_node("pattern_detection", lambda state: detect_patterns(state, llm))
-    workflow.add_node("assessment", lambda state: assess_input(state))
-    workflow.add_node("narrative", lambda state: analyze_narrative(state))
+    workflow.add_node("detect", lambda state: detect_patterns(state, llm))
+    workflow.add_node("assess", lambda state: assess_input(state))
+    workflow.add_node("analyze", lambda state: analyze_narrative(state, llm))
+    workflow.add_node("respond", lambda state: {"next": "detect"})
+    workflow.add_node("error", lambda state: {"next": "end"})
     
-    # Define edges based on next_step
-    workflow.add_edge("pattern_detection", condition_fn)
-    workflow.add_edge("assessment", condition_fn)
-    workflow.add_edge("narrative", condition_fn)
+    # Add conditional edges
+    workflow.add_conditional_edges(
+        "detect",
+        lambda state: state.get("next", "assess")
+    )
+    
+    workflow.add_conditional_edges(
+        "assess",
+        lambda state: state.get("next", "analyze")
+    )
+    
+    workflow.add_conditional_edges(
+        "analyze",
+        lambda state: state.get("next", "respond")
+    )
+    
+    workflow.add_conditional_edges(
+        "respond",
+        lambda state: state.get("next", "detect")
+    )
+    
+    workflow.add_edge("error", "end")
     
     # Set entry point
-    workflow.set_entry_point("pattern_detection")
+    workflow.set_entry_point("detect")
     
     return workflow.compile()
-
-def condition_fn(state: GonzoState) -> str:
-    """Determine next step based on state."""
-    return state.next_step or NextStep.END
