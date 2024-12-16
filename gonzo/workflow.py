@@ -2,6 +2,7 @@
 
 from typing import Dict, Any
 from langgraph.graph import StateGraph, END
+from langgraph.prebuilt.chat_agent import ChatAgent
 from langchain_anthropic import ChatAnthropic
 import asyncio
 
@@ -29,11 +30,35 @@ def create_workflow() -> StateGraph:
     )
     
     # Add nodes with sync wrappers
-    workflow.add_node("detect", sync_wrapper(lambda state: detect_patterns(state, llm)))
-    workflow.add_node("assess", sync_wrapper(lambda state: assess_input(state)))
-    workflow.add_node("analyze", sync_wrapper(lambda state: analyze_narrative(state, llm)))
-    workflow.add_node("respond", lambda state: {"next": "detect"})
-    workflow.add_node("error", lambda state: {"next": END})
+    workflow.add_node(
+        "detect",
+        sync_wrapper(lambda state: detect_patterns(state, llm)),
+        ['analysis', 'memory', 'timestamp']  # Fields this node can update
+    )
+    
+    workflow.add_node(
+        "assess",
+        sync_wrapper(lambda state: assess_input(state)),
+        ['analysis', 'memory', 'timestamp']
+    )
+    
+    workflow.add_node(
+        "analyze",
+        sync_wrapper(lambda state: analyze_narrative(state, llm)),
+        ['response', 'memory', 'timestamp']
+    )
+    
+    workflow.add_node(
+        "respond",
+        lambda state: {"next": "detect", "timestamp": state.timestamp},
+        ['timestamp']
+    )
+    
+    workflow.add_node(
+        "error",
+        lambda state: {"next": END, "timestamp": state.timestamp},
+        ['timestamp']
+    )
     
     # Add conditional edges
     workflow.add_conditional_edges(
