@@ -52,10 +52,6 @@ async def detect_patterns(state: GonzoState, llm: Any) -> Dict[str, Any]:
             "confidence": 0.9 if "manipulation" in response_text.lower() else 0.8
         }
         
-        # Initialize patterns list if None
-        if state.analysis.patterns is None:
-            state.analysis.patterns = []
-            
         # Update state directly
         state.analysis.patterns.append(pattern)
         state.analysis.update_significance()
@@ -65,7 +61,7 @@ async def detect_patterns(state: GonzoState, llm: Any) -> Dict[str, Any]:
         return {
             "analysis": state.analysis,
             "timestamp": state.timestamp,
-            "next": "analyze"
+            "next": "assess"
         }
         
     except Exception as e:
