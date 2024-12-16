@@ -60,9 +60,12 @@ def main():
         init_environment()
         logger.info('Environment initialized')
         
-        # Create initial state
+        # Create initial state with test message
         initial_state = GonzoState(
-            messages=MessageState(messages=[create_test_message()])
+            messages=MessageState(
+                current_message=create_test_message(),
+                messages=[create_test_message()]
+            )
         )
         logger.info('Initial state created')
         
@@ -80,6 +83,7 @@ def main():
                 # Monitor and process new content
                 current_state = result["state"]
                 result = workflow.invoke(current_state)
+                logger.info(f"Completed cycle. Next step: {result.get('next', 'unknown')}")
             except KeyboardInterrupt:
                 logger.info('\nShutting down Gonzo gracefully...')
                 break
