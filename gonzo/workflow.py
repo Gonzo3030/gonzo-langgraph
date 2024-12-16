@@ -1,5 +1,6 @@
 """Main workflow definition for Gonzo."""
 
+import os
 from typing import Dict, Any, Callable
 from langgraph.graph import StateGraph, END
 from langchain_anthropic import ChatAnthropic
