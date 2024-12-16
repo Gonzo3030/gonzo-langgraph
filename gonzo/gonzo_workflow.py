@@ -4,7 +4,7 @@ from typing import Dict, Any, Callable
 from datetime import datetime
 from langgraph.graph import StateGraph, END
 from langchain_anthropic import ChatAnthropic
-from langchain_community.chat_models import ChatOpenAI  # Updated import
+from langchain_community.chat_models import ChatOpenAI
 import asyncio
 
 from gonzo.state_management import (
@@ -133,4 +133,61 @@ async def queue_node(state: UnifiedState) -> Dict[str, Any]:
         return {"current_stage": WorkflowStage.POST}
     except Exception as e:
         state.record_error(f"Queue error: {str(e)}")
+        return {"current_stage": WorkflowStage.ERROR}
+
+async def post_node(state: UnifiedState) -> Dict[str, Any]:
+    """Content posting to X"""
+    try:
+        post_result = await post_content(state.x_integration)
+        
+        if post_result.success:
+            state.x_integration.post_history.append(post_result.post_data)
+            state.x_integration.queued_posts.pop(0)
+            
+            return {
+                "current_stage": WorkflowStage.INTERACT,
+                "checkpoint_needed": True
+            }
+        else:
+            state.record_error(f"Posting error: {post_result.error}")
+            return {"current_stage": WorkflowStage.ERROR}
+    except Exception as e:
+        state.record_error(f"Post error: {str(e)}")
+        return {"current_stage": WorkflowStage.ERROR}
+
+async def interaction_node(state: UnifiedState, llm: Any) -> Dict[str, Any]:
+    """Handle X interactions"""
+    try:
+        interactions = await handle_interactions(
+            state.x_integration,
+            state.memory,
+            llm
+        )
+        
+        state.x_integration.interactions.extend(interactions)
+        
+        return {
+            "current_stage": WorkflowStage.EVOLVE,
+            "checkpoint_needed": True
+        }
+    except Exception as e:
+        state.record_error(f"Interaction error: {str(e)}")
+        return {"current_stage": WorkflowStage.ERROR}
+
+async def evolution_node(state: UnifiedState, llm: Any) -> Dict[str, Any]:
+    """Agent evolution and learning"""
+    try:
+        evolution_result = await evolve_agent(
+            state.evolution,
+            state.memory,
+            state.x_integration.interactions,
+            llm
+        )
+        
+        state.evolution = evolution_result
+        state.memory.procedural.update(evolution_result.learned_behaviors)
+        
+        return {"current_stage": WorkflowStage.MONITOR}
+    except Exception as e:
+        state.record_error(f"Evolution error: {str(e)}")
         return {"current_stage": WorkflowStage.ERROR}
