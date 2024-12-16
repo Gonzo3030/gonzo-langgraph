@@ -16,22 +16,39 @@ logger = logging.getLogger(__name__)
 def init_environment():
     """Initialize environment variables"""
     load_dotenv()
+    
+    # Required API keys for MVP
     required_vars = [
         'ANTHROPIC_API_KEY',
         'OPENAI_API_KEY',
-        'BRAVE_API_KEY',
-        'LANGCHAIN_API_KEY',
-        'CRYPTOCOMPARE_API_KEY',
-        'YOUTUBE_API_KEY',
         'X_API_KEY',
         'X_API_SECRET',
         'X_ACCESS_TOKEN',
         'X_ACCESS_SECRET'
     ]
     
+    # Optional API keys
+    optional_vars = [
+        'BRAVE_API_KEY',
+        'LANGCHAIN_API_KEY',
+        'CRYPTOCOMPARE_API_KEY',
+        'YOUTUBE_API_KEY'
+    ]
+    
+    # Check required variables
     missing = [var for var in required_vars if not os.getenv(var)]
     if missing:
         raise ValueError(f'Missing required environment variables: {missing}')
+    
+    # Log warning for missing optional variables
+    missing_optional = [var for var in optional_vars if not os.getenv(var)]
+    if missing_optional:
+        logger.warning(f'Missing optional API keys (some features will be disabled): {missing_optional}')
+    
+    # Set defaults for optional LangChain variables
+    os.environ.setdefault('LANGCHAIN_TRACING_V2', 'true')
+    os.environ.setdefault('LANGCHAIN_ENDPOINT', 'https://api.smith.langchain.com')
+    os.environ.setdefault('LANGCHAIN_PROJECT', 'gonzo-langgraph')
 
 def main():
     try:
