@@ -42,3 +42,59 @@ async def monitor_node(state: UnifiedState, llm: Any) -> Dict[str, Any]:
     except Exception as e:
         state.record_error(f"Monitor error: {str(e)}")
         return {"current_stage": WorkflowStage.ERROR}
+
+async def rag_node(state: UnifiedState, llm: Any) -> Dict[str, Any]:
+    """RAG analysis and context building"""
+    try:
+        rag_results = await perform_rag_analysis(
+            state.current_context,
+            state.knowledge_graph,
+            llm
+        )
+        
+        state.memory.semantic.update(rag_results.context)
+        state.assessment.content_analysis.update(rag_results.analysis)
+        
+        return {"current_stage": WorkflowStage.PATTERN_DETECT}
+    except Exception as e:
+        state.record_error(f"RAG error: {str(e)}")
+        return {"current_stage": WorkflowStage.ERROR}
+
+async def pattern_node(state: UnifiedState, llm: Any) -> Dict[str, Any]:
+    """Pattern detection and analysis"""
+    try:
+        patterns = await detect_patterns(
+            state.assessment.content_analysis,
+            state.knowledge_graph.patterns,
+            llm
+        )
+        
+        state.knowledge_graph.patterns.extend(patterns)
+        
+        return {
+            "current_stage": WorkflowStage.ASSESS,
+            "checkpoint_needed": True
+        }
+    except Exception as e:
+        state.record_error(f"Pattern detection error: {str(e)}")
+        return {"current_stage": WorkflowStage.ERROR}
+
+async def assessment_node(state: UnifiedState, llm: Any) -> Dict[str, Any]:
+    """Content assessment and analysis"""
+    try:
+        assessment_results = await assess_content(
+            state.knowledge_graph,
+            state.assessment,
+            llm
+        )
+        
+        state.assessment = assessment_results
+        state.narrative.context.update({
+            "assessment": assessment_results,
+            "patterns": state.knowledge_graph.patterns
+        })
+        
+        return {"current_stage": WorkflowStage.NARRATE}
+    except Exception as e:
+        state.record_error(f"Assessment error: {str(e)}")
+        return {"current_stage": WorkflowStage.ERROR}
