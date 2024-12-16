@@ -1,6 +1,5 @@
-from .metrics import EvolutionMetrics
-from .system import GonzoEvolutionSystem
-from .memory import ContentMemoryManager
-from .state import EvolutionStateManager
+"""Evolution system for Gonzo."""
 
-__all__ = ['EvolutionMetrics', 'GonzoEvolutionSystem', 'ContentMemoryManager', 'EvolutionStateManager']
+from .system import EvolutionSystem
+
+__all__ = ['EvolutionSystem']
