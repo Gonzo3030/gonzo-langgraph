@@ -10,7 +10,8 @@ from .types import GonzoState
 from .nodes.pattern_detection import detect_patterns
 from .nodes.assessment import assess_input
 from .nodes.narrative import analyze_narrative
-from .config import ANTHROPIC_MODEL
+from .nodes.x_posting import post_to_x
+from .config import ANTHROPIC_MODEL, RATE_LIMIT_DELAY
 
 def sync_wrapper(async_func):
     """Wrapper to run async functions in sync context."""
@@ -18,9 +19,11 @@ def sync_wrapper(async_func):
         return asyncio.run(async_func(*args, **kwargs))
     return wrapper
 
-def create_node_fn(func: Callable, llm: Any) -> Callable:
-    """Create a node function that includes the LLM."""
-    return lambda state: func(state, llm)
+def create_node_fn(func: Callable, llm: Any = None) -> Callable:
+    """Create a node function that includes the LLM if needed."""
+    if llm:
+        return lambda state: func(state, llm)
+    return lambda state: func(state)
 
 def create_workflow() -> StateGraph:
     """Create the main Gonzo workflow."""
@@ -51,8 +54,16 @@ def create_workflow() -> StateGraph:
     )
     
     workflow.add_node(
+        "x_post",
+        sync_wrapper(create_node_fn(post_to_x))
+    )
+    
+    workflow.add_node(
         "respond",
-        lambda state: {"timestamp": state.timestamp, "next": "detect"}
+        lambda state: {
+            "timestamp": state.timestamp,
+            "next": "detect" if not state.response.queued_responses else "x_post"
+        }
     )
     
     workflow.add_node(
@@ -60,11 +71,35 @@ def create_workflow() -> StateGraph:
         lambda state: {"timestamp": state.timestamp, "next": END}
     )
     
-    # Add edges
-    workflow.add_edge("detect", "assess")
-    workflow.add_edge("assess", "analyze")
-    workflow.add_edge("analyze", "respond")
-    workflow.add_edge("respond", "detect")
+    # Add edges with branching logic
+    workflow.add_conditional_edges(
+        "detect",
+        lambda state: {
+            "assess": 0.8,  # Most likely path
+            "analyze": 0.2  # Direct to analysis if strong pattern detected
+        }.get(state.next, "assess")
+    )
+    
+    workflow.add_conditional_edges(
+        "assess",
+        lambda state: state.next
+    )
+    
+    workflow.add_conditional_edges(
+        "analyze",
+        lambda state: "respond"
+    )
+    
+    workflow.add_conditional_edges(
+        "respond",
+        lambda state: "x_post" if state.response.queued_responses else "detect"
+    )
+    
+    workflow.add_conditional_edges(
+        "x_post",
+        lambda state: state.next
+    )
+    
     workflow.add_edge("error", END)
     
     # Set entry point
