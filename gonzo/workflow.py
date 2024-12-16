@@ -32,31 +32,31 @@ def create_workflow() -> StateGraph:
     workflow.add_node(
         "detect",
         sync_wrapper(lambda state: detect_patterns(state, llm)),
-        ['analysis', 'memory', 'timestamp']
+        config={"updates": ["analysis", "memory", "timestamp"]}
     )
     
     workflow.add_node(
         "assess",
         sync_wrapper(lambda state: assess_input(state)),
-        ['analysis', 'memory', 'timestamp']
+        config={"updates": ["analysis", "memory", "timestamp"]}
     )
     
     workflow.add_node(
         "analyze",
         sync_wrapper(lambda state: analyze_narrative(state, llm)),
-        ['response', 'memory', 'timestamp']
+        config={"updates": ["response", "memory", "timestamp"]}
     )
     
     workflow.add_node(
         "respond",
         lambda state: {"next": "detect", "timestamp": state.timestamp},
-        ['timestamp']
+        config={"updates": ["timestamp"]}
     )
     
     workflow.add_node(
         "error",
         lambda state: {"next": END, "timestamp": state.timestamp},
-        ['timestamp']
+        config={"updates": ["timestamp"]}
     )
     
     # Add conditional edges
