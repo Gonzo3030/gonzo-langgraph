@@ -1,6 +1,6 @@
 """Core state management for Gonzo."""
 
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Union
 from datetime import datetime
 from pydantic import BaseModel, Field
 
@@ -80,6 +80,7 @@ class GonzoState(BaseModel):
     memory: MemoryState = Field(default_factory=MemoryState)
     x_state: Optional[Dict[str, Any]] = None
     timestamp: datetime = Field(default_factory=datetime.now)
+    next: str = Field(default="assess")
     
     def update_analysis(self) -> None:
         """Update analysis state."""
@@ -119,6 +120,18 @@ class GonzoState(BaseModel):
         memory[key] = value
         setattr(self.memory, memory_type, memory)
         self.timestamp = datetime.now()
+    
+    def get(self, key: str, default: Any = None) -> Any:
+        """Get a value from state.
+        
+        Args:
+            key: State key
+            default: Default value if not found
+            
+        Returns:
+            Value from state
+        """
+        return getattr(self, key, default)
 
 def create_initial_state() -> GonzoState:
     """Create the initial state for Gonzo"""
