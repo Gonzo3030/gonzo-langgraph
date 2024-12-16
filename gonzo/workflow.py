@@ -8,6 +8,7 @@ from .types import GonzoState, NextStep
 from .nodes.pattern_detection import detect_patterns
 from .nodes.assessment import assess_input
 from .nodes.narrative import analyze_narrative
+from .config import ANTHROPIC_MODEL
 
 def create_workflow() -> StateGraph:
     """Create the main Gonzo workflow."""
@@ -15,7 +16,10 @@ def create_workflow() -> StateGraph:
     workflow = StateGraph(GonzoState)
     
     # Initialize LLM
-    llm = ChatAnthropic()
+    llm = ChatAnthropic(
+        model_name=ANTHROPIC_MODEL,
+        temperature=0.7
+    )
     
     # Add nodes
     workflow.add_node("detect", lambda state: detect_patterns(state, llm))
