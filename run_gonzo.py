@@ -64,8 +64,22 @@ def main():
         workflow = create_workflow()
         logger.info('Workflow created, starting Gonzo...')
         
-        # Run the workflow
-        workflow.run(state)
+        # Run the workflow with initial state
+        workflow.invoke({"messages": [], "next": "detect"})
+        logger.info('Gonzo is running!')
+        
+        # Keep the workflow running
+        while True:
+            try:
+                # Keep monitoring and processing
+                workflow.invoke({"messages": state["messages"], "next": "detect"})
+            except KeyboardInterrupt:
+                logger.info('\nShutting down Gonzo gracefully...')
+                break
+            except Exception as e:
+                logger.error(f'Error in workflow cycle: {str(e)}')
+                # Continue running despite errors
+                continue
         
     except KeyboardInterrupt:
         logger.info('Shutting down Gonzo gracefully...')
