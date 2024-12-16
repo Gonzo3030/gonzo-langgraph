@@ -1,11 +1,8 @@
 """Configuration management for Gonzo system."""
 
 from .models import (
-    ANTHROPIC_MODEL,
-    OPENAI_MODEL,
-    MODEL_NAME,
-    MODEL_CONFIG,
-    GRAPH_CONFIG
+    MODEL_NAME, MODEL_CONFIG, GRAPH_CONFIG,
+    ANTHROPIC_MODEL, OPENAI_MODEL
 )
 from .analysis import ANALYSIS_CONFIG
 from .prompts import SYSTEM_PROMPT, ANALYSIS_PROMPT_TEMPLATE, RESPONSE_PROMPT_TEMPLATE
@@ -18,8 +15,6 @@ from .x import (
 from .constants import *
 
 __all__ = [
-    'ANTHROPIC_MODEL',
-    'OPENAI_MODEL',
     'MODEL_NAME',
     'MODEL_CONFIG',
     'GRAPH_CONFIG',
@@ -38,5 +33,7 @@ __all__ = [
     'RATE_LIMIT_DELAY',
     'MAX_RETRIES',
     'MAX_THREAD_LENGTH',
-    'MIN_CONFIDENCE'
+    'MIN_CONFIDENCE',
+    'ANTHROPIC_MODEL',
+    'OPENAI_MODEL'
 ]
