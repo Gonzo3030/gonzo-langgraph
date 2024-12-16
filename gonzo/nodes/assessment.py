@@ -2,18 +2,9 @@ from datetime import datetime
 from typing import Dict, Any
 from langsmith import traceable
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_anthropic import ChatAnthropic
 from langchain_core.output_parsers import StrOutputParser
 from ..types import GonzoState
-from ..state.updates import update_state
-from ..config import ANTHROPIC_MODEL
-
-# Initialize LLM with tracing
-llm = ChatAnthropic(
-    model=ANTHROPIC_MODEL,
-    temperature=0,
-    callbacks=[]
-)
+from ..config import TASK_PROMPTS
 
 # Define prompt
 prompt = ChatPromptTemplate.from_messages([
@@ -33,10 +24,10 @@ prompt = ChatPromptTemplate.from_messages([
 ])
 
 # Create chain with output parser
-chain = prompt | llm | StrOutputParser()
+chain = prompt | StrOutputParser()
 
 @traceable(name="assess_input")
-async def assess_input(state: GonzoState) -> Dict[str, Any]:
+async def assess_input(state: GonzoState, llm: Any) -> Dict[str, Any]:
     """Assess user input and determine category."""
     try:
         if not state.messages.messages:
@@ -45,7 +36,8 @@ async def assess_input(state: GonzoState) -> Dict[str, Any]:
         latest_msg = state.messages.current_message
         
         # Get raw response for debugging
-        raw_response = await chain.ainvoke({"input": latest_msg})
+        response = await llm.ainvoke(prompt.format_messages(input=latest_msg))
+        raw_response = response.content
         print(f"LLM Response: '{raw_response}'")
         
         # Clean and validate
@@ -59,8 +51,6 @@ async def assess_input(state: GonzoState) -> Dict[str, Any]:
         normalized_category = valid_categories.get(category, "general")
         if normalized_category == "general" and category not in valid_categories:
             print(f"Warning: Unexpected category '{category}' from LLM")
-        
-        timestamp = datetime.now().isoformat()
         
         # Update state directly
         state.analysis.significance += 0.1  # Increment significance
@@ -76,8 +66,8 @@ async def assess_input(state: GonzoState) -> Dict[str, Any]:
         
     except Exception as e:
         print(f"Assessment error: {str(e)}")
-        timestamp = datetime.now().isoformat()
         state.add_error(f"Assessment error: {str(e)}")
+        state.timestamp = datetime.now()
         return {
             "memory": state.memory,
             "timestamp": state.timestamp,
