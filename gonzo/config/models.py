@@ -1,22 +1,20 @@
-"""Model configuration for Gonzo's LLM interface."""
+"""Model configurations for Gonzo system."""
 
-from typing import Dict, Any
+# Claude configuration
+ANTHROPIC_MODEL = "claude-3-opus-20240229"
+OPENAI_MODEL = "gpt-4-turbo-preview"
 
-# Core model configuration
+MODEL_NAME = ANTHROPIC_MODEL
+
 MODEL_CONFIG = {
-    "model": "claude-3-sonnet-20241022",
-    "max_tokens": 4096,
     "temperature": 0.7,
-    "top_p": 1.0
+    "max_tokens": 1000,
+    "presence_penalty": 0.0,
+    "frequency_penalty": 0.0
 }
 
-# Model name constant
-MODEL_NAME = MODEL_CONFIG["model"]
-
-# Runtime configuration for graph
 GRAPH_CONFIG = {
-    "configurable": {
-        "model": MODEL_NAME,
-        "streaming": True
-    }
+    "max_iterations": 5,
+    "max_time": 30,  # seconds
+    "early_stopping": True
 }
