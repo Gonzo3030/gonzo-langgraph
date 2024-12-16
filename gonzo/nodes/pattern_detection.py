@@ -4,7 +4,7 @@ from typing import Dict, Any
 from datetime import datetime
 from langchain_core.messages import SystemMessage, HumanMessage
 
-from ..types import GonzoState, NextStep
+from ..types import GonzoState
 from ..config import TASK_PROMPTS
 
 async def detect_patterns(state: GonzoState, llm: Any) -> Dict[str, Any]:
@@ -41,25 +41,39 @@ async def detect_patterns(state: GonzoState, llm: Any) -> Dict[str, Any]:
             HumanMessage(content=prompt)
         ])
         
+        # Extract content from AIMessage
+        response_text = response.content
+        
         # Add pattern to state
         pattern = {
-            "type": "manipulation" if "manipulation" in response.lower() else "detected_pattern",
-            "content": response,
+            "type": "manipulation" if "manipulation" in response_text.lower() else "detected_pattern",
+            "content": response_text,
             "timestamp": datetime.now().isoformat(),
-            "confidence": 0.9 if "manipulation" in response.lower() else 0.8
+            "confidence": 0.9 if "manipulation" in response_text.lower() else 0.8
         }
         
         # Initialize patterns list if None
         if state.analysis.patterns is None:
             state.analysis.patterns = []
             
+        # Update state directly
         state.analysis.patterns.append(pattern)
+        state.analysis.update_significance()
+        state.timestamp = datetime.now()
         
-        # Use state's significance calculation
-        state.update_analysis()
-        
-        return {"state": state, "next": NextStep.ANALYZE}
+        # Return updates
+        return {
+            "analysis": state.analysis,
+            "timestamp": state.timestamp,
+            "next": "analyze"
+        }
         
     except Exception as e:
+        # Update error state
         state.add_error(f"Pattern detection error: {str(e)}")
-        return {"state": state, "next": NextStep.ERROR}
+        state.timestamp = datetime.now()
+        return {
+            "memory": state.memory,
+            "timestamp": state.timestamp,
+            "next": "error"
+        }
