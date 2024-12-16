@@ -2,14 +2,9 @@
 
 import os
 import logging
-from typing import Dict, Any
 from dotenv import load_dotenv
-from config.settings import load_config
-from gonzo.core.agent import GonzoAgent
-from gonzo.core.state import StateManager
-from gonzo.evolution.system import EvolutionSystem
-from gonzo.knowledge.graph import KnowledgeGraph
-from gonzo.response.system import ResponseSystem
+from gonzo.types import create_initial_state
+from gonzo.workflow import create_workflow
 
 # Configure logging
 logging.basicConfig(
@@ -18,8 +13,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def init_environment() -> Dict[str, str]:
-    """Initialize environment variables from .env file"""
+def init_environment():
+    """Initialize environment variables"""
     load_dotenv()
     required_vars = [
         'ANTHROPIC_API_KEY',
@@ -34,84 +29,29 @@ def init_environment() -> Dict[str, str]:
         'X_ACCESS_SECRET'
     ]
     
-    env_vars = {}
-    for var in required_vars:
-        value = os.getenv(var)
-        if not value:
-            raise ValueError(f'Missing required environment variable: {var}')
-        env_vars[var] = value
-    
-    # Optional vars with defaults
-    env_vars['LANGCHAIN_TRACING_V2'] = os.getenv('LANGCHAIN_TRACING_V2', 'true')
-    env_vars['LANGCHAIN_ENDPOINT'] = os.getenv('LANGCHAIN_ENDPOINT', 'https://api.smith.langchain.com')
-    env_vars['LANGCHAIN_PROJECT'] = os.getenv('LANGCHAIN_PROJECT', 'gonzo-langgraph')
-    
-    return env_vars
-
-def init_components(config: Dict[str, Any], env_vars: Dict[str, str]):
-    """Initialize all system components"""
-    # Initialize core components
-    state_manager = StateManager()
-    knowledge_graph = KnowledgeGraph()
-    evolution_system = EvolutionSystem(state_manager)
-    response_system = ResponseSystem(
-        anthropic_key=env_vars['ANTHROPIC_API_KEY'],
-        openai_key=env_vars['OPENAI_API_KEY'],
-        brave_key=env_vars['BRAVE_API_KEY'],
-        langchain_key=env_vars['LANGCHAIN_API_KEY'],
-        cryptocompare_key=env_vars['CRYPTOCOMPARE_API_KEY'],
-        x_credentials={
-            'api_key': env_vars['X_API_KEY'],
-            'api_secret': env_vars['X_API_SECRET'],
-            'access_token': env_vars['X_ACCESS_TOKEN'],
-            'access_secret': env_vars['X_ACCESS_SECRET']
-        },
-        youtube_key=env_vars['YOUTUBE_API_KEY']
-    )
-    
-    # Initialize Gonzo agent
-    agent = GonzoAgent(
-        state_manager=state_manager,
-        knowledge_graph=knowledge_graph,
-        evolution_system=evolution_system,
-        response_system=response_system,
-        config=config
-    )
-    
-    return agent
-
-def health_check(agent: GonzoAgent) -> bool:
-    """Perform basic health check of all components"""
-    try:
-        # Check each core component
-        checks = [
-            agent.state_manager.is_healthy(),
-            agent.knowledge_graph.is_healthy(),
-            agent.evolution_system.is_healthy(),
-            agent.response_system.is_healthy()
-        ]
-        return all(checks)
-    except Exception as e:
-        logger.error(f'Health check failed: {str(e)}')
-        return False
+    missing = [var for var in required_vars if not os.getenv(var)]
+    if missing:
+        raise ValueError(f'Missing required environment variables: {missing}')
 
 def main():
     try:
-        # Initialize environment and config
-        env_vars = init_environment()
-        config = load_config()
+        # Initialize environment
+        init_environment()
+        logger.info('Environment initialized')
         
-        # Initialize components
-        agent = init_components(config, env_vars)
+        # Create initial state
+        state = create_initial_state()
+        logger.info('Initial state created')
         
-        # Perform health check
-        if not health_check(agent):
-            raise RuntimeError('System health check failed')
+        # Create and start workflow
+        workflow = create_workflow()
+        logger.info('Workflow created, starting Gonzo...')
         
-        # Start the main event loop
-        logger.info('Starting Gonzo agent...')
-        agent.run()
+        # Run the workflow
+        workflow.run(state)
         
+    except KeyboardInterrupt:
+        logger.info('Shutting down Gonzo gracefully...')
     except Exception as e:
         logger.error(f'Failed to start Gonzo: {str(e)}')
         raise
