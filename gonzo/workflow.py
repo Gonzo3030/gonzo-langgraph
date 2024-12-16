@@ -11,7 +11,7 @@ from .nodes.pattern_detection import detect_patterns
 from .nodes.assessment import assess_input
 from .nodes.narrative import analyze_narrative
 from .nodes.x_posting import post_to_x
-from .config import ANTHROPIC_MODEL, RATE_LIMIT_DELAY
+from .config import ANTHROPIC_MODEL
 
 def sync_wrapper(async_func):
     """Wrapper to run async functions in sync context."""
@@ -62,7 +62,7 @@ def create_workflow() -> StateGraph:
         "respond",
         lambda state: {
             "timestamp": state.timestamp,
-            "next": "detect" if not state.response.queued_responses else "x_post"
+            "next": "x_post" if state.response.queued_responses else "detect"
         }
     )
     
@@ -71,33 +71,30 @@ def create_workflow() -> StateGraph:
         lambda state: {"timestamp": state.timestamp, "next": END}
     )
     
-    # Add edges with branching logic
+    # Add edges with branching
     workflow.add_conditional_edges(
         "detect",
-        lambda state: {
-            "assess": 0.8,  # Most likely path
-            "analyze": 0.2  # Direct to analysis if strong pattern detected
-        }.get(state.next, "assess")
+        lambda state: state.next if hasattr(state, 'next') else "assess"
     )
     
     workflow.add_conditional_edges(
         "assess",
-        lambda state: state.next
+        lambda state: state.next if hasattr(state, 'next') else "analyze"
     )
     
     workflow.add_conditional_edges(
         "analyze",
-        lambda state: "respond"
-    )
-    
-    workflow.add_conditional_edges(
-        "respond",
-        lambda state: "x_post" if state.response.queued_responses else "detect"
+        lambda state: state.next if hasattr(state, 'next') else "respond"
     )
     
     workflow.add_conditional_edges(
         "x_post",
-        lambda state: state.next
+        lambda state: state.next if hasattr(state, 'next') else "detect"
+    )
+    
+    workflow.add_conditional_edges(
+        "respond",
+        lambda state: state.next if hasattr(state, 'next') else "detect"
     )
     
     workflow.add_edge("error", END)
