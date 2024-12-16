@@ -3,7 +3,7 @@
 import os
 import logging
 from dotenv import load_dotenv
-from gonzo.types import create_initial_state
+from gonzo.state.base import GonzoState, MessageState
 from gonzo.workflow import create_workflow
 
 # Configure logging
@@ -50,6 +50,10 @@ def init_environment():
     os.environ.setdefault('LANGCHAIN_ENDPOINT', 'https://api.smith.langchain.com')
     os.environ.setdefault('LANGCHAIN_PROJECT', 'gonzo-langgraph')
 
+def create_test_message():
+    """Create a test message to start the system."""
+    return "The crypto markets are buzzing with manipulation again. Every screen flashes green while shadows dance behind the charts."
+
 def main():
     try:
         # Initialize environment
@@ -57,28 +61,30 @@ def main():
         logger.info('Environment initialized')
         
         # Create initial state
-        state = create_initial_state()
+        initial_state = GonzoState(
+            messages=MessageState(messages=[create_test_message()])
+        )
         logger.info('Initial state created')
         
-        # Create and start workflow
+        # Create workflow
         workflow = create_workflow()
         logger.info('Workflow created, starting Gonzo...')
         
-        # Run the workflow with initial state
-        workflow.invoke({"messages": [], "next": "detect"})
-        logger.info('Gonzo is running!')
+        # Initial run
+        result = workflow.invoke(initial_state.model_dump())
+        logger.info('Initial workflow cycle completed')
         
         # Keep the workflow running
         while True:
             try:
-                # Keep monitoring and processing
-                workflow.invoke({"messages": state["messages"], "next": "detect"})
+                # Monitor and process new content
+                current_state = result["state"]
+                result = workflow.invoke(current_state)
             except KeyboardInterrupt:
                 logger.info('\nShutting down Gonzo gracefully...')
                 break
             except Exception as e:
                 logger.error(f'Error in workflow cycle: {str(e)}')
-                # Continue running despite errors
                 continue
         
     except KeyboardInterrupt:
