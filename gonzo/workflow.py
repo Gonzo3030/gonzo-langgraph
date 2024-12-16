@@ -1,11 +1,11 @@
 """Main workflow definition for Gonzo."""
 
-from typing import Dict, Any
+from typing import Dict, Any, Callable
 from langgraph.graph import StateGraph, END
 from langchain_anthropic import ChatAnthropic
 import asyncio
 
-from .types import GonzoState, NextStep
+from .types import GonzoState
 from .nodes.pattern_detection import detect_patterns
 from .nodes.assessment import assess_input
 from .nodes.narrative import analyze_narrative
@@ -17,25 +17,49 @@ def sync_wrapper(async_func):
         return asyncio.run(async_func(*args, **kwargs))
     return wrapper
 
+def create_node_fn(func: Callable, llm: Any) -> Callable:
+    """Create a node function that includes the LLM."""
+    return lambda state: func(state, llm)
+
 def create_workflow() -> StateGraph:
     """Create the main Gonzo workflow."""
-    # Initialize the graph with updatable fields
+    # Initialize the graph
     workflow = StateGraph(GonzoState)
     
     # Initialize LLM
     llm = ChatAnthropic(
         model=ANTHROPIC_MODEL,
-        temperature=0.7
+        temperature=0.7,
+        api_key=os.getenv('ANTHROPIC_API_KEY')
     )
     
     # Add nodes with sync wrappers
-    workflow.add_node("detect", sync_wrapper(lambda state: detect_patterns(state, llm)))
-    workflow.add_node("assess", sync_wrapper(lambda state: assess_input(state)))
-    workflow.add_node("analyze", sync_wrapper(lambda state: analyze_narrative(state, llm)))
-    workflow.add_node("respond", lambda state: {"timestamp": state.timestamp, "next": "detect"})
-    workflow.add_node("error", lambda state: {"timestamp": state.timestamp, "next": END})
+    workflow.add_node(
+        "detect", 
+        sync_wrapper(create_node_fn(detect_patterns, llm))
+    )
     
-    # Add conditional edges with fixed routing
+    workflow.add_node(
+        "assess", 
+        sync_wrapper(create_node_fn(assess_input, llm))
+    )
+    
+    workflow.add_node(
+        "analyze", 
+        sync_wrapper(create_node_fn(analyze_narrative, llm))
+    )
+    
+    workflow.add_node(
+        "respond",
+        lambda state: {"timestamp": state.timestamp, "next": "detect"}
+    )
+    
+    workflow.add_node(
+        "error",
+        lambda state: {"timestamp": state.timestamp, "next": END}
+    )
+    
+    # Add edges
     workflow.add_edge("detect", "assess")
     workflow.add_edge("assess", "analyze")
     workflow.add_edge("analyze", "respond")
