@@ -7,13 +7,6 @@ from langchain_anthropic import ChatAnthropic
 from ..types import GonzoState
 from ..config import ANTHROPIC_MODEL
 
-# Initialize LLM
-llm = ChatAnthropic(
-    model=ANTHROPIC_MODEL,
-    temperature=0.9,  # Higher temperature for more Gonzo-like creativity
-    callbacks=[]
-)
-
 # Define prompt
 prompt = ChatPromptTemplate.from_messages([
     ("system", """You are Gonzo, a time-traveling AI journalist from 3030 analyzing media narratives and propaganda.
@@ -102,41 +95,27 @@ def create_thread(text: str, max_length: int = 280) -> List[str]:
     total = len(tweets)
     return [f"🧵 {i+1}/{total} {tweet}" for i, tweet in enumerate(tweets)]
 
-def retry_with_backoff(func, max_retries=3):
-    """Retry a function with exponential backoff."""
-    for attempt in range(max_retries):
-        try:
-            return func()
-        except Exception as e:
-            if attempt == max_retries - 1:  # Last attempt
-                raise e
-            wait_time = (2 ** attempt) * 2  # 2, 4, 8 seconds
-            print(f"Attempt {attempt + 1} failed. Waiting {wait_time} seconds...")
-            sleep(wait_time)
-
 @traceable(name="analyze_narrative")
-def analyze_narrative(state: GonzoState) -> Dict[str, Any]:
+async def analyze_narrative(state: GonzoState, llm: Any) -> Dict[str, Any]:
     """Generate a raw Gonzo analysis of narrative manipulation.
     
     Args:
         state: Current GonzoState containing message history and context
+        llm: Language model for analysis
         
     Returns:
         Dict[str, Any]: Updates to apply to state
     """
     try:
         # Get latest message
-        if not state["messages"]:
+        if not state.messages.messages:
             raise ValueError("No messages in state")
             
-        latest_msg = state["messages"][-1]
+        latest_msg = state.messages.current_message
         
-        # Get the raw Gonzo take with retry logic
-        def get_analysis():
-            raw_response = llm.invoke(prompt.format(input=latest_msg.content))
-            return raw_response.content
-            
-        gonzo_take = retry_with_backoff(get_analysis)
+        # Get the raw Gonzo take
+        response = await llm.ainvoke(prompt.format(input=latest_msg))
+        gonzo_take = response.content
         print(f"Raw Gonzo Analysis:\n{gonzo_take}")
         
         # Create tweet thread from analysis
@@ -145,39 +124,24 @@ def analyze_narrative(state: GonzoState) -> Dict[str, Any]:
         for tweet in tweet_thread:
             print(f"\n{tweet}")
         
-        # Create timestamp
-        timestamp = datetime.now().isoformat()
+        # Update state
+        state.timestamp = datetime.now()
+        state.response.response_content = gonzo_take
+        state.response.queued_responses = tweet_thread
         
-        # Return state updates with both raw analysis and tweet thread
+        # Return updates
         return {
-            "context": {
-                "gonzo_analysis": gonzo_take,
-                "tweet_thread": tweet_thread,
-                "analysis_timestamp": timestamp,
-            },
-            "steps": [{
-                "node": "narrative_analysis",
-                "timestamp": timestamp,
-                "raw_analysis": gonzo_take,
-                "tweet_thread": tweet_thread
-            }],
-            # Format response with both full analysis and thread
-            "response": f"🔥 GONZO DISPATCH FROM 3030 🔥\n\n{gonzo_take}\n\n" \
-                      f"🧵 THREAD VERSION:\n\n" + "\n\n".join(tweet_thread)
+            "response": state.response,
+            "timestamp": state.timestamp,
+            "next": "respond"
         }
         
     except Exception as e:
         print(f"Narrative analysis error: {str(e)}")
-        timestamp = datetime.now().isoformat()
+        state.add_error(f"Narrative analysis error: {str(e)}")
+        state.timestamp = datetime.now()
         return {
-            "context": {
-                "narrative_error": str(e),
-                "analysis_timestamp": timestamp
-            },
-            "steps": [{
-                "node": "narrative_analysis",
-                "error": str(e),
-                "timestamp": timestamp
-            }],
-            "response": "Even Gonzo journalists have bad trips sometimes. Let me light up another one and try again."
+            "memory": state.memory,
+            "timestamp": state.timestamp,
+            "next": "error"
         }
