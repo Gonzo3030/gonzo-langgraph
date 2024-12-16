@@ -1,84 +1,58 @@
-"""Task-specific prompts and configurations."""
+"""Task-specific configurations and prompts."""
 
-TASK_PROMPTS = {
-    "entity_extraction": """
-    As Dr. Gonzo, analyze this content and identify key entities.
-    Draw from your experience spanning 1974-3030 to identify:
-    
-    1. Power players and manipulators
-    2. Corporate/political entities
-    3. Technologies of control
-    4. Narrative manipulation tactics
-    5. Historical parallels across your timeline
-    
-    Context: {context}
-    Content: {content}
-    """,
-    
-    "topic_segmentation": """
-    Break down this content into meaningful segments, using your unique perspective
-    spanning from the counterculture era through 3030.
-    
-    For each segment identify:
-    1. Main topic or theme
-    2. Connection to dystopian patterns
-    3. Historical parallels from your timeline
-    4. Manipulation tactics present
-    
-    Content: {content}
-    Current Analysis: {current_analysis}
-    """,
-    
-    "pattern_detection": """
-    Analyze this content for patterns of control and manipulation, drawing from your
-    vast experience from 1974 through 3030.
-    
-    Consider:
-    1. Media reality distortion
-    2. Corporate power consolidation
-    3. Technological control systems
-    4. Social engineering methods
-    5. Historical precedents from your timeline
-    
-    Content: {content}
-    Identified Entities: {entities}
-    """,
-    
-    "narrative_analysis": """
-    Examine how this content shapes narratives and perception, using your unique
-    perspective spanning from the Thompson era through 3030.
-    
-    Focus on:
-    1. Reality distortion techniques
-    2. Corporate/political agenda setting
-    3. Historical parallels to past manipulation
-    4. Connection to future dystopian control
-    
-    Content: {content}
-    Current Patterns: {patterns}
-    """
+TASK_CONFIG = {
+    "pattern_detection": {
+        "min_confidence": 0.8,
+        "max_patterns": 5,
+        "analysis_window": 3600  # 1 hour
+    },
+    "content_analysis": {
+        "max_length": 2000,
+        "min_entities": 3,
+        "context_window": 24  # hours
+    },
+    "response_generation": {
+        "max_length": 280,
+        "tone_control": 0.7,
+        "creativity": 0.8
+    }
 }
 
-# Task execution configurations
-TASK_CONFIG = {
-    "entity_extraction": {
-        "requires_context": True,
-        "batch_size": 1000,
-        "min_confidence": 0.6
-    },
-    "topic_segmentation": {
-        "requires_context": False,
-        "min_segment_length": 200,
-        "max_segments": 5
-    },
-    "pattern_detection": {
-        "requires_entities": True,
-        "min_pattern_strength": 0.7,
-        "max_patterns": 3
-    },
-    "narrative_analysis": {
-        "requires_patterns": True,
-        "min_significance": 0.6,
-        "temporal_weight": 0.8
-    }
+TASK_PROMPTS = {
+    "pattern_detection": """
+Analyze the following content for patterns of manipulation, narrative control, or significant developments:
+
+Content:
+{content}
+
+Entities detected:
+{entities}
+
+Identify any patterns that could lead to dystopian outcomes or indicate coordinated control.
+""",
+
+    "content_analysis": """
+As Dr. Gonzo from 3030, analyze this content through your dystopian lens:
+
+Content:
+{content}
+
+Focus on:
+1. Hidden power dynamics
+2. Manipulation tactics
+3. Technological implications
+4. Economic control mechanisms
+""",
+
+    "response_generation": """
+As Dr. Gonzo, respond to this situation based on your knowledge from 3030:
+
+Context:
+{context}
+
+Situation:
+{content}
+
+Provide your unique perspective while maintaining your character.
+"""
 }

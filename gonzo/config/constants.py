@@ -1,37 +1,27 @@
-"""Constant values used across the system."""
+"""Constants for the Gonzo system."""
 
-# Time periods
-COUNTERCULTURE_START = 1965
-COUNTERCULTURE_END = 1974
-DIGITAL_TRANSITION_START = 1974
-DIGITAL_TRANSITION_END = 1999
-PRESENT_YEAR = 2024
-FUTURE_YEAR = 3030
+# Time constants
+MIN_INTERVAL = 300  # 5 minutes between posts
+MAX_POSTS_PER_HOUR = 12
 
-# Entity types
-ENTITY_TYPES = [
-    "person",
-    "organization",
-    "location",
-    "event",
-    "concept",
-    "narrative",
-    "pattern",
-    "manipulation"
-]
+# Content constraints
+MIN_CONTENT_LENGTH = 50
+MAX_CONTENT_LENGTH = 280  # X character limit
 
-# Response types
-RESPONSE_TYPES = [
-    "quick_take",
-    "thread_analysis",
-    "historical_bridge",
-    "interaction"
-]
+# Analysis thresholds
+MIN_CONFIDENCE_THRESHOLD = 0.7
+PATTERN_DETECTION_THRESHOLD = 0.8
+MANIPULATION_ALERT_THRESHOLD = 0.85
 
-# State keys
-STATE_KEYS = [
-    "evolution",
-    "interaction",
-    "memory",
-    "pattern"
-]
+# Memory settings
+MEMORY_RETENTION = 7200  # 2 hours
+MAX_MEMORY_ITEMS = 1000
+
+# Rate limits
+API_RATE_LIMIT = 60  # requests per minute
+MAX_RETRIES = 3
+RETRY_DELAY = 5  # seconds
+
+# Monitoring
+HEALTH_CHECK_INTERVAL = 300  # 5 minutes
+METRICS_ENABLED = True
