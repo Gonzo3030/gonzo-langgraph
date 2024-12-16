@@ -2,13 +2,13 @@
 
 import os
 import logging
-import asyncio
 from typing import Dict, Any
 from datetime import datetime
 from dotenv import load_dotenv
 
-from gonzo.extended_state_management import UnifiedState, create_initial_state
-from gonzo.gonzo_workflow import create_workflow, WorkflowStage
+from gonzo.state_management import UnifiedState, create_initial_state, WorkflowStage
+from gonzo.graph.workflow import create_workflow
+from gonzo.config import SYSTEM_PROMPT
 
 # Configure logging
 logging.basicConfig(
@@ -18,7 +18,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def init_environment() -> None:
-    """Initialize environment variables and API keys"""
+    """Initialize environment variables"""
     load_dotenv()
     
     # Required API keys
@@ -28,14 +28,14 @@ def init_environment() -> None:
         'X_API_KEY',
         'X_API_SECRET',
         'X_ACCESS_TOKEN',
-        'X_ACCESS_SECRET'
+        'X_ACCESS_SECRET',
+        'BRAVE_API_KEY',  # For market and news monitoring
+        'CRYPTOCOMPARE_API_KEY'  # For crypto market data
     ]
     
-    # Optional API keys
+    # Optional but recommended APIs
     optional_vars = [
-        'BRAVE_API_KEY',
         'LANGCHAIN_API_KEY',
-        'CRYPTOCOMPARE_API_KEY',
         'YOUTUBE_API_KEY'
     ]
     
@@ -54,8 +54,14 @@ def init_environment() -> None:
     os.environ.setdefault('LANGCHAIN_ENDPOINT', 'https://api.smith.langchain.com')
     os.environ.setdefault('LANGCHAIN_PROJECT', 'gonzo-langgraph')
 
-def setup_x_credentials(state: UnifiedState) -> None:
-    """Configure X API credentials in state"""
+def setup_initial_state() -> UnifiedState:
+    """Create initial state with proper configuration"""
+    state = create_initial_state()
+    
+    # Add system prompt to establish Gonzo's persona
+    state.add_message(SYSTEM_PROMPT, source="system")
+    
+    # Configure X integration
     state.x_integration.direct_api.update({
         'api_key': os.getenv('X_API_KEY'),
         'api_secret': os.getenv('X_API_SECRET'),
@@ -63,104 +69,73 @@ def setup_x_credentials(state: UnifiedState) -> None:
         'access_secret': os.getenv('X_ACCESS_SECRET')
     })
     
-    # Store backup in long-term memory
-    state.memory.long_term.update({
-        'x_credentials': {
-            'api_key': os.getenv('X_API_KEY'),
-            'api_secret': os.getenv('X_API_SECRET'),
-            'access_token': os.getenv('X_ACCESS_TOKEN'),
-            'access_secret': os.getenv('X_ACCESS_SECRET')
-        }
-    })
-
-def initialize_state() -> UnifiedState:
-    """Create and initialize the unified state"""
-    state = create_initial_state()
-    
-    # Set up X credentials
-    setup_x_credentials(state)
-    
-    # Initialize with a test message
-    state.add_message(
-        "The crypto markets are buzzing with manipulation again. "
-        "Every screen flashes green while shadows dance behind the charts.",
-        source="test"
+    # Store API keys in memory for various services
+    state.memory.store(
+        "api_credentials",
+        {
+            'brave_key': os.getenv('BRAVE_API_KEY'),
+            'crypto_compare_key': os.getenv('CRYPTOCOMPARE_API_KEY')
+        },
+        "long_term"
     )
     
     return state
 
-async def run_workflow_cycle(workflow: Any, state: Dict[str, Any]) -> Dict[str, Any]:
-    """Run a single workflow cycle with proper error handling"""
-    try:
-        result = workflow.invoke(state)
-        
-        # Check for critical errors
-        if result.get("current_stage") == WorkflowStage.ERROR:
-            logger.error(f"Workflow error: {result.get('last_error', 'Unknown error')}")
-            # Implement recovery logic here if needed
-            
-        return result
-    except Exception as e:
-        logger.error(f"Cycle error: {str(e)}")
-        return {
-            "current_stage": WorkflowStage.ERROR,
-            "last_error": str(e)
-        }
-
-async def main_loop() -> None:
-    """Main execution loop"""
+def run_gonzo() -> None:
+    """Main execution function for Gonzo"""
     try:
         # Initialize environment
         init_environment()
         logger.info('Environment initialized')
         
         # Create initial state
-        initial_state = initialize_state()
+        state = setup_initial_state()
         logger.info('Initial state created')
         
         # Create workflow
         workflow = create_workflow()
         logger.info('Workflow created, starting Gonzo...')
         
-        # Initial state dump
-        current_state = initial_state.model_dump()
+        # Initial run with state dump
+        current_state = state.model_dump()
         
-        # Main loop
+        # Keep the workflow running
         while True:
             try:
                 # Run workflow cycle
-                result = await run_workflow_cycle(workflow, current_state)
+                result = workflow.invoke(current_state)
                 
-                # Update current state
-                current_state = result
+                # Extract new state
+                new_state = UnifiedState(**result["state"])
                 
                 # Log progress
-                logger.info(f"Completed cycle. Stage: {result.get('current_stage', 'unknown')}")
+                logger.info(
+                    f"Completed cycle. Stage: {new_state.current_stage}, "
+                    f"Patterns detected: {len(new_state.knowledge_graph.patterns)}, "
+                    f"Queued posts: {len(new_state.x_integration.queued_posts)}"
+                )
                 
-                # Optional: Add delay between cycles
-                await asyncio.sleep(1)
+                # Update current state
+                current_state = new_state.model_dump()
                 
+                # Handle checkpointing if needed
+                if new_state.checkpoint_needed:
+                    # TODO: Implement checkpoint saving
+                    pass
+                    
             except KeyboardInterrupt:
                 logger.info('\nShutting down Gonzo gracefully...')
                 break
             except Exception as e:
                 logger.error(f'Error in workflow cycle: {str(e)}')
-                # Implement recovery or continue based on error
+                # Continue to next cycle rather than crashing
                 continue
-    
+        
     except KeyboardInterrupt:
         logger.info('Shutting down Gonzo gracefully...')
     except Exception as e:
         logger.error(f'Failed to start Gonzo: {str(e)}')
         raise
 
-def main():
-    """Entry point"""
-    try:
-        asyncio.run(main_loop())
-    except Exception as e:
-        logger.error(f"Fatal error: {str(e)}")
-        raise
-
 if __name__ == '__main__':
-    main()
+    run_gonzo()
