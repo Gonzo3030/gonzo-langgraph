@@ -7,7 +7,7 @@ response:
   content:
     min_length: 100
     max_length: 280
-    require_approval: true  # Set to false once comfortable with outputs
+    require_approval: false  # Set to false once comfortable with outputs
 
 evolution:
   memory_retention: 7200  # 2 hours
