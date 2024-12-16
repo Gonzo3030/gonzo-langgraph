@@ -22,12 +22,16 @@ def init_environment() -> Dict[str, str]:
     """Initialize environment variables from .env file"""
     load_dotenv()
     required_vars = [
+        'ANTHROPIC_API_KEY',
         'OPENAI_API_KEY',
+        'BRAVE_API_KEY',
+        'LANGCHAIN_API_KEY',
+        'CRYPTOCOMPARE_API_KEY',
+        'YOUTUBE_API_KEY',
         'X_API_KEY',
         'X_API_SECRET',
         'X_ACCESS_TOKEN',
-        'X_ACCESS_SECRET',
-        'YOUTUBE_API_KEY'
+        'X_ACCESS_SECRET'
     ]
     
     env_vars = {}
@@ -36,6 +40,11 @@ def init_environment() -> Dict[str, str]:
         if not value:
             raise ValueError(f'Missing required environment variable: {var}')
         env_vars[var] = value
+    
+    # Optional vars with defaults
+    env_vars['LANGCHAIN_TRACING_V2'] = os.getenv('LANGCHAIN_TRACING_V2', 'true')
+    env_vars['LANGCHAIN_ENDPOINT'] = os.getenv('LANGCHAIN_ENDPOINT', 'https://api.smith.langchain.com')
+    env_vars['LANGCHAIN_PROJECT'] = os.getenv('LANGCHAIN_PROJECT', 'gonzo-langgraph')
     
     return env_vars
 
@@ -46,7 +55,11 @@ def init_components(config: Dict[str, Any], env_vars: Dict[str, str]):
     knowledge_graph = KnowledgeGraph()
     evolution_system = EvolutionSystem(state_manager)
     response_system = ResponseSystem(
+        anthropic_key=env_vars['ANTHROPIC_API_KEY'],
         openai_key=env_vars['OPENAI_API_KEY'],
+        brave_key=env_vars['BRAVE_API_KEY'],
+        langchain_key=env_vars['LANGCHAIN_API_KEY'],
+        cryptocompare_key=env_vars['CRYPTOCOMPARE_API_KEY'],
         x_credentials={
             'api_key': env_vars['X_API_KEY'],
             'api_secret': env_vars['X_API_SECRET'],
