@@ -4,7 +4,8 @@ from langsmith import traceable
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_anthropic import ChatAnthropic
 from langchain_core.output_parsers import StrOutputParser
-from ..types import GonzoState, update_state
+from ..types import GonzoState
+from ..state.updates import update_state
 from ..config import ANTHROPIC_MODEL
 
 # Initialize LLM with tracing
