@@ -54,19 +54,33 @@ def create_test_message():
     """Create a test message to start the system."""
     return "The crypto markets are buzzing with manipulation again. Every screen flashes green while shadows dance behind the charts."
 
+def create_initial_state() -> GonzoState:
+    """Create initial state with API keys and test message."""
+    state = GonzoState(
+        messages=MessageState(
+            current_message=create_test_message(),
+            messages=[create_test_message()]
+        )
+    )
+    
+    # Store API keys in memory
+    state.memory.short_term.update({
+        'x_api_key': os.getenv('X_API_KEY'),
+        'x_api_secret': os.getenv('X_API_SECRET'),
+        'x_access_token': os.getenv('X_ACCESS_TOKEN'),
+        'x_access_secret': os.getenv('X_ACCESS_SECRET')
+    })
+    
+    return state
+
 def main():
     try:
         # Initialize environment
         init_environment()
         logger.info('Environment initialized')
         
-        # Create initial state with test message
-        initial_state = GonzoState(
-            messages=MessageState(
-                current_message=create_test_message(),
-                messages=[create_test_message()]
-            )
-        )
+        # Create initial state
+        initial_state = create_initial_state()
         logger.info('Initial state created')
         
         # Create workflow
