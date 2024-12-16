@@ -36,16 +36,16 @@ prompt = ChatPromptTemplate.from_messages([
 chain = prompt | llm | StrOutputParser()
 
 @traceable(name="assess_input")
-def assess_input(state: GonzoState) -> Dict[str, Any]:
+async def assess_input(state: GonzoState) -> Dict[str, Any]:
     """Assess user input and determine category."""
     try:
-        if not state["messages"]:
+        if not state.messages.messages:
             raise ValueError("No messages in state")
             
-        latest_msg = state["messages"][-1]
+        latest_msg = state.messages.current_message
         
         # Get raw response for debugging
-        raw_response = chain.invoke({"input": latest_msg.content})
+        raw_response = await chain.ainvoke({"input": latest_msg})
         print(f"LLM Response: '{raw_response}'")
         
         # Clean and validate
@@ -62,33 +62,24 @@ def assess_input(state: GonzoState) -> Dict[str, Any]:
         
         timestamp = datetime.now().isoformat()
         
+        # Update state directly
+        state.analysis.significance += 0.1  # Increment significance
+        state.memory.short_term["last_category"] = normalized_category
+        state.timestamp = datetime.now()
+        
         return {
-            "category": normalized_category,
-            "context": {
-                "assessment_timestamp": timestamp,
-                "raw_category": category,
-                "normalized_category": normalized_category
-            },
-            "steps": [{
-                "node": "assessment",
-                "category": normalized_category,
-                "raw_category": category,
-                "timestamp": timestamp
-            }]
+            "analysis": state.analysis,
+            "memory": state.memory,
+            "timestamp": state.timestamp,
+            "next": "analyze"
         }
         
     except Exception as e:
         print(f"Assessment error: {str(e)}")
         timestamp = datetime.now().isoformat()
+        state.add_error(f"Assessment error: {str(e)}")
         return {
-            "category": "general",
-            "context": {
-                "assessment_error": str(e),
-                "assessment_timestamp": timestamp
-            },
-            "steps": [{
-                "node": "assessment",
-                "error": str(e),
-                "timestamp": timestamp
-            }]
+            "memory": state.memory,
+            "timestamp": state.timestamp,
+            "next": "error"
         }
