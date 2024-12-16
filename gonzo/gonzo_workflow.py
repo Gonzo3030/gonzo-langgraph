@@ -98,3 +98,39 @@ async def assessment_node(state: UnifiedState, llm: Any) -> Dict[str, Any]:
     except Exception as e:
         state.record_error(f"Assessment error: {str(e)}")
         return {"current_stage": WorkflowStage.ERROR}
+
+async def narrative_node(state: UnifiedState, llm: Any) -> Dict[str, Any]:
+    """Narrative generation"""
+    try:
+        narrative = await generate_narrative(
+            state.narrative.context,
+            state.memory,
+            llm
+        )
+        
+        state.narrative.story_elements = narrative.elements
+        state.x_integration.queued_posts = narrative.posts
+        
+        return {
+            "current_stage": WorkflowStage.QUEUE,
+            "checkpoint_needed": True
+        }
+    except Exception as e:
+        state.record_error(f"Narrative generation error: {str(e)}")
+        return {"current_stage": WorkflowStage.ERROR}
+
+async def queue_node(state: UnifiedState) -> Dict[str, Any]:
+    """Post queue management"""
+    try:
+        if not state.x_integration.queued_posts:
+            return {"current_stage": WorkflowStage.MONITOR}
+            
+        # Check rate limits
+        if state.x_integration.rate_limits.get("post_limit"):
+            if datetime.utcnow() < state.x_integration.rate_limits["post_limit"]:
+                return {"current_stage": WorkflowStage.QUEUE}
+        
+        return {"current_stage": WorkflowStage.POST}
+    except Exception as e:
+        state.record_error(f"Queue error: {str(e)}")
+        return {"current_stage": WorkflowStage.ERROR}
