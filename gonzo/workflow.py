@@ -19,11 +19,8 @@ def sync_wrapper(async_func):
 
 def create_workflow() -> StateGraph:
     """Create the main Gonzo workflow."""
-    # Initialize the graph
-    workflow = StateGraph(
-        GonzoState,
-        ["analysis", "memory", "timestamp", "response", "messages", "evolution", "interaction", "x_state"]
-    )
+    # Initialize the graph with updatable fields
+    workflow = StateGraph(GonzoState)
     
     # Initialize LLM
     llm = ChatAnthropic(
@@ -35,30 +32,14 @@ def create_workflow() -> StateGraph:
     workflow.add_node("detect", sync_wrapper(lambda state: detect_patterns(state, llm)))
     workflow.add_node("assess", sync_wrapper(lambda state: assess_input(state)))
     workflow.add_node("analyze", sync_wrapper(lambda state: analyze_narrative(state, llm)))
-    workflow.add_node("respond", lambda state: {"next": "detect", "timestamp": state.timestamp})
-    workflow.add_node("error", lambda state: {"next": END, "timestamp": state.timestamp})
+    workflow.add_node("respond", lambda state: {"timestamp": state.timestamp, "next": "detect"})
+    workflow.add_node("error", lambda state: {"timestamp": state.timestamp, "next": END})
     
-    # Add conditional edges
-    workflow.add_conditional_edges(
-        "detect",
-        lambda state: state.get("next", "assess")
-    )
-    
-    workflow.add_conditional_edges(
-        "assess",
-        lambda state: state.get("next", "analyze")
-    )
-    
-    workflow.add_conditional_edges(
-        "analyze",
-        lambda state: state.get("next", "respond")
-    )
-    
-    workflow.add_conditional_edges(
-        "respond",
-        lambda state: state.get("next", "detect")
-    )
-    
+    # Add conditional edges with fixed routing
+    workflow.add_edge("detect", "assess")
+    workflow.add_edge("assess", "analyze")
+    workflow.add_edge("analyze", "respond")
+    workflow.add_edge("respond", "detect")
     workflow.add_edge("error", END)
     
     # Set entry point
