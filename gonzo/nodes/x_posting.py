@@ -2,7 +2,7 @@
 
 from typing import Dict, Any
 from datetime import datetime
-from ..response.x_client import XClient
+from ..integrations.x_client import XClient
 from ..types import GonzoState
 
 async def post_to_x(state: GonzoState) -> Dict[str, Any]:
@@ -16,12 +16,10 @@ async def post_to_x(state: GonzoState) -> Dict[str, Any]:
             }
             
         # Initialize X client
-        x_client = XClient({
-            'api_key': os.getenv('X_API_KEY'),
-            'api_secret': os.getenv('X_API_SECRET'),
-            'access_token': os.getenv('X_ACCESS_TOKEN'),
-            'access_secret': os.getenv('X_ACCESS_SECRET')
-        })
+        x_client = XClient(
+            api_key=state.memory.short_term.get('x_api_key'),
+            api_agent=None  # Using direct API mode for now
+        )
         
         # Post thread
         thread_id = None
@@ -30,12 +28,12 @@ async def post_to_x(state: GonzoState) -> Dict[str, Any]:
         for tweet in state.response.queued_responses:
             # Post as reply if we have a thread going
             if thread_id:
-                result = x_client.post_tweet(tweet, reply_to=thread_id)
+                result = await x_client.post_tweet(tweet, use_agent=False)
                 posted_ids.append(result['id'])
                 thread_id = result['id']
             else:
                 # Start new thread
-                result = x_client.post_tweet(tweet)
+                result = await x_client.post_tweet(tweet, use_agent=False)
                 posted_ids.append(result['id'])
                 thread_id = result['id']
         
