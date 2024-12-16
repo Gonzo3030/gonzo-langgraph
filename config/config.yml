@@ -1,0 +1,34 @@
+# Gonzo MVP Configuration
+
+response:
+  frequency:
+    min_interval: 300  # 5 minutes between posts
+    max_per_hour: 12   # Maximum 12 posts per hour
+  content:
+    min_length: 100
+    max_length: 280
+    require_approval: true  # Set to false once comfortable with outputs
+
+evolution:
+  memory_retention: 7200  # 2 hours
+  learning_rate: 0.1
+  adaptation_threshold: 0.75
+
+monitoring:
+  health_check_interval: 300  # 5 minutes
+  log_level: INFO
+  metrics_enabled: true
+
+rate_limits:
+  x:
+    tweets_per_hour: 12
+    mentions_per_minute: 5
+  youtube:
+    requests_per_day: 10000
+  openai:
+    requests_per_minute: 60
+
+content_filters:
+  blocked_terms: []
+  sensitive_topics: []
+  max_toxicity_score: 0.7
