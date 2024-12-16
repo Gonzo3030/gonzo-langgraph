@@ -2,7 +2,6 @@
 
 from typing import Dict, Any
 from langgraph.graph import StateGraph, END
-from langgraph.prebuilt.chat_agent import ChatAgent
 from langchain_anthropic import ChatAnthropic
 import asyncio
 
@@ -33,7 +32,7 @@ def create_workflow() -> StateGraph:
     workflow.add_node(
         "detect",
         sync_wrapper(lambda state: detect_patterns(state, llm)),
-        ['analysis', 'memory', 'timestamp']  # Fields this node can update
+        ['analysis', 'memory', 'timestamp']
     )
     
     workflow.add_node(
