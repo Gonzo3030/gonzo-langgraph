@@ -1,8 +1,8 @@
 """Social media monitoring implementation."""
 from typing import Dict, Any, List, Optional
-from datetime import datetime, timedelta
-import tweepy
+from datetime import datetime
 from textblob import TextBlob
+from twitter.twitter_api_v2 import TwitterAPI
 
 from .real_time_monitor import SocialEvent
 
@@ -17,11 +17,9 @@ class SocialMediaMonitor:
         access_secret: str
     ):
         # Initialize X API client
-        auth = tweepy.OAuthHandler(api_key, api_secret)
-        auth.set_access_token(access_token, access_secret)
-        self.client = tweepy.Client(
-            consumer_key=api_key,
-            consumer_secret=api_secret,
+        self.client = TwitterAPI(
+            api_key=api_key,
+            api_secret=api_secret,
             access_token=access_token,
             access_token_secret=access_secret
         )
@@ -57,12 +55,12 @@ class SocialMediaMonitor:
     
     def calculate_engagement(self, tweet: Any) -> Dict[str, int]:
         """Calculate engagement metrics for a tweet."""
-        metrics = getattr(tweet, 'public_metrics', {})
+        metrics = tweet.get('public_metrics', {})
         return {
-            "likes": getattr(metrics, 'like_count', 0),
-            "retweets": getattr(metrics, 'retweet_count', 0),
-            "replies": getattr(metrics, 'reply_count', 0),
-            "quotes": getattr(metrics, 'quote_count', 0)
+            "likes": metrics.get('like_count', 0),
+            "retweets": metrics.get('retweet_count', 0),
+            "replies": metrics.get('reply_count', 0),
+            "quotes": metrics.get('quote_count', 0)
         }
     
     def is_significant(self, engagement: Dict[str, int], is_influencer: bool = False) -> bool:
@@ -72,24 +70,6 @@ class SocialMediaMonitor:
             
         total_engagement = sum(engagement.values())
         return total_engagement > 100  # Adjustable threshold
-    
-    async def create_social_event(self, tweet: Any, source: str = "search") -> SocialEvent:
-        """Create a social event from a tweet."""
-        engagement = self.calculate_engagement(tweet)
-        sentiment = self.calculate_sentiment(tweet.text)
-        
-        return SocialEvent(
-            content=tweet.text,
-            author=str(tweet.author_id),
-            timestamp=tweet.created_at,
-            platform="twitter",
-            engagement=engagement,
-            sentiment=sentiment,
-            metadata={
-                "tweet_id": str(tweet.id),
-                "source": source
-            }
-        )
     
     async def monitor_social_activity(self) -> List[SocialEvent]:
         """Monitor all social activity."""
@@ -115,24 +95,37 @@ class SocialMediaMonitor:
         
         for term in self.search_terms:
             try:
-                tweets = self.client.search_recent_tweets(
-                    query=term,
-                    tweet_fields=["created_at", "public_metrics", "author_id"],
+                response = self.client.search_tweets(
+                    q=term,
+                    tweet_fields=['created_at', 'public_metrics', 'author_id'],
                     max_results=100
                 )
                 
-                if not tweets.data:
+                if not response or 'data' not in response:
                     continue
                 
-                for tweet in tweets.data:
-                    if tweet.id in self.processed_ids:
+                for tweet in response['data']:
+                    if tweet['id'] in self.processed_ids:
                         continue
                         
-                    event = await self.create_social_event(tweet, f"search:{term}")
-                    if self.is_significant(event.engagement):
-                        events.append(event)
+                    engagement = self.calculate_engagement(tweet)
+                    sentiment = self.calculate_sentiment(tweet['text'])
                     
-                    self.processed_ids.add(tweet.id)
+                    if self.is_significant(engagement):
+                        events.append(SocialEvent(
+                            content=tweet['text'],
+                            author=tweet['author_id'],
+                            timestamp=datetime.fromisoformat(tweet['created_at'].replace('Z', '+00:00')),
+                            platform="twitter",
+                            engagement=engagement,
+                            sentiment=sentiment,
+                            metadata={
+                                "tweet_id": tweet['id'],
+                                "search_term": term
+                            }
+                        ))
+                    
+                    self.processed_ids.add(tweet['id'])
                     
             except Exception as e:
                 print(f"Error searching {term}: {str(e)}")
@@ -146,30 +139,44 @@ class SocialMediaMonitor:
         
         for username in self.influencers:
             try:
-                user = self.client.get_user(username=username)
-                if not user.data:
+                # Get user's ID first
+                user_response = self.client.get_user_by_username(username)
+                if not user_response or 'data' not in user_response:
                     continue
                 
-                tweets = self.client.get_users_tweets(
-                    user.data.id,
-                    tweet_fields=["created_at", "public_metrics"],
+                user_id = user_response['data']['id']
+                
+                # Get user's tweets
+                tweets_response = self.client.get_user_tweets(
+                    user_id,
+                    tweet_fields=['created_at', 'public_metrics'],
                     max_results=20
                 )
                 
-                if not tweets.data:
+                if not tweets_response or 'data' not in tweets_response:
                     continue
                 
-                for tweet in tweets.data:
-                    if tweet.id in self.processed_ids:
+                for tweet in tweets_response['data']:
+                    if tweet['id'] in self.processed_ids:
                         continue
-                        
-                    event = await self.create_social_event(
-                        tweet,
-                        f"influencer:{username}"
-                    )
-                    events.append(event)  # All influencer tweets are significant
                     
-                    self.processed_ids.add(tweet.id)
+                    engagement = self.calculate_engagement(tweet)
+                    sentiment = self.calculate_sentiment(tweet['text'])
+                    
+                    events.append(SocialEvent(
+                        content=tweet['text'],
+                        author=username,
+                        timestamp=datetime.fromisoformat(tweet['created_at'].replace('Z', '+00:00')),
+                        platform="twitter",
+                        engagement=engagement,
+                        sentiment=sentiment,
+                        metadata={
+                            "tweet_id": tweet['id'],
+                            "influencer": username
+                        }
+                    ))
+                    
+                    self.processed_ids.add(tweet['id'])
                     
             except Exception as e:
                 print(f"Error monitoring {username}: {str(e)}")
