@@ -17,7 +17,7 @@ def create_workflow() -> StateGraph:
     
     # Initialize LLM
     llm = ChatAnthropic(
-        model_name=ANTHROPIC_MODEL,
+        model=ANTHROPIC_MODEL,
         temperature=0.7
     )
     
