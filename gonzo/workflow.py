@@ -1,7 +1,7 @@
 """Main workflow definition for Gonzo."""
 
 from typing import Dict, Any
-from langgraph.graph import StateGraph
+from langgraph.graph import StateGraph, END
 from langchain_anthropic import ChatAnthropic
 
 from .types import GonzoState, NextStep
@@ -26,7 +26,7 @@ def create_workflow() -> StateGraph:
     workflow.add_node("assess", lambda state: assess_input(state))
     workflow.add_node("analyze", lambda state: analyze_narrative(state, llm))
     workflow.add_node("respond", lambda state: {"next": "detect"})
-    workflow.add_node("error", lambda state: {"next": "end"})
+    workflow.add_node("error", lambda state: {"next": END})
     
     # Add conditional edges
     workflow.add_conditional_edges(
@@ -49,7 +49,7 @@ def create_workflow() -> StateGraph:
         lambda state: state.get("next", "detect")
     )
     
-    workflow.add_edge("error", "end")
+    workflow.add_edge("error", END)
     
     # Set entry point
     workflow.set_entry_point("detect")
