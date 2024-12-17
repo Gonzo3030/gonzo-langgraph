@@ -61,8 +61,16 @@ class Message(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
     source: Optional[str] = None
 
+class APICredentials(BaseModel):
+    """API credentials storage"""
+    api_key: str = ""
+    api_secret: str = ""
+    access_token: str = ""
+    access_secret: str = ""
+
 class XIntegrationState(BaseModel):
     """State for X integration"""
+    direct_api: APICredentials = Field(default_factory=APICredentials)
     queued_posts: List[str] = Field(default_factory=list)
     posted_ids: List[str] = Field(default_factory=list)
     last_post_time: Optional[datetime] = None
