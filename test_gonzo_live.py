@@ -2,22 +2,42 @@ import asyncio
 import os
 import sys
 import subprocess
+import ssl
 from datetime import datetime
 from dotenv import load_dotenv
 
+def setup_ssl_context():
+    """Setup SSL context for NLTK downloads"""
+    try:
+        _create_unverified_https_context = ssl._create_unverified_context
+    except AttributeError:
+        pass
+    else:
+        ssl._create_default_https_context = _create_unverified_https_context
+
 def check_dependencies():
+    """Check and install required dependencies"""
     try:
         import nltk
-        nltk.download('punkt')
-        nltk.download('averaged_perceptron_tagger')
-        nltk.download('brown')
+        setup_ssl_context()  # Setup SSL context before NLTK downloads
+        
+        nltk_data_path = os.path.expanduser('~/nltk_data')
+        os.makedirs(nltk_data_path, exist_ok=True)
+        
+        # Download required NLTK data
+        for data in ['punkt', 'averaged_perceptron_tagger', 'brown']:
+            try:
+                nltk.download(data, quiet=True)
+            except Exception as e:
+                print(f"Warning: Could not download {data}: {str(e)}")
+                print("This may not affect core functionality")
     except ImportError:
-        print("Installing required NLTK data...")
+        print("Installing NLTK...")
         subprocess.check_call([sys.executable, "-m", "pip", "install", "nltk"])
         import nltk
-        nltk.download('punkt')
-        nltk.download('averaged_perceptron_tagger')
-        nltk.download('brown')
+        setup_ssl_context()
+        for data in ['punkt', 'averaged_perceptron_tagger', 'brown']:
+            nltk.download(data, quiet=True)
     
     try:
         from textblob import TextBlob
