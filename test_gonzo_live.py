@@ -59,7 +59,7 @@ async def main():
     
     # Set up LLM
     llm = ChatAnthropic(
-        model="claude-3-opus-20240229",
+        model="claude-3-sonnet-20240229",
         temperature=0.7,
         api_key=os.getenv('ANTHROPIC_API_KEY')
     )
