@@ -5,6 +5,7 @@ import sys
 import subprocess
 from datetime import datetime
 
+
 def check_dependencies():
     """Check and install required dependencies."""
     try:
@@ -26,6 +27,7 @@ def check_dependencies():
         print("Installing TextBlob...")
         subprocess.check_call([sys.executable, "-m", "pip", "install", "textblob"])
 
+
 # Initialize dependencies
 check_dependencies()
 
@@ -36,6 +38,7 @@ from gonzo.monitoring.monitor_integration import MonitoringSystem
 from gonzo.nodes.narrative_generation import generate_dynamic_narrative
 from gonzo.memory.interaction_memory import InteractionMemory
 from langchain_anthropic import ChatAnthropic
+
 
 async def main():
     # Load environment
@@ -115,6 +118,7 @@ async def main():
                 print("Continuing to next cycle...")
                 await asyncio.sleep(30)  # Wait 30 seconds before retry
                 continue
+
 
 if __name__ == "__main__":
     try:
