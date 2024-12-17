@@ -11,7 +11,8 @@ from .extended_state import (
     AssessmentState,
     NarrativeState,
     EvolutionState,
-    KnowledgeGraphState
+    KnowledgeGraphState,
+    APICredentials
 )
 
 __all__ = [
@@ -27,5 +28,6 @@ __all__ = [
     'AssessmentState',
     'NarrativeState',
     'EvolutionState',
-    'KnowledgeGraphState'
+    'KnowledgeGraphState',
+    'APICredentials'
 ]
