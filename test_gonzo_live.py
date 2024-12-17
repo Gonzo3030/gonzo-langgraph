@@ -2,8 +2,8 @@ import asyncio
 import os
 import sys
 import subprocess
-import ssl
 import platform
+import ssl
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -16,7 +16,7 @@ def setup_mac_certificates():
 def setup_ssl_context():
     """Setup SSL context for NLTK downloads"""
     try:
-        setup_mac_certificates()  # Setup macOS certificates first
+        setup_mac_certificates()
         _create_unverified_https_context = ssl._create_unverified_context
     except AttributeError:
         pass
@@ -25,7 +25,6 @@ def setup_ssl_context():
 
 def check_dependencies():
     """Check and install required dependencies"""
-    # Install certifi first for SSL certificate handling
     subprocess.check_call([sys.executable, "-m", "pip", "install", "certifi"])
     
     try:
@@ -35,7 +34,6 @@ def check_dependencies():
         nltk_data_path = os.path.expanduser('~/nltk_data')
         os.makedirs(nltk_data_path, exist_ok=True)
         
-        # Download required NLTK data
         for data in ['punkt', 'averaged_perceptron_tagger', 'brown']:
             try:
                 nltk.download(data, quiet=True)
@@ -59,11 +57,35 @@ def check_dependencies():
 # Initialize dependencies
 check_dependencies()
 
-from gonzo.state_management import UnifiedState, create_initial_state
+from gonzo.state_management import UnifiedState, create_initial_state, APICredentials
 from gonzo.monitoring.monitor_integration import MonitoringSystem
 from gonzo.nodes.narrative_generation import generate_dynamic_narrative
 from gonzo.memory.interaction_memory import InteractionMemory
 from langchain_anthropic import ChatAnthropic
+
+def setup_initial_state() -> UnifiedState:
+    """Create initial state with proper configuration"""
+    state = create_initial_state()
+    
+    # Configure X integration
+    state.x_integration.direct_api = APICredentials(
+        api_key=os.getenv('X_API_KEY', ''),
+        api_secret=os.getenv('X_API_SECRET', ''),
+        access_token=os.getenv('X_ACCESS_TOKEN', ''),
+        access_secret=os.getenv('X_ACCESS_SECRET', '')
+    )
+    
+    # Store market API credentials in memory
+    state.memory.store(
+        "api_credentials",
+        {
+            'crypto_compare_key': os.getenv('CRYPTOCOMPARE_API_KEY', ''),
+            'brave_key': os.getenv('BRAVE_API_KEY', '')
+        },
+        "long_term"
+    )
+    
+    return state
 
 async def main():
     # Load environment
@@ -85,7 +107,7 @@ async def main():
         return
     
     # Initialize components
-    state = create_initial_state()
+    state = setup_initial_state()
     memory = InteractionMemory()
     
     # Set up LLM
