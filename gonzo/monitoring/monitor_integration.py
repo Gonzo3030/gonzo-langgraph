@@ -12,10 +12,10 @@ class MonitoringSystem:
     def __init__(self, state: UnifiedState):
         # Initialize social media monitoring
         self.social_monitor = SocialMediaMonitor(
-            api_key=state.x_integration.direct_api['api_key'],
-            api_secret=state.x_integration.direct_api['api_secret'],
-            access_token=state.x_integration.direct_api['access_token'],
-            access_secret=state.x_integration.direct_api['access_secret']
+            api_key=state.x_integration.direct_api.api_key,
+            api_secret=state.x_integration.direct_api.api_secret,
+            access_token=state.x_integration.direct_api.access_token,
+            access_secret=state.x_integration.direct_api.access_secret
         )
         
         # Initialize market monitoring
