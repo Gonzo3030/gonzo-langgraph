@@ -1,75 +1,58 @@
-"""Pattern detection node for LangGraph workflow."""
-
-from typing import Dict, Any
+"""Pattern detection node for Gonzo."""
+from typing import Dict, Any, List
 from datetime import datetime
 from langchain_core.messages import SystemMessage, HumanMessage
 
-from ..types import GonzoState
-from ..config import TASK_PROMPTS
-
-async def detect_patterns(state: GonzoState, llm: Any) -> Dict[str, Any]:
-    """Detect patterns in content using Gonzo's perspective.
-    
-    Args:
-        state: Current workflow state
-        llm: Language model for analysis
-        
-    Returns:
-        Updated state and next step
-    """
+async def detect_patterns(state: Any, llm: Any) -> Dict[str, Any]:
+    """Detect patterns in market and social data."""
     try:
-        # Initialize entities if None
-        if state.analysis.entities is None:
-            state.analysis.entities = []
-
-        # Prepare analysis prompt
-        entities_text = "\n".join(
-            f"- {e.get('text', 'Unknown entity')}: {e.get('type', 'Unknown type')}" 
-            for e in state.analysis.entities
-        )
+        market_events = state.knowledge_graph.entities.get('market_events', [])
+        social_events = state.knowledge_graph.entities.get('social_events', [])
         
-        prompt = TASK_PROMPTS["pattern_detection"].format(
-            content=state.messages.current_message,
-            entities=entities_text
-        )
+        # Create pattern detection prompt
+        prompt = f"""
+        As Dr. Gonzo, analyze these events for patterns of manipulation and control:
+        
+        Market Events:
+        {[f"- {event.get('description', '')}" for event in market_events]}
+        
+        Social Activity:
+        {[f"- {event.get('content', '')}" for event in social_events]}
+        
+        Look for:
+        1. Signs of market manipulation similar to what you've seen across time
+        2. Social engineering tactics that echo through history
+        3. Control systems evolving from analog to digital
+        4. Seeds of the dystopian future you've witnessed
+        
+        Identify and describe any significant patterns.
+        """
         
         # Get pattern analysis
-        response = await llm.ainvoke([
-            SystemMessage(content="You are Dr. Gonzo's pattern recognition system. "
-                                "Pay special attention to manipulation patterns, distortion techniques, "
-                                "and coordinated narrative control."),
+        messages = [
+            SystemMessage(content="You are Dr. Gonzo's pattern recognition system."),
             HumanMessage(content=prompt)
-        ])
+        ]
         
-        # Extract content from AIMessage
-        response_text = response.content
+        response = await llm.ainvoke(messages)
         
-        # Add pattern to state
-        pattern = {
-            "type": "manipulation" if "manipulation" in response_text.lower() else "detected_pattern",
-            "content": response_text,
-            "timestamp": datetime.now().isoformat(),
-            "confidence": 0.9 if "manipulation" in response_text.lower() else 0.8
-        }
+        # Extract and structure patterns
+        patterns = [
+            {
+                "description": response.content,
+                "timestamp": datetime.utcnow().isoformat(),
+                "source_events": {
+                    "market": len(market_events),
+                    "social": len(social_events)
+                },
+                "significance": 0.8 if len(market_events) > 0 and len(social_events) > 0 else 0.5
+            }
+        ]
         
-        # Update state directly
-        state.analysis.patterns.append(pattern)
-        state.analysis.update_significance()
-        state.timestamp = datetime.now()
-        
-        # Return updates
         return {
-            "analysis": state.analysis,
-            "timestamp": state.timestamp,
-            "next": "assess"
+            "patterns": patterns,
+            "timestamp": datetime.utcnow().isoformat()
         }
         
     except Exception as e:
-        # Update error state
-        state.add_error(f"Pattern detection error: {str(e)}")
-        state.timestamp = datetime.now()
-        return {
-            "memory": state.memory,
-            "timestamp": state.timestamp,
-            "next": "error"
-        }
+        raise Exception(f"Pattern detection error: {str(e)}")
