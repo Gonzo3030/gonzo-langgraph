@@ -3,12 +3,20 @@ import os
 import sys
 import subprocess
 import ssl
+import platform
 from datetime import datetime
 from dotenv import load_dotenv
+
+def setup_mac_certificates():
+    """Setup SSL certificates for macOS"""
+    if platform.system() == 'Darwin':
+        import certifi
+        os.environ['SSL_CERT_FILE'] = certifi.where()
 
 def setup_ssl_context():
     """Setup SSL context for NLTK downloads"""
     try:
+        setup_mac_certificates()  # Setup macOS certificates first
         _create_unverified_https_context = ssl._create_unverified_context
     except AttributeError:
         pass
@@ -17,9 +25,12 @@ def setup_ssl_context():
 
 def check_dependencies():
     """Check and install required dependencies"""
+    # Install certifi first for SSL certificate handling
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "certifi"])
+    
     try:
         import nltk
-        setup_ssl_context()  # Setup SSL context before NLTK downloads
+        setup_ssl_context()
         
         nltk_data_path = os.path.expanduser('~/nltk_data')
         os.makedirs(nltk_data_path, exist_ok=True)
