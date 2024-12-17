@@ -45,28 +45,21 @@ class Memory(BaseModel):
             return target[key]
         return None
 
-class RAGContext(BaseModel):
-    """Context from RAG system"""
-    query: Optional[str] = None
-    retrieved_documents: List[Dict[str, Any]] = Field(default_factory=list)
-    relevance_scores: Dict[str, float] = Field(default_factory=dict)
-    metadata: Dict[str, Any] = Field(default_factory=dict)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
-
-class Message(BaseModel):
-    """Message with metadata"""
-    id: UUID = Field(default_factory=uuid4)
-    content: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
-    metadata: Dict[str, Any] = Field(default_factory=dict)
-    source: Optional[str] = None
-
 class APICredentials(BaseModel):
     """API credentials storage"""
     api_key: str = ""
     api_secret: str = ""
     access_token: str = ""
     access_secret: str = ""
+    
+    def dict(self) -> Dict[str, str]:
+        """Return credentials as a dictionary"""
+        return {
+            'api_key': self.api_key,
+            'api_secret': self.api_secret,
+            'access_token': self.access_token,
+            'access_secret': self.access_secret
+        }
 
 class XIntegrationState(BaseModel):
     """State for X integration"""
@@ -76,6 +69,10 @@ class XIntegrationState(BaseModel):
     last_post_time: Optional[datetime] = None
     rate_limit_reset: Optional[datetime] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
+
+    def get_credentials(self) -> Dict[str, str]:
+        """Get API credentials as a dictionary"""
+        return self.direct_api.dict()
 
 class KnowledgeGraphState(BaseModel):
     """State for knowledge graph components"""
