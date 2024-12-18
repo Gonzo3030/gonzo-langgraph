@@ -16,83 +16,156 @@ from ..state_management import (
 from ..nodes.initial_assessment import initial_assessment
 from ..nodes.pattern_detection import detect_patterns
 from ..nodes.response_generation import generate_response
+from ..monitoring.news_monitor import NewsMonitor
 
 # Node Wrappers
 
-async def assessment_node(state: UnifiedState, llm: Any) -> Dict[str, Any]:
-    """Wrapper for assessment logic with new state management"""
+async def market_monitor_node(state: UnifiedState) -> Dict[str, Any]:
+    """Handle market monitoring stage"""
     try:
-        # Convert current context for assessment
-        assessment_result = await initial_assessment(
-            state.current_context,
-            llm
-        )
+        # Market monitoring logic here
+        # ...
         
-        # Update state with assessment results
-        state.assessment.content_analysis.update(assessment_result.analysis)
-        state.assessment.entity_extraction.extend(assessment_result.entities)
-        state.assessment.sentiment_analysis.update(assessment_result.sentiment)
-        
-        return {
-            "current_stage": WorkflowStage.PATTERN_DETECT,
-            "checkpoint_needed": True
-        }
+        # Move to news monitoring next
+        return {"current_stage": WorkflowStage.NEWS_MONITORING}
     except Exception as e:
-        state.record_error(f"Assessment error: {str(e)}")
-        return {"current_stage": WorkflowStage.ERROR}
+        state.api_errors.append(f"Market monitoring error: {str(e)}")
+        return {"current_stage": WorkflowStage.ERROR_RECOVERY}
 
-async def pattern_node(state: UnifiedState, llm: Any) -> Dict[str, Any]:
-    """Wrapper for pattern detection with new state management"""
+async def news_monitor_node(state: UnifiedState) -> Dict[str, Any]:
+    """Handle news monitoring stage"""
     try:
-        patterns = await detect_patterns(
-            state.assessment.content_analysis,
-            state.knowledge_graph.patterns,
-            llm
-        )
+        # Only update news every 5 cycles
+        cycle_count = len(state.messages) # Simple way to track cycles
+        if cycle_count % 5 == 0:
+            monitor = NewsMonitor()
+            state = await monitor.update_news_state(state)
+            if state.narrative.pending_analyses:
+                return {"current_stage": WorkflowStage.PATTERN_ANALYSIS}
+        
+        # Move to social monitoring
+        return {"current_stage": WorkflowStage.SOCIAL_MONITORING}
+    except Exception as e:
+        state.api_errors.append(f"News monitoring error: {str(e)}")
+        return {"current_stage": WorkflowStage.ERROR_RECOVERY}
+
+async def social_monitor_node(state: UnifiedState) -> Dict[str, Any]:
+    """Handle social monitoring stage"""
+    try:
+        # Check rate limits before proceeding
+        if state.x_integration.rate_limits["remaining"] <= 1:
+            if state.x_integration.rate_limits["reset_time"] > datetime.now():
+                # Skip social monitoring this cycle
+                return {"current_stage": WorkflowStage.PATTERN_ANALYSIS}
+        
+        # Social monitoring logic here
+        # ...
+        
+        return {"current_stage": WorkflowStage.PATTERN_ANALYSIS}
+    except Exception as e:
+        state.api_errors.append(f"Social monitoring error: {str(e)}")
+        return {"current_stage": WorkflowStage.ERROR_RECOVERY}
+
+async def pattern_analysis_node(state: UnifiedState, llm: Any) -> Dict[str, Any]:
+    """Handle pattern analysis stage"""
+    try:
+        # Update context with news data
+        context = {
+            "market_events": state.narrative.market_events,
+            "social_events": state.narrative.social_events,
+            "news_events": state.narrative.news_events,  # Add news events
+            "patterns": state.analysis.market_patterns +
+                      state.analysis.social_patterns +
+                      state.analysis.news_patterns  # Include news patterns
+        }
+        
+        patterns = await detect_patterns(context, llm)
         
         # Update state with detected patterns
-        state.knowledge_graph.patterns.extend(patterns)
+        if patterns:
+            state.analysis.market_patterns.extend(patterns.get('market_patterns', []))
+            state.analysis.social_patterns.extend(patterns.get('social_patterns', []))
+            state.analysis.news_patterns.extend(patterns.get('news_patterns', []))
+            state.analysis.correlations.extend(patterns.get('correlations', []))
         
-        # Only proceed to narrative if significant patterns found
-        if patterns and any(p.get('significance', 0) > 0.5 for p in patterns):
-            return {"current_stage": WorkflowStage.NARRATE}
-        else:
-            return {"current_stage": WorkflowStage.MONITOR}
-            
+        # Calculate significance
+        total_patterns = len(state.analysis.market_patterns) + \
+                        len(state.analysis.social_patterns) + \
+                        len(state.analysis.news_patterns)
+        
+        if total_patterns > 0:
+            return {"current_stage": WorkflowStage.NARRATIVE_GENERATION}
+        
+        # Start next monitoring cycle if no significant patterns
+        return {"current_stage": WorkflowStage.MARKET_MONITORING}
+        
     except Exception as e:
-        state.record_error(f"Pattern detection error: {str(e)}")
-        return {"current_stage": WorkflowStage.ERROR}
+        state.api_errors.append(f"Pattern analysis error: {str(e)}")
+        return {"current_stage": WorkflowStage.ERROR_RECOVERY}
 
-async def narrative_node(state: UnifiedState, llm: Any) -> Dict[str, Any]:
-    """Wrapper for narrative generation with new state management"""
+async def narrative_generation_node(state: UnifiedState, llm: Any) -> Dict[str, Any]:
+    """Handle narrative generation stage"""
     try:
-        # Build context for narrative generation
+        # Update context with news data
         context = {
             "messages": state.messages,
-            "patterns": state.knowledge_graph.patterns,
-            "assessment": state.assessment.content_analysis
+            "market_events": state.narrative.market_events,
+            "social_events": state.narrative.social_events,
+            "news_events": state.narrative.news_events,
+            "patterns": {
+                "market": state.analysis.market_patterns,
+                "social": state.analysis.social_patterns,
+                "news": state.analysis.news_patterns,
+                "correlations": state.analysis.correlations
+            }
         }
         
         # Generate Gonzo's response
         response = await generate_response(context, llm)
         
         # Update narrative state
-        state.narrative.story_elements.append({
-            "timestamp": datetime.utcnow(),
-            "content": response.content,
-            "type": response.response_type
-        })
+        state.analysis.generated_narrative = response.content
         
         # Queue for X if it's a significant analysis
         if response.significance > 0.7:
             state.x_integration.queued_posts.append(response.content)
-            return {"current_stage": WorkflowStage.QUEUE}
+            return {"current_stage": WorkflowStage.RESPONSE_POSTING}
         
-        return {"current_stage": WorkflowStage.MONITOR}
+        # Start next monitoring cycle
+        return {"current_stage": WorkflowStage.MARKET_MONITORING}
         
     except Exception as e:
-        state.record_error(f"Narrative generation error: {str(e)}")
-        return {"current_stage": WorkflowStage.ERROR}
+        state.api_errors.append(f"Narrative generation error: {str(e)}")
+        return {"current_stage": WorkflowStage.ERROR_RECOVERY}
+
+async def response_posting_node(state: UnifiedState) -> Dict[str, Any]:
+    """Handle response posting stage"""
+    try:
+        # Response posting logic here
+        # ...
+        
+        # Start next monitoring cycle
+        return {"current_stage": WorkflowStage.MARKET_MONITORING}
+    except Exception as e:
+        state.api_errors.append(f"Response posting error: {str(e)}")
+        return {"current_stage": WorkflowStage.ERROR_RECOVERY}
+
+async def error_recovery_node(state: UnifiedState) -> Dict[str, Any]:
+    """Handle error recovery stage"""
+    try:
+        # Log errors
+        for error in state.api_errors:
+            state.add_message(f"Error encountered: {error}", source="error")
+        
+        # Clear errors after logging
+        state.api_errors.clear()
+        
+        # Return to market monitoring
+        return {"current_stage": WorkflowStage.MARKET_MONITORING}
+    except Exception as e:
+        # If error recovery fails, end the workflow
+        state.add_message(f"Critical error in recovery: {str(e)}", source="critical")
+        return END
 
 def create_workflow(
     llm: Optional[BaseLLM] = None,
@@ -110,32 +183,28 @@ def create_workflow(
     # Initialize graph with unified state
     workflow = StateGraph(UnifiedState)
     
-    # Add nodes
-    workflow.add_node("assess", lambda x: assessment_node(x, llm))
-    workflow.add_node("detect", lambda x: pattern_node(x, llm))
-    workflow.add_node("narrate", lambda x: narrative_node(x, llm))
+    # Add monitoring nodes
+    workflow.add_node("market_monitor", market_monitor_node)
+    workflow.add_node("news_monitor", news_monitor_node)
+    workflow.add_node("social_monitor", social_monitor_node)
     
-    # Add conditional edges
-    workflow.add_conditional_edges(
-        "assess",
-        lambda x: x["current_stage"].value
-    )
+    # Add analysis and generation nodes
+    workflow.add_node("pattern_analysis", lambda x: pattern_analysis_node(x, llm))
+    workflow.add_node("narrative_generation", lambda x: narrative_generation_node(x, llm))
+    workflow.add_node("response_posting", response_posting_node)
     
-    workflow.add_conditional_edges(
-        "detect",
-        lambda x: x["current_stage"].value
-    )
+    # Add error recovery
+    workflow.add_node("error_recovery", error_recovery_node)
     
-    workflow.add_conditional_edges(
-        "narrate",
-        lambda x: x["current_stage"].value
-    )
-    
-    # Add error handling
-    workflow.add_edge("error", END)
+    # Add conditional edges based on WorkflowStage
+    for node in workflow.nodes:
+        workflow.add_conditional_edges(
+            node,
+            lambda x: x["current_stage"].value
+        )
     
     # Set entry point
-    workflow.set_entry_point("assess")
+    workflow.set_entry_point("market_monitor")
     
     # Compile with config
     final_config = {**GRAPH_CONFIG}
