@@ -108,3 +108,15 @@ def check_dependencies():
     except ImportError:
         print("Installing TextBlob...")
         subprocess.check_call([sys.executable, "-m", "pip", "install", "textblob"])
+
+# Initialize dependencies
+check_dependencies()
+
+from gonzo.state_management import UnifiedState, create_initial_state, APICredentials
+from gonzo.monitoring.market_monitor import CryptoMarketMonitor
+from gonzo.monitoring.social_monitor import SocialMediaMonitor
+from gonzo.monitoring.news_monitor import NewsMonitor
+from gonzo.nodes.narrative_generation import generate_dynamic_narrative
+from gonzo.memory.interaction_memory import InteractionMemory
+from gonzo.causality.analyzer import CausalAnalyzer
+from langchain_anthropic import ChatAnthropic
