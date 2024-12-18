@@ -1,7 +1,19 @@
 """State management for Gonzo system."""
 from typing import Dict, Any, List, Optional
 from datetime import datetime
+from enum import Enum
 from pydantic import BaseModel
+
+class WorkflowStage(str, Enum):
+    """Workflow stages for Gonzo's operation"""
+    INITIALIZATION = "initialization"
+    MARKET_MONITORING = "market_monitoring"
+    SOCIAL_MONITORING = "social_monitoring"
+    NEWS_MONITORING = "news_monitoring"
+    PATTERN_ANALYSIS = "pattern_analysis"
+    NARRATIVE_GENERATION = "narrative_generation"
+    RESPONSE_POSTING = "response_posting"
+    ERROR_RECOVERY = "error_recovery"
 
 class APICredentials(BaseModel):
     """API credentials model"""
@@ -41,7 +53,7 @@ class Analysis(BaseModel):
     """Analysis results structure"""
     market_patterns: List[Dict[str, Any]] = []
     social_patterns: List[Dict[str, Any]] = []
-    news_patterns: List[Dict[str, Any]] = []  # Added news patterns
+    news_patterns: List[Dict[str, Any]] = []
     correlations: List[Dict[str, Any]] = []
     sentiment_score: float = 0.0
     significance: float = 0.0
@@ -51,14 +63,15 @@ class NarrativeContext(BaseModel):
     """Narrative context structure"""
     market_events: List[Dict[str, Any]] = []
     social_events: List[Dict[str, Any]] = []
-    news_events: List[Dict[str, Any]] = []  # Added news events
+    news_events: List[Dict[str, Any]] = []
     patterns: List[Dict[str, Any]] = []
     topics: List[str] = []
     pending_analyses: bool = False
 
 class XIntegration(BaseModel):
     """X Integration state"""
-    direct_api: Optional[APICredentials] = None
+    direct_api: Dict[str, str] = {}  # Changed to Dict to match run_gonzo usage
+    queued_posts: List[Dict[str, Any]] = []
     rate_limits: Dict[str, Any] = {
         "remaining": 180,
         "reset_time": None,
@@ -79,6 +92,11 @@ class Memory(BaseModel):
 
 class UnifiedState(BaseModel):
     """Complete unified state for Gonzo"""
+    # Workflow control
+    current_stage: WorkflowStage = WorkflowStage.INITIALIZATION
+    checkpoint_needed: bool = False
+    
+    # Message handling
     messages: List[str] = []
     api_queries: List[str] = []
     api_responses: Dict[str, Any] = {}
@@ -88,7 +106,7 @@ class UnifiedState(BaseModel):
     # Core components
     market_data: Dict[str, MarketData] = {}
     social_data: List[SocialData] = []
-    news_data: List[NewsData] = []  # Added news data
+    news_data: List[NewsData] = []
     analysis: Analysis = Analysis()
     narrative: NarrativeContext = NarrativeContext()
     
@@ -97,6 +115,12 @@ class UnifiedState(BaseModel):
     
     # Memory system
     memory: Memory = Memory()
+    
+    def add_message(self, content: str, source: str = "system"):
+        """Add a message to the state with metadata"""
+        timestamp = datetime.utcnow().isoformat()
+        message = f"[{timestamp}] [{source}] {content}"
+        self.messages.append(message)
 
 def create_initial_state() -> UnifiedState:
     """Create the initial state for Gonzo"""
@@ -114,7 +138,7 @@ def update_rate_limits(state: UnifiedState, remaining: int, reset_time: datetime
 def should_throttle(state: UnifiedState) -> bool:
     """Check if we should throttle X API requests"""
     limits = state.x_integration.rate_limits
-    if limits["remaining"] <= 1:
+    if limits["remaining"] <= 1:  # Keep 1 request in reserve
         if limits["reset_time"] and datetime.now() < limits["reset_time"]:
             return True
     return False
