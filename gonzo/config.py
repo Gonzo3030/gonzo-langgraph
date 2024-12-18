@@ -36,6 +36,34 @@ X_MAX_DELAY = 300  # Maximum delay in seconds
 # Brave Search Configuration
 BRAVE_API_KEY = os.getenv("BRAVE_API_KEY")
 
+# News Monitoring Configuration
+NEWS_CONFIG = {
+    "update_frequency": 5,    # Update news every N cycles
+    "max_articles": 20,      # Maximum articles per search
+    "time_window": "7d",     # Look back period for news
+    "min_relevance": 0.4,    # Minimum relevance score for articles
+    "relevance_boost": {     # Relevance score boosts
+        "whale_movement": 0.3,
+        "market_manipulation": 0.3,
+        "bot_activity": 0.2,
+        "regulatory": 0.1
+    },
+    "search_topics": [       # Primary search topics
+        "crypto whale movements",
+        "bitcoin manipulation",
+        "crypto trading bots",
+        "market manipulation crypto",
+        "suspicious crypto transactions",
+        "large bitcoin transfers"
+    ],
+    "asset_keywords": [      # Assets to track in news
+        "bitcoin", "btc",
+        "ethereum", "eth",
+        "crypto", "cryptocurrency",
+        "digital assets", "blockchain"
+    ]
+}
+
 def get_api_keys() -> Dict[str, str]:
     """Get all API keys from environment."""
     return {
@@ -66,4 +94,13 @@ ANALYSIS_CONFIG = {
     "min_confidence": 0.6,  # Minimum confidence for entity/topic inclusion
     "max_topics_per_chunk": 3,  # Maximum number of topics per chunk
     "pattern_timeframe": 3600   # Default timeframe for pattern analysis (seconds)
+}
+
+# Graph Configuration
+GRAPH_CONFIG = {
+    "max_retries": 3,
+    "retry_delay": 5,
+    "error_threshold": 0.3,  # Maximum error rate before triggering recovery
+    "cycle_delay": 60,      # Delay between monitoring cycles (seconds)
+    "news_cycle": 5         # News update frequency (cycles)
 }
