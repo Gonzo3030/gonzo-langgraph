@@ -97,7 +97,7 @@ async def main():
         'X_API_SECRET',
         'X_ACCESS_TOKEN',
         'X_ACCESS_SECRET',
-        'CRYPTOCOMPARE_API_KEY'
+        'Cryptocompare_API_key'  # Updated to match .env file
     ]
     
     missing = [var for var in required_vars if not os.getenv(var)]
@@ -119,7 +119,7 @@ async def main():
     
     # Initialize monitoring components
     market_monitor = CryptoMarketMonitor(
-        api_key=os.getenv('CRYPTOCOMPARE_API_KEY')
+        api_key=os.getenv('Cryptocompare_API_key')  # Updated to match .env file
     )
     
     social_monitor = SocialMediaMonitor(
