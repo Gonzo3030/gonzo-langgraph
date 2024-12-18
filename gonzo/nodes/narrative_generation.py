@@ -1,5 +1,5 @@
 """Narrative generation node for Gonzo."""
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 from pydantic import BaseModel
 from langchain_core.messages import SystemMessage, HumanMessage
