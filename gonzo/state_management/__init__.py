@@ -1,6 +1,7 @@
+"""State management for Gonzo system."""
 from typing import Dict, Any, List, Optional
-from pydantic import BaseModel
 from datetime import datetime
+from pydantic import BaseModel
 
 class APICredentials(BaseModel):
     """API credentials model"""
@@ -24,10 +25,23 @@ class SocialData(BaseModel):
     metrics: Dict[str, int]
     author_id: str
 
+class NewsData(BaseModel):
+    """News data structure"""
+    title: str
+    url: str
+    published_date: datetime
+    source: str
+    description: str
+    relevance_score: float
+    topics: List[str]
+    sentiment: float
+    related_assets: List[str] = []
+
 class Analysis(BaseModel):
     """Analysis results structure"""
     market_patterns: List[Dict[str, Any]] = []
     social_patterns: List[Dict[str, Any]] = []
+    news_patterns: List[Dict[str, Any]] = []  # Added news patterns
     correlations: List[Dict[str, Any]] = []
     sentiment_score: float = 0.0
     significance: float = 0.0
@@ -37,6 +51,7 @@ class NarrativeContext(BaseModel):
     """Narrative context structure"""
     market_events: List[Dict[str, Any]] = []
     social_events: List[Dict[str, Any]] = []
+    news_events: List[Dict[str, Any]] = []  # Added news events
     patterns: List[Dict[str, Any]] = []
     topics: List[str] = []
     pending_analyses: bool = False
@@ -73,6 +88,7 @@ class UnifiedState(BaseModel):
     # Core components
     market_data: Dict[str, MarketData] = {}
     social_data: List[SocialData] = []
+    news_data: List[NewsData] = []  # Added news data
     analysis: Analysis = Analysis()
     narrative: NarrativeContext = NarrativeContext()
     
@@ -98,7 +114,7 @@ def update_rate_limits(state: UnifiedState, remaining: int, reset_time: datetime
 def should_throttle(state: UnifiedState) -> bool:
     """Check if we should throttle X API requests"""
     limits = state.x_integration.rate_limits
-    if limits["remaining"] <= 1:  # Keep 1 request in reserve
+    if limits["remaining"] <= 1:
         if limits["reset_time"] and datetime.now() < limits["reset_time"]:
             return True
     return False
