@@ -1,9 +1,9 @@
 """Real-time monitoring system for Gonzo."""
-import asyncio
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from dataclasses import dataclass
 
+from ..state_management import UnifiedState, MarketData, SocialData
 from ..causality.types import EventCategory, EventScope
 from ..causality.analyzer import CausalAnalyzer, CausalAnalysis
 
@@ -26,82 +26,65 @@ class SocialEvent:
     sentiment: float
     metadata: Dict[str, Any]
 
-@dataclass
-class MonitoringResult:
-    market_events: List[MarketEvent]
-    social_events: List[SocialEvent]
-    analyses: List[CausalAnalysis]
-    timestamp: datetime
-
 class RealTimeMonitor:
     """Monitors and analyzes real-time data streams."""
     
-    def __init__(self, causal_analyzer: CausalAnalyzer):
+    def __init__(self, state: UnifiedState, market_monitor: Any, social_monitor: Any, causal_analyzer: CausalAnalyzer):
+        self.state = state
+        self.market_monitor = market_monitor
+        self.social_monitor = social_monitor
         self.causal_analyzer = causal_analyzer
         self.last_market_check = None
         self.last_social_check = None
-        
-    async def monitor_markets(self) -> List[MarketEvent]:
-        """Monitor cryptocurrency markets for significant events."""
-        # TODO: Implement actual market monitoring using CryptoCompare API
-        market_events = []
-        
-        # Record last check time
-        self.last_market_check = datetime.utcnow()
-        return market_events
     
-    async def monitor_social(self) -> List[SocialEvent]:
-        """Monitor social media for relevant discussions."""
-        # TODO: Implement actual social monitoring using X API
-        social_events = []
-        
-        # Record last check time
-        self.last_social_check = datetime.utcnow()
-        return social_events
-    
-    async def analyze_event(self, event: Dict[str, Any]) -> Optional[CausalAnalysis]:
-        """Analyze a single event through the causal analyzer."""
+    async def update_state(self, state: UnifiedState) -> UnifiedState:
+        """Update all monitoring data in the state."""
         try:
-            # Determine event category and scope
-            if "price" in event:
-                category = EventCategory.MARKET
-                scope = EventScope.CRYPTOCURRENCY
-            else:
-                category = EventCategory.SOCIAL
-                scope = EventScope.DISCUSSION
+            # Update market data
+            state = await self.market_monitor.update_market_state(state)
+            self.last_market_check = datetime.utcnow()
             
-            # Get analysis
-            analysis = await self.causal_analyzer.analyze_current_event(
-                event_description=str(event),
-                category=category,
-                scope=scope,
-                current_date=datetime.utcnow(),
-                metadata=event.get("metadata", {})
+            # Update social data
+            if self.social_monitor:
+                state = await self.social_monitor.update_social_state(state)
+                self.last_social_check = datetime.utcnow()
+            
+            # Analyze if we have pending events
+            if state.narrative.pending_analyses:
+                await self.analyze_current_events(state)
+            
+            return state
+            
+        except Exception as e:
+            print(f"Error in monitoring cycle: {str(e)}")
+            state.api_errors.append(f"Monitoring cycle error: {str(e)}")
+            return state
+    
+    async def analyze_current_events(self, state: UnifiedState) -> None:
+        """Analyze current market and social events."""
+        try:
+            # Combine all events for analysis
+            all_events = (
+                state.narrative.market_events +
+                state.narrative.social_events
             )
             
-            return analysis
+            # Analyze each event
+            for event in all_events:
+                analysis = await self.causal_analyzer.analyze_current_event(
+                    event_description=str(event),
+                    category=EventCategory.MARKET if "price" in event else EventCategory.SOCIAL,
+                    scope=EventScope.CRYPTOCURRENCY,
+                    current_date=datetime.utcnow(),
+                    metadata=event.get("metadata", {})
+                )
+                
+                if analysis:
+                    state.analysis.correlations.append(analysis.__dict__)
+            
+            # Clear pending analyses flag
+            state.narrative.pending_analyses = False
+            
         except Exception as e:
-            # Log error but don't stop monitoring
             print(f"Analysis error: {str(e)}")
-            return None
-    
-    async def monitor_cycle(self) -> MonitoringResult:
-        """Run a complete monitoring cycle."""
-        # Get market events
-        market_events = await self.monitor_markets()
-        
-        # Get social events
-        social_events = await self.monitor_social()
-        
-        # Analyze all events
-        analyses = []
-        for event in market_events + social_events:
-            if analysis := await self.analyze_event(event.__dict__):
-                analyses.append(analysis)
-        
-        return MonitoringResult(
-            market_events=market_events,
-            social_events=social_events,
-            analyses=analyses,
-            timestamp=datetime.utcnow()
-        )
+            state.api_errors.append(f"Event analysis error: {str(e)}")

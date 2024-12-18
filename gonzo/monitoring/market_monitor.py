@@ -1,9 +1,11 @@
 """Cryptocurrency market monitoring implementation."""
 import os
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple
 from datetime import datetime, timedelta
 import aiohttp
+from pydantic import ValidationError
 
+from ..state_management import UnifiedState, MarketData
 from .real_time_monitor import MarketEvent
 
 class CryptoMarketMonitor:
@@ -18,89 +20,99 @@ class CryptoMarketMonitor:
         ]
         self.historical_data: Dict[str, List[Dict[str, float]]] = {}
     
-    async def fetch_market_data(self, symbol: str) -> Dict[str, Any]:
-        """Fetch current market data for a symbol."""
-        url = f"{self.base_url}/v2/histominute"
-        params = {
-            "fsym": symbol.split("/")[0],
+    async def fetch_market_data(self, symbol: str) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+        """Fetch current market data and history for a symbol."""
+        # Current price endpoint
+        current_url = f"{self.base_url}/price"
+        history_url = f"{self.base_url}/v2/histominute"
+        
+        fsym = symbol.split("/")[0]
+        params_current = {
+            "fsym": fsym,
+            "tsyms": "USD"
+        }
+        params_history = {
+            "fsym": fsym,
             "tsym": "USD",
             "limit": 60  # Last hour
         }
-        headers = {"authorization": f"Bearer {self.api_key}"}
+        headers = {"authorization": f"Apikey {self.api_key}"}
         
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, params=params, headers=headers) as response:
-                data = await response.json()
-                return data.get("Data", {})
-    
-    def detect_anomalies(self, current: float, historical: List[float]) -> Dict[str, float]:
-        """Detect price and volume anomalies."""
-        if not historical:
-            return {}
+            # Fetch current price
+            async with session.get(current_url, params=params_current, headers=headers) as response:
+                if response.status != 200:
+                    raise Exception(f"API Error: {await response.text()}")
+                current_data = await response.json()
             
-        avg = sum(historical) / len(historical)
-        std = (sum((x - avg) ** 2 for x in historical) / len(historical)) ** 0.5
-        
-        z_score = (current - avg) / std if std > 0 else 0
-        
-        return {
-            "z_score": z_score,
-            "deviation_percent": ((current - avg) / avg) * 100
-        }
+            # Fetch historical data
+            async with session.get(history_url, params=params_history, headers=headers) as response:
+                if response.status != 200:
+                    raise Exception(f"API Error: {await response.text()}")
+                historical_data = await response.json()
+                
+        return current_data, historical_data.get("Data", {}).get("Data", [])
     
-    def calculate_indicators(self, data: List[Dict[str, float]]) -> Dict[str, float]:
-        """Calculate technical indicators from price data."""
-        if not data:
-            return {}
+    def calculate_24h_change(self, historical_data: List[Dict[str, Any]]) -> float:
+        """Calculate 24-hour price change percentage."""
+        if not historical_data or len(historical_data) < 2:
+            return 0.0
+        
+        start_price = historical_data[0].get("close", 0)
+        end_price = historical_data[-1].get("close", 0)
+        
+        if start_price == 0:
+            return 0.0
             
-        prices = [d.get("close", 0) for d in data]
-        volumes = [d.get("volume", 0) for d in data]
-        
-        # Basic indicators
-        price_change = (prices[-1] - prices[0]) / prices[0] * 100
-        volume_change = (volumes[-1] - volumes[0]) / volumes[0] * 100
-        
-        # Detect anomalies
-        price_anomalies = self.detect_anomalies(prices[-1], prices)
-        volume_anomalies = self.detect_anomalies(volumes[-1], volumes)
-        
-        return {
-            "price_change_1h": price_change,
-            "volume_change_1h": volume_change,
-            "price_z_score": price_anomalies.get("z_score", 0),
-            "volume_z_score": volume_anomalies.get("z_score", 0)
-        }
+        return ((end_price - start_price) / start_price) * 100
     
-    async def check_markets(self) -> List[MarketEvent]:
-        """Check all watched markets for significant events."""
-        events = []
-        
+    async def update_market_state(self, state: UnifiedState) -> UnifiedState:
+        """Update market data in the unified state."""
         for pair in self.watched_pairs:
             try:
-                # Get market data
-                data = await self.fetch_market_data(pair)
-                if not data:
-                    continue
-                    
-                # Calculate indicators
-                indicators = self.calculate_indicators(data)
+                # Fetch current and historical data
+                current_data, historical_data = await self.fetch_market_data(pair)
                 
-                # Create event if significant
-                if abs(indicators["price_z_score"]) > 2 or abs(indicators["volume_z_score"]) > 2:
-                    events.append(MarketEvent(
+                if not current_data or "USD" not in current_data:
+                    continue
+                
+                # Calculate metrics
+                current_price = float(current_data["USD"])
+                current_volume = historical_data[-1].get("volumeto", 0) if historical_data else 0
+                change_24h = self.calculate_24h_change(historical_data)
+                
+                # Create MarketData instance
+                market_data = MarketData(
+                    price=current_price,
+                    timestamp=datetime.utcnow(),
+                    volume=current_volume,
+                    change_24h=change_24h,
+                    symbol=pair
+                )
+                
+                # Update state
+                state.market_data[pair] = market_data
+                
+                # Check for significant events
+                if abs(change_24h) > 5.0:  # 5% change threshold
+                    event = MarketEvent(
                         symbol=pair,
-                        price=data[-1]["close"],
-                        volume=data[-1]["volume"],
+                        price=current_price,
+                        volume=current_volume,
                         timestamp=datetime.utcnow(),
-                        indicators=indicators,
-                        metadata={
-                            "historical_data": data[-10:],  # Last 10 minutes
-                            "anomaly_type": "price" if abs(indicators["price_z_score"]) > 2 else "volume"
-                        }
-                    ))
-                    
+                        indicators={"price_change_24h": change_24h},
+                        metadata={"historical_data": historical_data[-10:]}  # Last 10 minutes
+                    )
+                    state.narrative.market_events.append(event.__dict__)
+                    state.narrative.pending_analyses = True
+                
+            except ValidationError as e:
+                print(f"Validation error for {pair}: {str(e)}")
+                state.api_errors.append(f"Market data validation error for {pair}: {str(e)}")
+                continue
             except Exception as e:
                 print(f"Error monitoring {pair}: {str(e)}")
+                state.api_errors.append(f"Market monitoring error for {pair}: {str(e)}")
                 continue
         
-        return events
+        return state
