@@ -6,6 +6,8 @@ import platform
 import ssl
 from datetime import datetime
 from dotenv import load_dotenv
+from langsmith import Client
+import langsmith
 
 def setup_mac_certificates():
     """Setup SSL certificates for macOS"""
@@ -22,6 +24,20 @@ def setup_ssl_context():
         pass
     else:
         ssl._create_default_https_context = _create_unverified_https_context
+
+def setup_langsmith():
+    """Setup LangSmith tracing"""
+    try:
+        client = Client()
+        langsmith.set_client(client)
+        
+        # Verify connection and project
+        project_name = os.getenv('LANGCHAIN_PROJECT', 'gonzo-langgraph')
+        print(f"LangSmith connected - Project: {project_name}")
+        return True
+    except Exception as e:
+        print(f"Warning: Could not initialize LangSmith: {str(e)}")
+        return False
 
 def check_dependencies():
     """Check and install required dependencies"""
@@ -91,6 +107,9 @@ async def main():
     # Load environment
     load_dotenv()
     
+    # Initialize LangSmith
+    has_langsmith = setup_langsmith()
+    
     # Verify environment variables
     required_vars = [
         'ANTHROPIC_API_KEY',
@@ -99,7 +118,8 @@ async def main():
         'X_ACCESS_TOKEN',
         'X_ACCESS_SECRET',
         'Cryptocompare_API_key',
-        'BRAVE_API_KEY'
+        'BRAVE_API_KEY',
+        'LANGCHAIN_API_KEY'
     ]
     
     missing = [var for var in required_vars if not os.getenv(var)]
@@ -112,11 +132,12 @@ async def main():
     state = setup_initial_state()
     memory = InteractionMemory()
     
-    # Set up LLM
+    # Set up LLM with tracing
     llm = ChatAnthropic(
         model="claude-3-sonnet-20240229",
         temperature=0.7,
-        api_key=os.getenv('ANTHROPIC_API_KEY')
+        api_key=os.getenv('ANTHROPIC_API_KEY'),
+        callbacks=[] if not has_langsmith else None  # Enable tracing if LangSmith is available
     )
     
     # Initialize monitoring components
@@ -133,7 +154,7 @@ async def main():
     
     news_monitor = NewsMonitor()
     
-    # Initialize causal analyzer
+    # Initialize causal analyzer with tracing context
     causal_analyzer = CausalAnalyzer(llm)
     
     print("Gonzo is now online and monitoring...")
