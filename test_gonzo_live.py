@@ -58,9 +58,10 @@ def check_dependencies():
 check_dependencies()
 
 from gonzo.state_management import UnifiedState, create_initial_state, APICredentials
-from gonzo.monitoring.monitor_integration import MonitoringSystem
+from gonzo.monitoring import CryptoMarketMonitor, SocialMediaMonitor
 from gonzo.nodes.narrative_generation import generate_dynamic_narrative
 from gonzo.memory.interaction_memory import InteractionMemory
+from gonzo.causality.analyzer import CausalAnalyzer
 from langchain_anthropic import ChatAnthropic
 
 def setup_initial_state() -> UnifiedState:
@@ -75,15 +76,12 @@ def setup_initial_state() -> UnifiedState:
         access_secret=os.getenv('X_ACCESS_SECRET', '')
     )
     
-    # Store market API credentials in memory
-    state.memory.store(
-        "api_credentials",
-        {
-            'crypto_compare_key': os.getenv('CRYPTOCOMPARE_API_KEY', ''),
-            'brave_key': os.getenv('BRAVE_API_KEY', '')
-        },
-        "long_term"
-    )
+    # Initialize rate limits
+    state.x_integration.rate_limits.update({
+        "remaining": 180,  # Default X API rate limit
+        "reset_time": None,
+        "last_request": None
+    })
     
     return state
 
@@ -97,7 +95,8 @@ async def main():
         'X_API_KEY',
         'X_API_SECRET',
         'X_ACCESS_TOKEN',
-        'X_ACCESS_SECRET'
+        'X_ACCESS_SECRET',
+        'CRYPTOCOMPARE_API_KEY'
     ]
     
     missing = [var for var in required_vars if not os.getenv(var)]
@@ -106,7 +105,7 @@ async def main():
         print("Please check your .env file")
         return
     
-    # Initialize components
+    # Initialize state and memory
     state = setup_initial_state()
     memory = InteractionMemory()
     
@@ -117,43 +116,84 @@ async def main():
         api_key=os.getenv('ANTHROPIC_API_KEY')
     )
     
-    # Initialize monitoring
-    monitor = MonitoringSystem(state)
+    # Initialize monitoring components
+    market_monitor = CryptoMarketMonitor(
+        api_key=os.getenv('CRYPTOCOMPARE_API_KEY')
+    )
+    
+    social_monitor = SocialMediaMonitor(
+        api_key=os.getenv('X_API_KEY'),
+        api_secret=os.getenv('X_API_SECRET'),
+        access_token=os.getenv('X_ACCESS_TOKEN'),
+        access_secret=os.getenv('X_ACCESS_SECRET')
+    )
+    
+    # Initialize causal analyzer
+    causal_analyzer = CausalAnalyzer(llm)
     
     print("Gonzo is now online and monitoring...")
     print("Press Ctrl+C to exit")
     
+    cycle_count = 0
+    
     while True:
         try:
-            # Update state with new monitoring data
-            state = await monitor.update_state(state)
+            cycle_count += 1
+            print(f"\nStarting monitoring cycle {cycle_count}...")
             
-            # If we have significant events/analyses
-            if state.narrative.context.get("pending_analyses"):
+            # Update market data
+            try:
+                state = await market_monitor.update_market_state(state)
+                print("Market data updated successfully")
+            except Exception as e:
+                print(f"Error in market monitoring: {str(e)}")
+            
+            # Update social data if we have rate limit remaining
+            if state.x_integration.rate_limits["remaining"] > 1:
+                try:
+                    state = await social_monitor.update_social_state(state)
+                    print("Social data updated successfully")
+                except Exception as e:
+                    print(f"Error in social monitoring: {str(e)}")
+            else:
+                reset_time = state.x_integration.rate_limits["reset_time"]
+                if reset_time:
+                    print(f"Rate limit reached. Reset at: {reset_time}")
+            
+            # Generate narrative if we have pending analyses
+            if state.narrative.pending_analyses:
                 print("\nAnalyzing significant patterns...")
                 
-                # Generate narrative
                 narrative = await generate_dynamic_narrative(state, llm)
                 
-                if narrative.significance > 0.7:
+                if narrative and narrative.significance > 0.7:
                     print("\nGenerating response...")
                     print(f"\nNarrative: {narrative.content}\n")
                     
-                    # If we have a thread suggestion
                     if narrative.suggested_threads:
                         print("Thread structure:")
                         for i, tweet in enumerate(narrative.suggested_threads, 1):
                             print(f"{i}. {tweet}\n")
                     
-                    # Store in memory if it's significant
+                    # Store significant narratives
                     memory.store_successful_narrative({
                         'content': narrative.content,
                         'significance': narrative.significance,
-                        'topics': state.narrative.context.get('topics', []),
-                        'style': narrative.response_type
+                        'timestamp': datetime.utcnow(),
+                        'type': narrative.response_type
                     })
+                    
+                    print(f"Narrative significance: {narrative.significance:.2f}")
+            
+            # Report any errors from this cycle
+            if state.api_errors:
+                print("\nErrors during this cycle:")
+                for error in state.api_errors:
+                    print(f"- {error}")
+                state.api_errors.clear()
             
             # Wait before next cycle
+            print("\nWaiting for next cycle...")
             await asyncio.sleep(60)  # Check every minute
             
         except KeyboardInterrupt:
