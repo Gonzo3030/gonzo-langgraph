@@ -58,7 +58,8 @@ def check_dependencies():
 check_dependencies()
 
 from gonzo.state_management import UnifiedState, create_initial_state, APICredentials
-from gonzo.monitoring import CryptoMarketMonitor, SocialMediaMonitor
+from gonzo.monitoring.market_monitor import CryptoMarketMonitor
+from gonzo.monitoring.social_monitor import SocialMediaMonitor
 from gonzo.nodes.narrative_generation import generate_dynamic_narrative
 from gonzo.memory.interaction_memory import InteractionMemory
 from gonzo.causality.analyzer import CausalAnalyzer
