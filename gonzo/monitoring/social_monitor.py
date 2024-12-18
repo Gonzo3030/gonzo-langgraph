@@ -3,7 +3,8 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 from textblob import TextBlob
 
-from .x_client import XClient, Tweet
+from ..state_management import UnifiedState, SocialData
+from .x_client import XClient, Tweet, RateLimitError
 from .real_time_monitor import SocialEvent
 
 class SocialMediaMonitor:
@@ -69,69 +70,142 @@ class SocialMediaMonitor:
         total_engagement = sum(engagement.values())
         return total_engagement > 100  # Adjustable threshold
     
-    async def monitor_social_activity(self) -> List[SocialEvent]:
-        """Monitor all social activity."""
-        events = []
-        
+    async def update_social_state(self, state: UnifiedState) -> UnifiedState:
+        """Update social monitoring data in the unified state."""
         try:
+            # Check if we should throttle based on rate limits
+            if state.x_integration.rate_limits["remaining"] <= 1:
+                if state.x_integration.rate_limits["reset_time"] > datetime.now():
+                    print("Rate limit reached, skipping social monitoring cycle")
+                    return state
+            
             # Search discussions
             for term in self.search_terms:
-                tweets = self.client.search_recent(term, max_results=100)
-                
-                for tweet in tweets:
-                    if tweet.id in self.processed_ids:
-                        continue
-                        
-                    engagement = self.calculate_engagement(tweet)
-                    sentiment = self.calculate_sentiment(tweet.text)
+                try:
+                    tweets, remaining, reset_time = await self.client.search_recent(term, max_results=100)
                     
-                    if self.is_significant(engagement):
-                        events.append(SocialEvent(
-                            content=tweet.text,
-                            author=tweet.author_id,
-                            timestamp=tweet.created_at,
-                            platform="twitter",
-                            engagement=engagement,
-                            sentiment=sentiment,
-                            metadata={
-                                "tweet_id": tweet.id,
-                                "search_term": term
-                            }
-                        ))
+                    # Update rate limits in state
+                    state.x_integration.rate_limits.update({
+                        "remaining": remaining,
+                        "reset_time": reset_time,
+                        "last_request": datetime.now()
+                    })
+                    
+                    for tweet in tweets:
+                        if tweet.id in self.processed_ids:
+                            continue
+                            
+                        engagement = self.calculate_engagement(tweet)
+                        sentiment = self.calculate_sentiment(tweet.text)
                         
-                    self.processed_ids.add(tweet.id)
+                        if self.is_significant(engagement):
+                            # Create social data instance
+                            social_data = SocialData(
+                                content=tweet.text,
+                                timestamp=tweet.created_at,
+                                metrics=engagement,
+                                author_id=tweet.author_id
+                            )
+                            
+                            # Add to state
+                            state.social_data.append(social_data)
+                            
+                            # If significant, add as event
+                            event = SocialEvent(
+                                content=tweet.text,
+                                author=tweet.author_id,
+                                timestamp=tweet.created_at,
+                                platform="twitter",
+                                engagement=engagement,
+                                sentiment=sentiment,
+                                metadata={
+                                    "tweet_id": tweet.id,
+                                    "search_term": term
+                                }
+                            )
+                            state.narrative.social_events.append(event.__dict__)
+                            state.narrative.pending_analyses = True
+                            
+                        self.processed_ids.add(tweet.id)
+                    
+                except RateLimitError as e:
+                    # Update rate limits and continue
+                    state.x_integration.rate_limits.update({
+                        "remaining": e.remaining,
+                        "reset_time": e.reset_time,
+                        "last_request": datetime.now()
+                    })
+                    break
             
-            # Monitor influencers
-            for username in self.influencers:
-                user = self.client.get_user_by_username(username)
-                if not user:
-                    continue
-                    
-                tweets = self.client.get_user_tweets(user['id'], max_results=20)
-                
-                for tweet in tweets:
-                    if tweet.id in self.processed_ids:
-                        continue
+            # Only monitor influencers if we have enough rate limit remaining
+            if state.x_integration.rate_limits["remaining"] > len(self.influencers) * 2:
+                for username in self.influencers:
+                    try:
+                        user, remaining, reset_time = await self.client.get_user_by_username(username)
+                        if not user:
+                            continue
+                            
+                        state.x_integration.rate_limits.update({
+                            "remaining": remaining,
+                            "reset_time": reset_time,
+                            "last_request": datetime.now()
+                        })
                         
-                    engagement = self.calculate_engagement(tweet)
-                    sentiment = self.calculate_sentiment(tweet.text)
-                    
-                    events.append(SocialEvent(
-                        content=tweet.text,
-                        author=username,
-                        timestamp=tweet.created_at,
-                        platform="twitter",
-                        engagement=engagement,
-                        sentiment=sentiment,
-                        metadata={
-                            "tweet_id": tweet.id,
-                            "influencer": username
-                        }
-                    ))
-                    
-                    self.processed_ids.add(tweet.id)
-            
+                        tweets, remaining, reset_time = await self.client.get_user_tweets(user['id'], max_results=20)
+                        
+                        state.x_integration.rate_limits.update({
+                            "remaining": remaining,
+                            "reset_time": reset_time,
+                            "last_request": datetime.now()
+                        })
+                        
+                        for tweet in tweets:
+                            if tweet.id in self.processed_ids:
+                                continue
+                                
+                            engagement = self.calculate_engagement(tweet)
+                            sentiment = self.calculate_sentiment(tweet.text)
+                            
+                            # Create social data instance
+                            social_data = SocialData(
+                                content=tweet.text,
+                                timestamp=tweet.created_at,
+                                metrics=engagement,
+                                author_id=username
+                            )
+                            
+                            # Add to state
+                            state.social_data.append(social_data)
+                            
+                            # Add as event (all influencer posts are events)
+                            event = SocialEvent(
+                                content=tweet.text,
+                                author=username,
+                                timestamp=tweet.created_at,
+                                platform="twitter",
+                                engagement=engagement,
+                                sentiment=sentiment,
+                                metadata={
+                                    "tweet_id": tweet.id,
+                                    "influencer": username
+                                }
+                            )
+                            state.narrative.social_events.append(event.__dict__)
+                            state.narrative.pending_analyses = True
+                            
+                            self.processed_ids.add(tweet.id)
+                            
+                    except RateLimitError as e:
+                        # Update rate limits and break influencer monitoring
+                        state.x_integration.rate_limits.update({
+                            "remaining": e.remaining,
+                            "reset_time": e.reset_time,
+                            "last_request": datetime.now()
+                        })
+                        break
+                        
         except Exception as e:
             print(f"Error in social monitoring: {str(e)}")
+            state.api_errors.append(f"Social monitoring error: {str(e)}")
         
-        return events
+        return state
