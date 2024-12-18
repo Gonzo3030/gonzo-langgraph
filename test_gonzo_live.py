@@ -25,18 +25,58 @@ def setup_ssl_context():
     else:
         ssl._create_default_https_context = _create_unverified_https_context
 
-def setup_langsmith():
-    """Setup LangSmith tracing"""
-    try:
-        client = Client()
-        langsmith.set_client(client)
+def verify_langsmith_env():
+    """Verify LangSmith environment variables"""
+    required_vars = [
+        'LANGCHAIN_API_KEY',
+        'LANGCHAIN_PROJECT',
+        'LANGCHAIN_TRACING_V2',
+        'LANGCHAIN_ENDPOINT'
+    ]
+    
+    missing = [var for var in required_vars if not os.getenv(var)]
+    if missing:
+        print("\nMissing LangSmith environment variables:")
+        for var in missing:
+            print(f"- {var}")
+        return False
         
-        # Verify connection and project
-        project_name = os.getenv('LANGCHAIN_PROJECT', 'gonzo-langgraph')
-        print(f"LangSmith connected - Project: {project_name}")
-        return True
+    print("\nLangSmith Environment Variables:")
+    print(f"- Project: {os.getenv('LANGCHAIN_PROJECT')}")
+    print(f"- Endpoint: {os.getenv('LANGCHAIN_ENDPOINT')}")
+    print(f"- Tracing V2: {os.getenv('LANGCHAIN_TRACING_V2')}")
+    print(f"- API Key: {'*' * len(os.getenv('LANGCHAIN_API_KEY'))}")
+    return True
+
+def setup_langsmith():
+    """Setup LangSmith tracing with detailed feedback"""
+    try:
+        if not verify_langsmith_env():
+            return False
+            
+        print("\nInitializing LangSmith client...")
+        client = Client(
+            api_url=os.getenv('LANGCHAIN_ENDPOINT'),
+            api_key=os.getenv('LANGCHAIN_API_KEY')
+        )
+        
+        # Try to verify connection
+        try:
+            # Attempt to list projects to verify connection
+            projects = client.list_projects()
+            print("Successfully connected to LangSmith")
+            
+            # Set up the client for tracing
+            langsmith.set_client(client)
+            
+            return True
+            
+        except Exception as e:
+            print(f"Error verifying LangSmith connection: {str(e)}")
+            return False
+            
     except Exception as e:
-        print(f"Warning: Could not initialize LangSmith: {str(e)}")
+        print(f"Error initializing LangSmith: {str(e)}")
         return False
 
 def check_dependencies():
@@ -69,6 +109,13 @@ def check_dependencies():
     except ImportError:
         print("Installing TextBlob...")
         subprocess.check_call([sys.executable, "-m", "pip", "install", "textblob"])
+        
+    # Install langsmith if not present
+    try:
+        import langsmith
+    except ImportError:
+        print("Installing LangSmith...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "langsmith"])
 
 # Initialize dependencies
 check_dependencies()
@@ -81,6 +128,7 @@ from gonzo.nodes.narrative_generation import generate_dynamic_narrative
 from gonzo.memory.interaction_memory import InteractionMemory
 from gonzo.causality.analyzer import CausalAnalyzer
 from langchain_anthropic import ChatAnthropic
+from langchain.callbacks import LangChainTracer
 
 def setup_initial_state() -> UnifiedState:
     """Create initial state with proper configuration"""
@@ -107,8 +155,21 @@ async def main():
     # Load environment
     load_dotenv()
     
-    # Initialize LangSmith
+    # Initialize LangSmith with detailed feedback
     has_langsmith = setup_langsmith()
+    if not has_langsmith:
+        print("\nWarning: LangSmith tracing will not be available")
+    
+    # Set up tracer
+    tracer = None
+    if has_langsmith:
+        try:
+            tracer = LangChainTracer(
+                project_name=os.getenv('LANGCHAIN_PROJECT', 'gonzo-langgraph')
+            )
+            print(f"LangChain tracer initialized for project: {tracer.project_name}")
+        except Exception as e:
+            print(f"Error setting up tracer: {str(e)}")
     
     # Verify environment variables
     required_vars = [
@@ -118,8 +179,7 @@ async def main():
         'X_ACCESS_TOKEN',
         'X_ACCESS_SECRET',
         'Cryptocompare_API_key',
-        'BRAVE_API_KEY',
-        'LANGCHAIN_API_KEY'
+        'BRAVE_API_KEY'
     ]
     
     missing = [var for var in required_vars if not os.getenv(var)]
@@ -133,11 +193,12 @@ async def main():
     memory = InteractionMemory()
     
     # Set up LLM with tracing
+    callbacks = [tracer] if tracer else None
     llm = ChatAnthropic(
         model="claude-3-sonnet-20240229",
         temperature=0.7,
         api_key=os.getenv('ANTHROPIC_API_KEY'),
-        callbacks=[] if not has_langsmith else None  # Enable tracing if LangSmith is available
+        callbacks=callbacks
     )
     
     # Initialize monitoring components
@@ -154,7 +215,7 @@ async def main():
     
     news_monitor = NewsMonitor()
     
-    # Initialize causal analyzer with tracing context
+    # Initialize causal analyzer with tracer
     causal_analyzer = CausalAnalyzer(llm)
     
     print("Gonzo is now online and monitoring...")
