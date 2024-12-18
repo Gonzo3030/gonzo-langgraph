@@ -60,6 +60,7 @@ check_dependencies()
 from gonzo.state_management import UnifiedState, create_initial_state, APICredentials
 from gonzo.monitoring.market_monitor import CryptoMarketMonitor
 from gonzo.monitoring.social_monitor import SocialMediaMonitor
+from gonzo.monitoring.news_monitor import NewsMonitor
 from gonzo.nodes.narrative_generation import generate_dynamic_narrative
 from gonzo.memory.interaction_memory import InteractionMemory
 from gonzo.causality.analyzer import CausalAnalyzer
@@ -97,7 +98,8 @@ async def main():
         'X_API_SECRET',
         'X_ACCESS_TOKEN',
         'X_ACCESS_SECRET',
-        'Cryptocompare_API_key'  # Updated to match .env file
+        'Cryptocompare_API_key',
+        'BRAVE_API_KEY'
     ]
     
     missing = [var for var in required_vars if not os.getenv(var)]
@@ -119,7 +121,7 @@ async def main():
     
     # Initialize monitoring components
     market_monitor = CryptoMarketMonitor(
-        api_key=os.getenv('Cryptocompare_API_key')  # Updated to match .env file
+        api_key=os.getenv('Cryptocompare_API_key')
     )
     
     social_monitor = SocialMediaMonitor(
@@ -128,6 +130,8 @@ async def main():
         access_token=os.getenv('X_ACCESS_TOKEN'),
         access_secret=os.getenv('X_ACCESS_SECRET')
     )
+    
+    news_monitor = NewsMonitor()
     
     # Initialize causal analyzer
     causal_analyzer = CausalAnalyzer(llm)
@@ -160,6 +164,14 @@ async def main():
                 reset_time = state.x_integration.rate_limits["reset_time"]
                 if reset_time:
                     print(f"Rate limit reached. Reset at: {reset_time}")
+            
+            # Update news data every 5 cycles
+            if cycle_count % 5 == 0:
+                try:
+                    state = await news_monitor.update_news_state(state)
+                    print("News data updated successfully")
+                except Exception as e:
+                    print(f"Error in news monitoring: {str(e)}")
             
             # Generate narrative if we have pending analyses
             if state.narrative.pending_analyses:
