@@ -6,8 +6,8 @@ import platform
 import ssl
 from datetime import datetime
 from dotenv import load_dotenv
+from langchain_core.tracers import LangSmithTracer
 from langsmith import Client
-import langsmith
 
 def setup_mac_certificates():
     """Setup SSL certificates for macOS"""
@@ -52,32 +52,27 @@ def setup_langsmith():
     """Setup LangSmith tracing with detailed feedback"""
     try:
         if not verify_langsmith_env():
-            return False
+            return None
             
-        print("\nInitializing LangSmith client...")
-        client = Client(
-            api_url=os.getenv('LANGCHAIN_ENDPOINT'),
-            api_key=os.getenv('LANGCHAIN_API_KEY')
+        print("\nInitializing LangSmith tracer...")
+        tracer = LangSmithTracer(
+            project_name=os.getenv('LANGCHAIN_PROJECT', 'gonzo-langgraph')
         )
         
-        # Try to verify connection
+        # Verify connection by trying to access project info
         try:
-            # Attempt to list projects to verify connection
+            client = Client()
             projects = client.list_projects()
             print("Successfully connected to LangSmith")
-            
-            # Set up the client for tracing
-            langsmith.set_client(client)
-            
-            return True
+            return tracer
             
         except Exception as e:
             print(f"Error verifying LangSmith connection: {str(e)}")
-            return False
+            return None
             
     except Exception as e:
-        print(f"Error initializing LangSmith: {str(e)}")
-        return False
+        print(f"Error initializing LangSmith tracer: {str(e)}")
+        return None
 
 def check_dependencies():
     """Check and install required dependencies"""
@@ -109,13 +104,6 @@ def check_dependencies():
     except ImportError:
         print("Installing TextBlob...")
         subprocess.check_call([sys.executable, "-m", "pip", "install", "textblob"])
-        
-    # Install langsmith if not present
-    try:
-        import langsmith
-    except ImportError:
-        print("Installing LangSmith...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "langsmith"])
 
 # Initialize dependencies
 check_dependencies()
@@ -128,7 +116,6 @@ from gonzo.nodes.narrative_generation import generate_dynamic_narrative
 from gonzo.memory.interaction_memory import InteractionMemory
 from gonzo.causality.analyzer import CausalAnalyzer
 from langchain_anthropic import ChatAnthropic
-from langchain.callbacks import LangChainTracer
 
 def setup_initial_state() -> UnifiedState:
     """Create initial state with proper configuration"""
@@ -155,21 +142,12 @@ async def main():
     # Load environment
     load_dotenv()
     
-    # Initialize LangSmith with detailed feedback
-    has_langsmith = setup_langsmith()
-    if not has_langsmith:
+    # Initialize LangSmith
+    tracer = setup_langsmith()
+    if not tracer:
         print("\nWarning: LangSmith tracing will not be available")
-    
-    # Set up tracer
-    tracer = None
-    if has_langsmith:
-        try:
-            tracer = LangChainTracer(
-                project_name=os.getenv('LANGCHAIN_PROJECT', 'gonzo-langgraph')
-            )
-            print(f"LangChain tracer initialized for project: {tracer.project_name}")
-        except Exception as e:
-            print(f"Error setting up tracer: {str(e)}")
+    else:
+        print(f"LangSmith tracing enabled for project: {tracer.project_name}")
     
     # Verify environment variables
     required_vars = [
@@ -192,7 +170,7 @@ async def main():
     state = setup_initial_state()
     memory = InteractionMemory()
     
-    # Set up LLM with tracing
+    # Set up LLM
     callbacks = [tracer] if tracer else None
     llm = ChatAnthropic(
         model="claude-3-sonnet-20240229",
@@ -215,7 +193,7 @@ async def main():
     
     news_monitor = NewsMonitor()
     
-    # Initialize causal analyzer with tracer
+    # Initialize causal analyzer
     causal_analyzer = CausalAnalyzer(llm)
     
     print("Gonzo is now online and monitoring...")
