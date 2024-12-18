@@ -48,3 +48,63 @@ def verify_langsmith_env():
     print(f"- Tracing V2: {os.getenv('LANGCHAIN_TRACING_V2')}")
     print(f"- API Key: {'*' * len(os.getenv('LANGCHAIN_API_KEY'))}")
     return True
+
+def setup_langsmith():
+    """Setup LangSmith tracing with detailed feedback"""
+    try:
+        if not verify_langsmith_env():
+            return None
+            
+        print("\nInitializing LangSmith tracer...")
+        tracer = LangSmithTracer(
+            project_name=os.getenv('LANGCHAIN_PROJECT', 'gonzo-langgraph')
+        )
+        
+        # Verify connection by trying to access project info
+        try:
+            client = Client(
+                api_url=os.getenv('LANGCHAIN_ENDPOINT'),
+                api_key=os.getenv('LANGCHAIN_API_KEY')
+            )
+            projects = client.list_projects()
+            print("Successfully connected to LangSmith")
+            return tracer
+            
+        except Exception as e:
+            print(f"Error verifying LangSmith connection: {str(e)}")
+            return None
+            
+    except Exception as e:
+        print(f"Error initializing LangSmith tracer: {str(e)}")
+        return None
+
+def check_dependencies():
+    """Check and install required dependencies"""
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "certifi"])
+    
+    try:
+        import nltk
+        setup_ssl_context()
+        
+        nltk_data_path = os.path.expanduser('~/nltk_data')
+        os.makedirs(nltk_data_path, exist_ok=True)
+        
+        for data in ['punkt', 'averaged_perceptron_tagger', 'brown']:
+            try:
+                nltk.download(data, quiet=True)
+            except Exception as e:
+                print(f"Warning: Could not download {data}: {str(e)}")
+                print("This may not affect core functionality")
+    except ImportError:
+        print("Installing NLTK...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "nltk"])
+        import nltk
+        setup_ssl_context()
+        for data in ['punkt', 'averaged_perceptron_tagger', 'brown']:
+            nltk.download(data, quiet=True)
+    
+    try:
+        from textblob import TextBlob
+    except ImportError:
+        print("Installing TextBlob...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "textblob"])
