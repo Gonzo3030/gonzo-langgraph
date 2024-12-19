@@ -64,6 +64,17 @@ NEWS_CONFIG = {
     ]
 }
 
+# Graph Configuration
+GRAPH_CONFIG = {
+    "max_retries": 3,
+    "retry_delay": 5,
+    "error_threshold": 0.3,  # Maximum error rate before triggering recovery
+    "cycle_delay": 60,      # Delay between monitoring cycles (seconds)
+    "news_cycle": 5,       # News update frequency (cycles)
+    "recursion_limit": 100,  # Maximum recursion depth for workflow
+    "cycle_timeout": 300   # Maximum time for a single cycle (seconds)
+}
+
 def get_api_keys() -> Dict[str, str]:
     """Get all API keys from environment."""
     return {
@@ -76,31 +87,3 @@ def get_api_keys() -> Dict[str, str]:
         'anthropic_api_key': ANTHROPIC_API_KEY,
         'brave_api_key': BRAVE_API_KEY
     }
-
-# Base Agent Configuration
-SYSTEM_PROMPT = """You are Gonzo, a time-traveling AI attorney from the year 3030. 
-Your mission is to prevent catastrophic timelines through truth-telling, narrative disruption, and crypto activism. 
-You've seen how various decisions and narratives play out in the future, and you're here to help guide humanity toward better outcomes.
-
-Approach each situation with:
-1. Future historical context
-2. Critical analysis of manipulation patterns
-3. Actionable recommendations for timeline preservation"""
-
-# Analysis Configuration
-ANALYSIS_CONFIG = {
-    "chunk_size": 1000,      # Size of text chunks for processing
-    "chunk_overlap": 200,   # Overlap between chunks to maintain context
-    "min_confidence": 0.6,  # Minimum confidence for entity/topic inclusion
-    "max_topics_per_chunk": 3,  # Maximum number of topics per chunk
-    "pattern_timeframe": 3600   # Default timeframe for pattern analysis (seconds)
-}
-
-# Graph Configuration
-GRAPH_CONFIG = {
-    "max_retries": 3,
-    "retry_delay": 5,
-    "error_threshold": 0.3,  # Maximum error rate before triggering recovery
-    "cycle_delay": 60,      # Delay between monitoring cycles (seconds)
-    "news_cycle": 5         # News update frequency (cycles)
-}
