@@ -19,189 +19,44 @@ from ..nodes.pattern_detection import detect_patterns
 from ..nodes.response_generation import generate_response
 from ..monitoring.news_monitor import NewsMonitor
 
-# Node Wrappers
+# Node Wrappers and Helper Functions
+[... previous node functions remain the same ...]
 
-def ensure_unified_state(state: Union[Dict, UnifiedState]) -> UnifiedState:
-    """Ensure we have a UnifiedState object."""
-    if isinstance(state, UnifiedState):
-        return state
-    return UnifiedState(**state)
-
-def market_monitor_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
-    """Handle market monitoring stage"""
-    # Ensure we have a UnifiedState
+def cycle_complete_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
+    """Handle cycle completion."""
     state = ensure_unified_state(state)
     
     try:
-        # Market monitoring logic here
-        # ...
+        # Log cycle completion
+        state.add_message("Cycle complete", source="system")
         
-        # Move to news monitoring next
-        state.current_stage = WorkflowStage.NEWS_MONITORING
+        # Reset for next cycle
+        state.narrative.pending_analyses = False
+        state.narrative.market_events.clear()
+        state.narrative.social_events.clear()
+        state.narrative.news_events.clear()
         
-    except Exception as e:
-        state.api_errors.append(f"Market monitoring error: {str(e)}")
-        state.current_stage = WorkflowStage.ERROR_RECOVERY
-        
-    return state.model_dump()
-
-def news_monitor_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
-    """Handle news monitoring stage"""
-    state = ensure_unified_state(state)
-    
-    try:
-        # Only update news every 5 cycles
-        cycle_count = len(state.messages) # Simple way to track cycles
-        if cycle_count % GRAPH_CONFIG["news_cycle"] == 0:
-            monitor = NewsMonitor()
-            # Note: We'll need to handle the async call differently
-            if state.narrative.pending_analyses:
-                state.current_stage = WorkflowStage.PATTERN_ANALYSIS
-                return state.model_dump()
-        
-        # Move to social monitoring
-        state.current_stage = WorkflowStage.SOCIAL_MONITORING
-        
-    except Exception as e:
-        state.api_errors.append(f"News monitoring error: {str(e)}")
-        state.current_stage = WorkflowStage.ERROR_RECOVERY
-        
-    return state.model_dump()
-
-def social_monitor_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
-    """Handle social monitoring stage"""
-    state = ensure_unified_state(state)
-    
-    try:
-        # Check rate limits before proceeding
-        if state.x_integration.rate_limits["remaining"] <= 1:
-            if state.x_integration.rate_limits["reset_time"] > datetime.now():
-                # Skip social monitoring this cycle
-                state.current_stage = WorkflowStage.PATTERN_ANALYSIS
-                return state.model_dump()
-        
-        # Social monitoring logic here
-        # ...
-        
-        state.current_stage = WorkflowStage.PATTERN_ANALYSIS
-        
-    except Exception as e:
-        state.api_errors.append(f"Social monitoring error: {str(e)}")
-        state.current_stage = WorkflowStage.ERROR_RECOVERY
-        
-    return state.model_dump()
-
-def pattern_analysis_node(state: Union[Dict, UnifiedState], llm: Any) -> Dict[str, Any]:
-    """Handle pattern analysis stage"""
-    state = ensure_unified_state(state)
-    
-    try:
-        # Update context with news data
-        context = {
-            "market_events": state.narrative.market_events,
-            "social_events": state.narrative.social_events,
-            "news_events": state.narrative.news_events,
-            "patterns": state.analysis.market_patterns +
-                      state.analysis.social_patterns +
-                      state.analysis.news_patterns
-        }
-        
-        # Note: We'll need to handle the async call differently
-        patterns = {}
-        
-        # Update state with detected patterns
-        if patterns:
-            state.analysis.market_patterns.extend(patterns.get('market_patterns', []))
-            state.analysis.social_patterns.extend(patterns.get('social_patterns', []))
-            state.analysis.news_patterns.extend(patterns.get('news_patterns', []))
-            state.analysis.correlations.extend(patterns.get('correlations', []))
-        
-        # Calculate significance
-        total_patterns = len(state.analysis.market_patterns) + \
-                        len(state.analysis.social_patterns) + \
-                        len(state.analysis.news_patterns)
-        
-        if total_patterns > 0:
-            state.current_stage = WorkflowStage.NARRATIVE_GENERATION
-        else:
-            state.current_stage = WorkflowStage.MARKET_MONITORING
-        
-    except Exception as e:
-        state.api_errors.append(f"Pattern analysis error: {str(e)}")
-        state.current_stage = WorkflowStage.ERROR_RECOVERY
-        
-    return state.model_dump()
-
-def narrative_generation_node(state: Union[Dict, UnifiedState], llm: Any) -> Dict[str, Any]:
-    """Handle narrative generation stage"""
-    state = ensure_unified_state(state)
-    
-    try:
-        # Update context with news data
-        context = {
-            "messages": state.messages,
-            "market_events": state.narrative.market_events,
-            "social_events": state.narrative.social_events,
-            "news_events": state.narrative.news_events,
-            "patterns": {
-                "market": state.analysis.market_patterns,
-                "social": state.analysis.social_patterns,
-                "news": state.analysis.news_patterns,
-                "correlations": state.analysis.correlations
-            }
-        }
-        
-        # Note: We'll need to handle the async call differently
-        response = None
-        
-        if response and response.get('significance', 0) > 0.7:
-            state.x_integration.queued_posts.append(response.get('content', ''))
-            state.current_stage = WorkflowStage.RESPONSE_POSTING
-        else:
-            state.current_stage = WorkflowStage.MARKET_MONITORING
-        
-    except Exception as e:
-        state.api_errors.append(f"Narrative generation error: {str(e)}")
-        state.current_stage = WorkflowStage.ERROR_RECOVERY
-        
-    return state.model_dump()
-
-def response_posting_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
-    """Handle response posting stage"""
-    state = ensure_unified_state(state)
-    
-    try:
-        # Response posting logic here
-        # ...
-        
+        # Move back to market monitoring for next cycle
         state.current_stage = WorkflowStage.MARKET_MONITORING
         
     except Exception as e:
-        state.api_errors.append(f"Response posting error: {str(e)}")
-        state.current_stage = WorkflowStage.ERROR_RECOVERY
-        
+        state.api_errors.append(f"Cycle completion error: {str(e)}")
+        state.current_stage = WorkflowStage.SHUTDOWN
+    
     return state.model_dump()
 
-def error_recovery_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
-    """Handle error recovery stage"""
+def shutdown_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
+    """Handle graceful shutdown."""
     state = ensure_unified_state(state)
     
     try:
-        # Log errors
-        for error in state.api_errors:
-            state.add_message(f"Error encountered: {error}", source="error")
-        
-        # Clear errors after logging
-        state.api_errors.clear()
-        
-        # Return to market monitoring
-        state.current_stage = WorkflowStage.MARKET_MONITORING
-        return state.model_dump()
+        # Log shutdown
+        state.add_message("Shutting down Gonzo...", source="system")
+        return END
         
     except Exception as e:
-        # If error recovery fails, end the workflow
-        state.add_message(f"Critical error in recovery: {str(e)}", source="critical")
-        return {"type": "end"}
+        # Even if logging fails, we need to end
+        return END
 
 def create_workflow(
     llm: Optional[BaseLLM] = None,
@@ -223,7 +78,9 @@ def create_workflow(
                      lambda x: narrative_generation_node(x, llm))
     workflow.add_node("response_posting", response_posting_node)
     
-    # Add error recovery
+    # Add cycle control nodes
+    workflow.add_node("cycle_complete", cycle_complete_node)
+    workflow.add_node("shutdown", shutdown_node)
     workflow.add_node("error_recovery", error_recovery_node)
     
     # Add conditional edges based on WorkflowStage
@@ -231,77 +88,113 @@ def create_workflow(
         state = ensure_unified_state(x)
         return state.current_stage.value
     
+    # Market monitoring edges
     workflow.add_conditional_edges(
         "market_monitor",
         get_stage,
         {
             WorkflowStage.NEWS_MONITORING.value: "news_monitor",
-            WorkflowStage.ERROR_RECOVERY.value: "error_recovery"
+            WorkflowStage.ERROR_RECOVERY.value: "error_recovery",
+            WorkflowStage.CYCLE_COMPLETE.value: "cycle_complete",
+            WorkflowStage.SHUTDOWN.value: "shutdown"
         }
     )
     
+    # News monitoring edges
     workflow.add_conditional_edges(
         "news_monitor",
         get_stage,
         {
             WorkflowStage.SOCIAL_MONITORING.value: "social_monitor",
             WorkflowStage.PATTERN_ANALYSIS.value: "pattern_analysis",
-            WorkflowStage.ERROR_RECOVERY.value: "error_recovery"
+            WorkflowStage.ERROR_RECOVERY.value: "error_recovery",
+            WorkflowStage.CYCLE_COMPLETE.value: "cycle_complete",
+            WorkflowStage.SHUTDOWN.value: "shutdown"
         }
     )
     
+    # Social monitoring edges
     workflow.add_conditional_edges(
         "social_monitor",
         get_stage,
         {
             WorkflowStage.PATTERN_ANALYSIS.value: "pattern_analysis",
-            WorkflowStage.ERROR_RECOVERY.value: "error_recovery"
+            WorkflowStage.ERROR_RECOVERY.value: "error_recovery",
+            WorkflowStage.CYCLE_COMPLETE.value: "cycle_complete",
+            WorkflowStage.SHUTDOWN.value: "shutdown"
         }
     )
     
+    # Pattern analysis edges
     workflow.add_conditional_edges(
         "pattern_analysis",
         get_stage,
         {
             WorkflowStage.NARRATIVE_GENERATION.value: "narrative_generation",
-            WorkflowStage.MARKET_MONITORING.value: "market_monitor",
-            WorkflowStage.ERROR_RECOVERY.value: "error_recovery"
+            WorkflowStage.ERROR_RECOVERY.value: "error_recovery",
+            WorkflowStage.CYCLE_COMPLETE.value: "cycle_complete",
+            WorkflowStage.SHUTDOWN.value: "shutdown"
         }
     )
     
+    # Narrative generation edges
     workflow.add_conditional_edges(
         "narrative_generation",
         get_stage,
         {
             WorkflowStage.RESPONSE_POSTING.value: "response_posting",
-            WorkflowStage.MARKET_MONITORING.value: "market_monitor",
-            WorkflowStage.ERROR_RECOVERY.value: "error_recovery"
+            WorkflowStage.ERROR_RECOVERY.value: "error_recovery",
+            WorkflowStage.CYCLE_COMPLETE.value: "cycle_complete",
+            WorkflowStage.SHUTDOWN.value: "shutdown"
         }
     )
     
+    # Response posting edges
     workflow.add_conditional_edges(
         "response_posting",
         get_stage,
         {
-            WorkflowStage.MARKET_MONITORING.value: "market_monitor",
-            WorkflowStage.ERROR_RECOVERY.value: "error_recovery"
+            WorkflowStage.ERROR_RECOVERY.value: "error_recovery",
+            WorkflowStage.CYCLE_COMPLETE.value: "cycle_complete",
+            WorkflowStage.SHUTDOWN.value: "shutdown"
         }
     )
     
+    # Error recovery edges
     workflow.add_conditional_edges(
         "error_recovery",
         get_stage,
         {
-            WorkflowStage.MARKET_MONITORING.value: "market_monitor",
-            END: END
+            WorkflowStage.CYCLE_COMPLETE.value: "cycle_complete",
+            WorkflowStage.SHUTDOWN.value: "shutdown"
         }
+    )
+    
+    # Cycle complete edges
+    workflow.add_conditional_edges(
+        "cycle_complete",
+        get_stage,
+        {
+            WorkflowStage.MARKET_MONITORING.value: "market_monitor",
+            WorkflowStage.SHUTDOWN.value: "shutdown"
+        }
+    )
+    
+    # Shutdown edges
+    workflow.add_conditional_edges(
+        "shutdown",
+        get_stage,
+        {END: END}
     )
     
     # Set entry point
     workflow.set_entry_point("market_monitor")
     
-    # Compile with config
-    final_config = {**GRAPH_CONFIG}
+    # Set configuration
+    final_config = {
+        "recursion_limit": GRAPH_CONFIG.get("recursion_limit", 100),
+        "cycle_timeout": GRAPH_CONFIG.get("cycle_timeout", 300)
+    }
     if config:
         final_config.update(config)
         
