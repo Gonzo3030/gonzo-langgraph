@@ -5,6 +5,8 @@ from datetime import datetime
 from langchain_core.language_models import BaseLLM
 from langchain_core.messages import SystemMessage, HumanMessage
 from langgraph.graph import StateGraph, END
+from functools import partial
+from operator import itemgetter
 
 from ..config import MODEL_CONFIG, GRAPH_CONFIG, SYSTEM_PROMPT
 from ..state_management import (
@@ -166,34 +168,39 @@ async def error_recovery_node(state: UnifiedState) -> Dict[str, Any]:
         state.add_message(f"Critical error in recovery: {str(e)}", source="critical")
         return END
 
+# Async to sync wrappers
+def wrap_async_node(async_func):
+    """Wrapper to make async node functions work with LangGraph."""
+    def wrapper(state):
+        import asyncio
+        loop = asyncio.get_event_loop()
+        return loop.run_until_complete(async_func(state))
+    return wrapper
+
 def create_workflow(
     llm: Optional[BaseLLM] = None,
     config: Optional[Dict[str, Any]] = None
 ) -> StateGraph:
-    """Create the main workflow graph using unified state management.
-    
-    Args:
-        llm: Optional language model override
-        config: Optional configuration override
-        
-    Returns:
-        Compiled workflow graph
-    """
+    """Create the main workflow graph using unified state management."""
     # Initialize graph with unified state
     workflow = StateGraph(UnifiedState)
     
-    # Add monitoring nodes
-    workflow.add_node("market_monitor", market_monitor_node)
-    workflow.add_node("news_monitor", news_monitor_node)
-    workflow.add_node("social_monitor", social_monitor_node)
+    # Add monitoring nodes with wrappers
+    workflow.add_node("market_monitor", wrap_async_node(market_monitor_node))
+    workflow.add_node("news_monitor", wrap_async_node(news_monitor_node))
+    workflow.add_node("social_monitor", wrap_async_node(social_monitor_node))
     
-    # Add analysis and generation nodes
-    workflow.add_node("pattern_analysis", lambda x: pattern_analysis_node(x, llm))
-    workflow.add_node("narrative_generation", lambda x: narrative_generation_node(x, llm))
-    workflow.add_node("response_posting", response_posting_node)
+    # Add analysis and generation nodes with wrappers
+    workflow.add_node("pattern_analysis", 
+                     wrap_async_node(partial(pattern_analysis_node, llm=llm)))
+    workflow.add_node("narrative_generation", 
+                     wrap_async_node(partial(narrative_generation_node, llm=llm)))
+    workflow.add_node("response_posting", 
+                     wrap_async_node(response_posting_node))
     
-    # Add error recovery
-    workflow.add_node("error_recovery", error_recovery_node)
+    # Add error recovery with wrapper
+    workflow.add_node("error_recovery", 
+                     wrap_async_node(error_recovery_node))
     
     # Add conditional edges based on WorkflowStage
     workflow.add_conditional_edges(
