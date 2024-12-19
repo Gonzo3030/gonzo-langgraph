@@ -1,6 +1,6 @@
 """Core workflow definition for Gonzo system."""
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 from datetime import datetime
 from langchain_core.language_models import BaseLLM
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -21,10 +21,16 @@ from ..monitoring.news_monitor import NewsMonitor
 
 # Node Wrappers
 
-def market_monitor_node(state_dict: Dict) -> Dict[str, Any]:
+def ensure_unified_state(state: Union[Dict, UnifiedState]) -> UnifiedState:
+    """Ensure we have a UnifiedState object."""
+    if isinstance(state, UnifiedState):
+        return state
+    return UnifiedState(**state)
+
+def market_monitor_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
     """Handle market monitoring stage"""
-    # Convert dict to UnifiedState outside try block
-    state = UnifiedState(**state_dict)
+    # Ensure we have a UnifiedState
+    state = ensure_unified_state(state)
     
     try:
         # Market monitoring logic here
@@ -39,10 +45,9 @@ def market_monitor_node(state_dict: Dict) -> Dict[str, Any]:
         
     return state.model_dump()
 
-def news_monitor_node(state_dict: Dict) -> Dict[str, Any]:
+def news_monitor_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
     """Handle news monitoring stage"""
-    # Convert dict to UnifiedState outside try block
-    state = UnifiedState(**state_dict)
+    state = ensure_unified_state(state)
     
     try:
         # Only update news every 5 cycles
@@ -63,10 +68,9 @@ def news_monitor_node(state_dict: Dict) -> Dict[str, Any]:
         
     return state.model_dump()
 
-def social_monitor_node(state_dict: Dict) -> Dict[str, Any]:
+def social_monitor_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
     """Handle social monitoring stage"""
-    # Convert dict to UnifiedState outside try block
-    state = UnifiedState(**state_dict)
+    state = ensure_unified_state(state)
     
     try:
         # Check rate limits before proceeding
@@ -87,10 +91,9 @@ def social_monitor_node(state_dict: Dict) -> Dict[str, Any]:
         
     return state.model_dump()
 
-def pattern_analysis_node(state_dict: Dict, llm: Any) -> Dict[str, Any]:
+def pattern_analysis_node(state: Union[Dict, UnifiedState], llm: Any) -> Dict[str, Any]:
     """Handle pattern analysis stage"""
-    # Convert dict to UnifiedState outside try block
-    state = UnifiedState(**state_dict)
+    state = ensure_unified_state(state)
     
     try:
         # Update context with news data
@@ -129,10 +132,9 @@ def pattern_analysis_node(state_dict: Dict, llm: Any) -> Dict[str, Any]:
         
     return state.model_dump()
 
-def narrative_generation_node(state_dict: Dict, llm: Any) -> Dict[str, Any]:
+def narrative_generation_node(state: Union[Dict, UnifiedState], llm: Any) -> Dict[str, Any]:
     """Handle narrative generation stage"""
-    # Convert dict to UnifiedState outside try block
-    state = UnifiedState(**state_dict)
+    state = ensure_unified_state(state)
     
     try:
         # Update context with news data
@@ -164,10 +166,9 @@ def narrative_generation_node(state_dict: Dict, llm: Any) -> Dict[str, Any]:
         
     return state.model_dump()
 
-def response_posting_node(state_dict: Dict) -> Dict[str, Any]:
+def response_posting_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
     """Handle response posting stage"""
-    # Convert dict to UnifiedState outside try block
-    state = UnifiedState(**state_dict)
+    state = ensure_unified_state(state)
     
     try:
         # Response posting logic here
@@ -181,10 +182,9 @@ def response_posting_node(state_dict: Dict) -> Dict[str, Any]:
         
     return state.model_dump()
 
-def error_recovery_node(state_dict: Dict) -> Dict[str, Any]:
+def error_recovery_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
     """Handle error recovery stage"""
-    # Convert dict to UnifiedState outside try block
-    state = UnifiedState(**state_dict)
+    state = ensure_unified_state(state)
     
     try:
         # Log errors
@@ -227,9 +227,13 @@ def create_workflow(
     workflow.add_node("error_recovery", error_recovery_node)
     
     # Add conditional edges based on WorkflowStage
+    def get_stage(x: Union[Dict, UnifiedState]) -> str:
+        state = ensure_unified_state(x)
+        return state.current_stage.value
+    
     workflow.add_conditional_edges(
         "market_monitor",
-        lambda x: UnifiedState(**x).current_stage.value,
+        get_stage,
         {
             WorkflowStage.NEWS_MONITORING.value: "news_monitor",
             WorkflowStage.ERROR_RECOVERY.value: "error_recovery"
@@ -238,7 +242,7 @@ def create_workflow(
     
     workflow.add_conditional_edges(
         "news_monitor",
-        lambda x: UnifiedState(**x).current_stage.value,
+        get_stage,
         {
             WorkflowStage.SOCIAL_MONITORING.value: "social_monitor",
             WorkflowStage.PATTERN_ANALYSIS.value: "pattern_analysis",
@@ -248,7 +252,7 @@ def create_workflow(
     
     workflow.add_conditional_edges(
         "social_monitor",
-        lambda x: UnifiedState(**x).current_stage.value,
+        get_stage,
         {
             WorkflowStage.PATTERN_ANALYSIS.value: "pattern_analysis",
             WorkflowStage.ERROR_RECOVERY.value: "error_recovery"
@@ -257,7 +261,7 @@ def create_workflow(
     
     workflow.add_conditional_edges(
         "pattern_analysis",
-        lambda x: UnifiedState(**x).current_stage.value,
+        get_stage,
         {
             WorkflowStage.NARRATIVE_GENERATION.value: "narrative_generation",
             WorkflowStage.MARKET_MONITORING.value: "market_monitor",
@@ -267,7 +271,7 @@ def create_workflow(
     
     workflow.add_conditional_edges(
         "narrative_generation",
-        lambda x: UnifiedState(**x).current_stage.value,
+        get_stage,
         {
             WorkflowStage.RESPONSE_POSTING.value: "response_posting",
             WorkflowStage.MARKET_MONITORING.value: "market_monitor",
@@ -277,7 +281,7 @@ def create_workflow(
     
     workflow.add_conditional_edges(
         "response_posting",
-        lambda x: UnifiedState(**x).current_stage.value,
+        get_stage,
         {
             WorkflowStage.MARKET_MONITORING.value: "market_monitor",
             WorkflowStage.ERROR_RECOVERY.value: "error_recovery"
@@ -286,7 +290,7 @@ def create_workflow(
     
     workflow.add_conditional_edges(
         "error_recovery",
-        lambda x: UnifiedState(**x).current_stage.value,
+        get_stage,
         {
             WorkflowStage.MARKET_MONITORING.value: "market_monitor",
             END: END
@@ -306,6 +310,9 @@ def create_workflow(
 def initialize_workflow() -> Dict[str, Any]:
     """Initialize the workflow with a clean state"""
     initial_state = create_initial_state()
+    
+    # Set initial stage
+    initial_state.current_stage = WorkflowStage.MARKET_MONITORING
     
     # Add system prompt to messages
     initial_state.add_message(
