@@ -23,27 +23,28 @@ from ..monitoring.news_monitor import NewsMonitor
 
 def market_monitor_node(state_dict: Dict) -> Dict[str, Any]:
     """Handle market monitoring stage"""
+    # Convert dict to UnifiedState outside try block
+    state = UnifiedState(**state_dict)
+    
     try:
-        # Convert dict to UnifiedState
-        state = UnifiedState(**state_dict)
-        
         # Market monitoring logic here
         # ...
         
         # Move to news monitoring next
         state.current_stage = WorkflowStage.NEWS_MONITORING
-        return state.model_dump()
+        
     except Exception as e:
         state.api_errors.append(f"Market monitoring error: {str(e)}")
         state.current_stage = WorkflowStage.ERROR_RECOVERY
-        return state.model_dump()
+        
+    return state.model_dump()
 
 def news_monitor_node(state_dict: Dict) -> Dict[str, Any]:
     """Handle news monitoring stage"""
+    # Convert dict to UnifiedState outside try block
+    state = UnifiedState(**state_dict)
+    
     try:
-        # Convert dict to UnifiedState
-        state = UnifiedState(**state_dict)
-        
         # Only update news every 5 cycles
         cycle_count = len(state.messages) # Simple way to track cycles
         if cycle_count % GRAPH_CONFIG["news_cycle"] == 0:
@@ -55,18 +56,19 @@ def news_monitor_node(state_dict: Dict) -> Dict[str, Any]:
         
         # Move to social monitoring
         state.current_stage = WorkflowStage.SOCIAL_MONITORING
-        return state.model_dump()
+        
     except Exception as e:
         state.api_errors.append(f"News monitoring error: {str(e)}")
         state.current_stage = WorkflowStage.ERROR_RECOVERY
-        return state.model_dump()
+        
+    return state.model_dump()
 
 def social_monitor_node(state_dict: Dict) -> Dict[str, Any]:
     """Handle social monitoring stage"""
+    # Convert dict to UnifiedState outside try block
+    state = UnifiedState(**state_dict)
+    
     try:
-        # Convert dict to UnifiedState
-        state = UnifiedState(**state_dict)
-        
         # Check rate limits before proceeding
         if state.x_integration.rate_limits["remaining"] <= 1:
             if state.x_integration.rate_limits["reset_time"] > datetime.now():
@@ -78,18 +80,19 @@ def social_monitor_node(state_dict: Dict) -> Dict[str, Any]:
         # ...
         
         state.current_stage = WorkflowStage.PATTERN_ANALYSIS
-        return state.model_dump()
+        
     except Exception as e:
         state.api_errors.append(f"Social monitoring error: {str(e)}")
         state.current_stage = WorkflowStage.ERROR_RECOVERY
-        return state.model_dump()
+        
+    return state.model_dump()
 
 def pattern_analysis_node(state_dict: Dict, llm: Any) -> Dict[str, Any]:
     """Handle pattern analysis stage"""
+    # Convert dict to UnifiedState outside try block
+    state = UnifiedState(**state_dict)
+    
     try:
-        # Convert dict to UnifiedState
-        state = UnifiedState(**state_dict)
-        
         # Update context with news data
         context = {
             "market_events": state.narrative.market_events,
@@ -120,19 +123,18 @@ def pattern_analysis_node(state_dict: Dict, llm: Any) -> Dict[str, Any]:
         else:
             state.current_stage = WorkflowStage.MARKET_MONITORING
         
-        return state.model_dump()
-        
     except Exception as e:
         state.api_errors.append(f"Pattern analysis error: {str(e)}")
         state.current_stage = WorkflowStage.ERROR_RECOVERY
-        return state.model_dump()
+        
+    return state.model_dump()
 
 def narrative_generation_node(state_dict: Dict, llm: Any) -> Dict[str, Any]:
     """Handle narrative generation stage"""
+    # Convert dict to UnifiedState outside try block
+    state = UnifiedState(**state_dict)
+    
     try:
-        # Convert dict to UnifiedState
-        state = UnifiedState(**state_dict)
-        
         # Update context with news data
         context = {
             "messages": state.messages,
@@ -156,35 +158,35 @@ def narrative_generation_node(state_dict: Dict, llm: Any) -> Dict[str, Any]:
         else:
             state.current_stage = WorkflowStage.MARKET_MONITORING
         
-        return state.model_dump()
-        
     except Exception as e:
         state.api_errors.append(f"Narrative generation error: {str(e)}")
         state.current_stage = WorkflowStage.ERROR_RECOVERY
-        return state.model_dump()
+        
+    return state.model_dump()
 
 def response_posting_node(state_dict: Dict) -> Dict[str, Any]:
     """Handle response posting stage"""
+    # Convert dict to UnifiedState outside try block
+    state = UnifiedState(**state_dict)
+    
     try:
-        # Convert dict to UnifiedState
-        state = UnifiedState(**state_dict)
-        
         # Response posting logic here
         # ...
         
         state.current_stage = WorkflowStage.MARKET_MONITORING
-        return state.model_dump()
+        
     except Exception as e:
         state.api_errors.append(f"Response posting error: {str(e)}")
         state.current_stage = WorkflowStage.ERROR_RECOVERY
-        return state.model_dump()
+        
+    return state.model_dump()
 
 def error_recovery_node(state_dict: Dict) -> Dict[str, Any]:
     """Handle error recovery stage"""
+    # Convert dict to UnifiedState outside try block
+    state = UnifiedState(**state_dict)
+    
     try:
-        # Convert dict to UnifiedState
-        state = UnifiedState(**state_dict)
-        
         # Log errors
         for error in state.api_errors:
             state.add_message(f"Error encountered: {error}", source="error")
@@ -195,6 +197,7 @@ def error_recovery_node(state_dict: Dict) -> Dict[str, Any]:
         # Return to market monitoring
         state.current_stage = WorkflowStage.MARKET_MONITORING
         return state.model_dump()
+        
     except Exception as e:
         # If error recovery fails, end the workflow
         state.add_message(f"Critical error in recovery: {str(e)}", source="critical")
