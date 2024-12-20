@@ -20,7 +20,6 @@ from ..monitoring.news_monitor import NewsMonitor
 
 [... previous code remains the same ...]
 
-# Workflow creation
 def create_workflow(
     llm: Optional[BaseLLM] = None,
     config: Optional[Dict[str, Any]] = None
@@ -50,3 +49,28 @@ def create_workflow(
     def get_stage(x: Union[Dict, UnifiedState]) -> str:
         state = ensure_unified_state(x)
         return state.current_stage.value
+    
+    # Market monitoring edges
+    workflow.add_conditional_edges(
+        "market_monitor",
+        get_stage,
+        {
+            WorkflowStage.NEWS_MONITORING.value: "news_monitor",
+            WorkflowStage.ERROR_RECOVERY.value: "error_recovery",
+            WorkflowStage.CYCLE_COMPLETE.value: "cycle_complete",
+            WorkflowStage.SHUTDOWN.value: "shutdown"
+        }
+    )
+    
+    # News monitoring edges
+    workflow.add_conditional_edges(
+        "news_monitor",
+        get_stage,
+        {
+            WorkflowStage.SOCIAL_MONITORING.value: "social_monitor",
+            WorkflowStage.PATTERN_ANALYSIS.value: "pattern_analysis",
+            WorkflowStage.ERROR_RECOVERY.value: "error_recovery",
+            WorkflowStage.CYCLE_COMPLETE.value: "cycle_complete",
+            WorkflowStage.SHUTDOWN.value: "shutdown"
+        }
+    )
