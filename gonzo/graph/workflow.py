@@ -20,61 +20,33 @@ from ..monitoring.news_monitor import NewsMonitor
 
 [... previous code remains the same ...]
 
-# Utility nodes
-def error_recovery_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
-    """Handle error recovery."""
-    state = ensure_unified_state(state)
+# Workflow creation
+def create_workflow(
+    llm: Optional[BaseLLM] = None,
+    config: Optional[Dict[str, Any]] = None
+) -> StateGraph:
+    """Create the main workflow graph using unified state management."""
+    # Initialize graph with unified state
+    workflow = StateGraph(UnifiedState)
     
-    try:
-        # Log errors
-        for error in state.api_errors:
-            state.messages.append(f"Error encountered: {error}")
-        
-        # Clear error list after logging
-        state.api_errors.clear()
-        
-        # Move to cycle completion
-        state.current_stage = WorkflowStage.CYCLE_COMPLETE
-        
-    except Exception as e:
-        # If error recovery itself fails, we need to shut down
-        state.messages.append(f"Critical error in recovery: {str(e)}")
-        state.current_stage = WorkflowStage.SHUTDOWN
+    # Add monitoring nodes
+    workflow.add_node("market_monitor", market_monitor_node)
+    workflow.add_node("news_monitor", news_monitor_node)
+    workflow.add_node("social_monitor", social_monitor_node)
     
-    return state.model_dump()
-
-def cycle_complete_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
-    """Handle cycle completion."""
-    state = ensure_unified_state(state)
+    # Add analysis and generation nodes
+    workflow.add_node("pattern_analysis", 
+                     lambda x: pattern_analysis_node(x, llm))
+    workflow.add_node("narrative_generation", 
+                     lambda x: narrative_generation_node(x, llm))
+    workflow.add_node("response_posting", response_posting_node)
     
-    try:
-        # Log cycle completion
-        state.messages.append("Cycle complete")
-        
-        # Reset for next cycle
-        state.narrative.pending_analyses = False
-        state.narrative.market_events.clear()
-        state.narrative.social_events.clear()
-        state.narrative.news_events.clear()
-        
-        # Move back to market monitoring for next cycle
-        state.current_stage = WorkflowStage.MARKET_MONITORING
-        
-    except Exception as e:
-        state.api_errors.append(f"Cycle completion error: {str(e)}")
-        state.current_stage = WorkflowStage.SHUTDOWN
+    # Add cycle control nodes
+    workflow.add_node("cycle_complete", cycle_complete_node)
+    workflow.add_node("shutdown", shutdown_node)
+    workflow.add_node("error_recovery", error_recovery_node)
     
-    return state.model_dump()
-
-def shutdown_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
-    """Handle graceful shutdown."""
-    state = ensure_unified_state(state)
-    
-    try:
-        # Log shutdown
-        state.messages.append("Shutting down Gonzo...")
-        return END
-        
-    except Exception as e:
-        # Even if logging fails, we need to end
-        return END
+    # Add conditional edges based on WorkflowStage
+    def get_stage(x: Union[Dict, UnifiedState]) -> str:
+        state = ensure_unified_state(x)
+        return state.current_stage.value
