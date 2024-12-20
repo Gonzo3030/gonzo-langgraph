@@ -50,7 +50,7 @@ def create_workflow(
         state = ensure_unified_state(x)
         return state.current_stage.value
     
-    # Market monitoring edges
+    # Add all conditional edges
     workflow.add_conditional_edges(
         "market_monitor",
         get_stage,
@@ -62,13 +62,45 @@ def create_workflow(
         }
     )
     
-    # News monitoring edges
     workflow.add_conditional_edges(
         "news_monitor",
         get_stage,
         {
             WorkflowStage.SOCIAL_MONITORING.value: "social_monitor",
             WorkflowStage.PATTERN_ANALYSIS.value: "pattern_analysis",
+            WorkflowStage.ERROR_RECOVERY.value: "error_recovery",
+            WorkflowStage.CYCLE_COMPLETE.value: "cycle_complete",
+            WorkflowStage.SHUTDOWN.value: "shutdown"
+        }
+    )
+    
+    workflow.add_conditional_edges(
+        "social_monitor",
+        get_stage,
+        {
+            WorkflowStage.PATTERN_ANALYSIS.value: "pattern_analysis",
+            WorkflowStage.ERROR_RECOVERY.value: "error_recovery",
+            WorkflowStage.CYCLE_COMPLETE.value: "cycle_complete",
+            WorkflowStage.SHUTDOWN.value: "shutdown"
+        }
+    )
+    
+    workflow.add_conditional_edges(
+        "pattern_analysis",
+        get_stage,
+        {
+            WorkflowStage.NARRATIVE_GENERATION.value: "narrative_generation",
+            WorkflowStage.ERROR_RECOVERY.value: "error_recovery",
+            WorkflowStage.CYCLE_COMPLETE.value: "cycle_complete",
+            WorkflowStage.SHUTDOWN.value: "shutdown"
+        }
+    )
+    
+    workflow.add_conditional_edges(
+        "narrative_generation",
+        get_stage,
+        {
+            WorkflowStage.RESPONSE_POSTING.value: "response_posting",
             WorkflowStage.ERROR_RECOVERY.value: "error_recovery",
             WorkflowStage.CYCLE_COMPLETE.value: "cycle_complete",
             WorkflowStage.SHUTDOWN.value: "shutdown"
