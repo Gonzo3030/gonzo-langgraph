@@ -103,25 +103,25 @@ def run_gonzo() -> None:
         while True:
             try:
                 # Run workflow cycle
-                result = workflow.invoke(current_state)
+                result = workflow.run(current_state)
+                
+                if result == "end":
+                    logger.info("Workflow completed normally")
+                    break
                 
                 # Extract new state
-                new_state = UnifiedState(**result["state"])
+                new_state = UnifiedState(**result)
                 
                 # Log progress
                 logger.info(
                     f"Completed cycle. Stage: {new_state.current_stage}, "
-                    f"Patterns detected: {len(new_state.knowledge_graph.patterns)}, "
-                    f"Queued posts: {len(new_state.x_integration.queued_posts)}"
+                    f"Events: Market({len(new_state.narrative.market_events)}), "
+                    f"News({len(new_state.narrative.news_events)}), "
+                    f"Social({len(new_state.narrative.social_events)})"
                 )
                 
                 # Update current state
                 current_state = new_state.model_dump()
-                
-                # Handle checkpointing if needed
-                if new_state.checkpoint_needed:
-                    # TODO: Implement checkpoint saving
-                    pass
                     
             except KeyboardInterrupt:
                 logger.info('\nShutting down Gonzo gracefully...')
