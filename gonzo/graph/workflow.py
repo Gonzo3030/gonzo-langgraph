@@ -106,3 +106,36 @@ def create_workflow(
             WorkflowStage.SHUTDOWN.value: "shutdown"
         }
     )
+    
+    workflow.add_conditional_edges(
+        "response_posting",
+        get_stage,
+        {
+            WorkflowStage.ERROR_RECOVERY.value: "error_recovery",
+            WorkflowStage.CYCLE_COMPLETE.value: "cycle_complete",
+            WorkflowStage.SHUTDOWN.value: "shutdown"
+        }
+    )
+    
+    workflow.add_conditional_edges(
+        "error_recovery",
+        get_stage,
+        {
+            WorkflowStage.CYCLE_COMPLETE.value: "cycle_complete",
+            WorkflowStage.SHUTDOWN.value: "shutdown"
+        }
+    )
+    
+    workflow.add_conditional_edges(
+        "cycle_complete",
+        get_stage,
+        {
+            WorkflowStage.MARKET_MONITORING.value: "market_monitor",
+            WorkflowStage.SHUTDOWN.value: "shutdown"
+        }
+    )
+    
+    # Set entrypoint
+    workflow.set_entry_point("market_monitor")
+    
+    return workflow
