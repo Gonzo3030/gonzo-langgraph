@@ -93,35 +93,33 @@ def run_gonzo() -> None:
         logger.info('Initial state created')
         
         # Create workflow
-        workflow = create_workflow()
+        app = create_workflow()
         logger.info('Workflow created, starting Gonzo...')
-        
-        # Initial run with state dump
-        current_state = state.model_dump()
         
         # Keep the workflow running
         while True:
             try:
                 # Run workflow cycle
-                result = workflow.run(current_state)
+                results = app.batch([state.model_dump()])
                 
-                if result == "end":
-                    logger.info("Workflow completed normally")
-                    break
-                
-                # Extract new state
-                new_state = UnifiedState(**result)
-                
-                # Log progress
-                logger.info(
-                    f"Completed cycle. Stage: {new_state.current_stage}, "
-                    f"Events: Market({len(new_state.narrative.market_events)}), "
-                    f"News({len(new_state.narrative.news_events)}), "
-                    f"Social({len(new_state.narrative.social_events)})"
-                )
-                
-                # Update current state
-                current_state = new_state.model_dump()
+                for result in results:
+                    if result == "end":
+                        logger.info("Workflow completed normally")
+                        return
+                    
+                    # Extract new state
+                    new_state = UnifiedState(**result)
+                    
+                    # Log progress
+                    logger.info(
+                        f"Completed cycle. Stage: {new_state.current_stage}, "
+                        f"Events: Market({len(new_state.narrative.market_events)}), "
+                        f"News({len(new_state.narrative.news_events)}), "
+                        f"Social({len(new_state.narrative.social_events)})"
+                    )
+                    
+                    # Update state for next cycle
+                    state = new_state
                     
             except KeyboardInterrupt:
                 logger.info('\nShutting down Gonzo gracefully...')
