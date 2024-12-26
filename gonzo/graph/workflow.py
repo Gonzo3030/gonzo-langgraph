@@ -18,7 +18,148 @@ from ..nodes.pattern_detection import detect_patterns
 from ..nodes.response_generation import generate_response
 from ..monitoring.news_monitor import NewsMonitor
 
-[... previous code remains unchanged until shutdown_node ...]
+def ensure_unified_state(state: Union[Dict, UnifiedState]) -> UnifiedState:
+    """Ensure we're working with a UnifiedState object."""
+    if isinstance(state, dict):
+        return UnifiedState(**state)
+    return state
+
+# Node Definitions
+def market_monitor_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
+    """Handle market monitoring stage."""
+    state = ensure_unified_state(state)
+    
+    try:
+        # Force transition to next stage after market monitoring
+        state.current_stage = WorkflowStage.NEWS_MONITORING
+        
+    except Exception as e:
+        state.api_errors.append(f"Market monitoring error: {str(e)}")
+        state.current_stage = WorkflowStage.ERROR_RECOVERY
+    
+    return state.model_dump()
+
+def news_monitor_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
+    """Handle news monitoring stage."""
+    state = ensure_unified_state(state)
+    
+    try:
+        # Force transition to next stage
+        state.current_stage = WorkflowStage.SOCIAL_MONITORING
+        
+    except Exception as e:
+        state.api_errors.append(f"News monitoring error: {str(e)}")
+        state.current_stage = WorkflowStage.ERROR_RECOVERY
+    
+    return state.model_dump()
+
+def social_monitor_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
+    """Handle social media monitoring stage."""
+    state = ensure_unified_state(state)
+    
+    try:
+        # Force transition to next stage
+        state.current_stage = WorkflowStage.PATTERN_ANALYSIS
+        
+    except Exception as e:
+        state.api_errors.append(f"Social monitoring error: {str(e)}")
+        state.current_stage = WorkflowStage.ERROR_RECOVERY
+    
+    return state.model_dump()
+
+def pattern_analysis_node(state: Union[Dict, UnifiedState], llm: BaseLLM) -> Dict[str, Any]:
+    """Handle pattern analysis stage."""
+    state = ensure_unified_state(state)
+    
+    try:
+        if state.narrative.pending_analyses:
+            state.current_stage = WorkflowStage.NARRATIVE_GENERATION
+        else:
+            state.current_stage = WorkflowStage.CYCLE_COMPLETE
+        
+    except Exception as e:
+        state.api_errors.append(f"Pattern analysis error: {str(e)}")
+        state.current_stage = WorkflowStage.ERROR_RECOVERY
+    
+    return state.model_dump()
+
+def narrative_generation_node(state: Union[Dict, UnifiedState], llm: BaseLLM) -> Dict[str, Any]:
+    """Handle narrative generation stage."""
+    state = ensure_unified_state(state)
+    
+    try:
+        # For now, just go to cycle complete
+        state.current_stage = WorkflowStage.CYCLE_COMPLETE
+        
+    except Exception as e:
+        state.api_errors.append(f"Narrative generation error: {str(e)}")
+        state.current_stage = WorkflowStage.ERROR_RECOVERY
+    
+    return state.model_dump()
+
+def response_posting_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
+    """Handle response posting stage."""
+    state = ensure_unified_state(state)
+    
+    try:
+        state.current_stage = WorkflowStage.CYCLE_COMPLETE
+        
+    except Exception as e:
+        state.api_errors.append(f"Response posting error: {str(e)}")
+        state.current_stage = WorkflowStage.ERROR_RECOVERY
+    
+    return state.model_dump()
+
+def cycle_complete_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
+    """Handle cycle completion."""
+    state = ensure_unified_state(state)
+    
+    try:
+        # Log cycle completion
+        state.messages.append("Cycle complete")
+        
+        # Reset for next cycle
+        state.narrative.pending_analyses = False
+        state.narrative.market_events.clear()
+        state.narrative.social_events.clear()
+        state.narrative.news_events.clear()
+        
+        # Check cycle count
+        state.cycle_count = getattr(state, 'cycle_count', 0) + 1
+        
+        if state.cycle_count >= 3:  # For testing, limit to 3 cycles
+            state.current_stage = WorkflowStage.SHUTDOWN
+        else:
+            # Move back to market monitoring for next cycle
+            state.current_stage = WorkflowStage.MARKET_MONITORING
+        
+    except Exception as e:
+        state.api_errors.append(f"Cycle completion error: {str(e)}")
+        state.current_stage = WorkflowStage.SHUTDOWN
+    
+    return state.model_dump()
+
+def error_recovery_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
+    """Handle error recovery."""
+    state = ensure_unified_state(state)
+    
+    try:
+        # Log errors
+        for error in state.api_errors:
+            state.messages.append(f"Error encountered: {error}")
+        
+        # Clear error list after logging
+        state.api_errors.clear()
+        
+        # Move to cycle completion
+        state.current_stage = WorkflowStage.CYCLE_COMPLETE
+        
+    except Exception as e:
+        # If error recovery itself fails, we need to shut down
+        state.messages.append(f"Critical error in recovery: {str(e)}")
+        state.current_stage = WorkflowStage.SHUTDOWN
+    
+    return state.model_dump()
 
 def shutdown_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
     """Handle graceful shutdown."""
