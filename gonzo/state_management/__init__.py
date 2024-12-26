@@ -5,16 +5,16 @@ from enum import Enum
 from pydantic import BaseModel
 
 class WorkflowStage(str, Enum):
-    """Workflow stages for Gonzo's operation"""
+    """Enum for workflow stages"""
     INITIALIZATION = "initialization"
     MARKET_MONITORING = "market_monitoring"
-    SOCIAL_MONITORING = "social_monitoring"
     NEWS_MONITORING = "news_monitoring"
+    SOCIAL_MONITORING = "social_monitoring"
     PATTERN_ANALYSIS = "pattern_analysis"
     NARRATIVE_GENERATION = "narrative_generation"
     RESPONSE_POSTING = "response_posting"
-    ERROR_RECOVERY = "error_recovery"
     CYCLE_COMPLETE = "cycle_complete"
+    ERROR_RECOVERY = "error_recovery"
     SHUTDOWN = "shutdown"
 
 class APICredentials(BaseModel):
@@ -55,7 +55,7 @@ class Analysis(BaseModel):
     """Analysis results structure"""
     market_patterns: List[Dict[str, Any]] = []
     social_patterns: List[Dict[str, Any]] = []
-    news_patterns: List[Dict[str, Any]] = []
+    news_patterns: List[Dict[str, Any]] = []  # Added news patterns
     correlations: List[Dict[str, Any]] = []
     sentiment_score: float = 0.0
     significance: float = 0.0
@@ -65,15 +65,14 @@ class NarrativeContext(BaseModel):
     """Narrative context structure"""
     market_events: List[Dict[str, Any]] = []
     social_events: List[Dict[str, Any]] = []
-    news_events: List[Dict[str, Any]] = []
+    news_events: List[Dict[str, Any]] = []  # Added news events
     patterns: List[Dict[str, Any]] = []
     topics: List[str] = []
     pending_analyses: bool = False
 
 class XIntegration(BaseModel):
     """X Integration state"""
-    direct_api: Dict[str, str] = {}
-    queued_posts: List[Dict[str, Any]] = []
+    direct_api: Optional[APICredentials] = None
     rate_limits: Dict[str, Any] = {
         "remaining": 180,
         "reset_time": None,
@@ -94,10 +93,6 @@ class Memory(BaseModel):
 
 class UnifiedState(BaseModel):
     """Complete unified state for Gonzo"""
-    # Workflow control
-    current_stage: WorkflowStage = WorkflowStage.INITIALIZATION
-    
-    # Message handling
     messages: List[str] = []
     api_queries: List[str] = []
     api_responses: Dict[str, Any] = {}
@@ -107,7 +102,7 @@ class UnifiedState(BaseModel):
     # Core components
     market_data: Dict[str, MarketData] = {}
     social_data: List[SocialData] = []
-    news_data: List[NewsData] = []
+    news_data: List[NewsData] = []  # Added news data
     analysis: Analysis = Analysis()
     narrative: NarrativeContext = NarrativeContext()
     
@@ -117,12 +112,17 @@ class UnifiedState(BaseModel):
     # Memory system
     memory: Memory = Memory()
     
-    def add_message(self, content: str, source: str = "system"):
-        """Add a message with metadata"""
-        timestamp = datetime.utcnow().isoformat()
-        message = f"[{timestamp}] [{source}] {content}"
-        self.messages.append(message)
+    # Current stage
+    current_stage: WorkflowStage = WorkflowStage.MARKET_MONITORING
+    
+    def add_message(self, message: str, source: str = "system"):
+        """Add a message to the state"""
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.messages.append(f"[{timestamp}] [{source}] {message}")
 
 def create_initial_state() -> UnifiedState:
     """Create the initial state for Gonzo"""
-    return UnifiedState()
+    state = UnifiedState()
+    # Ensure we start at market monitoring
+    state.current_stage = WorkflowStage.MARKET_MONITORING
+    return state
