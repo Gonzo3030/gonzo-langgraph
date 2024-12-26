@@ -92,16 +92,19 @@ def run_gonzo() -> None:
         state = setup_initial_state()
         logger.info('Initial state created')
         
-        # Create workflow
-        app = create_workflow()
-        logger.info('Workflow created, starting Gonzo...')
+        # Create and compile workflow
+        workflow = create_workflow()
+        # Ensure workflow is compiled before running
+        app = workflow.compile()
+        logger.info('Workflow created and compiled, starting Gonzo...')
         
         # Keep the workflow running
+        current_state = state.model_dump()
+        
         while True:
             try:
-                # Run workflow cycle
-                current_state = state.model_dump()
-                result = app.invoke(current_state)
+                # Run workflow cycle using async call
+                result = app(current_state)
                 
                 # Check for end condition
                 if isinstance(result, dict) and result.get("end"):
@@ -123,7 +126,7 @@ def run_gonzo() -> None:
                 )
                 
                 # Update state for next cycle
-                state = new_state
+                current_state = new_state.model_dump()
                     
             except KeyboardInterrupt:
                 logger.info('\nShutting down Gonzo gracefully...')
