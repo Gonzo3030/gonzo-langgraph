@@ -24,94 +24,45 @@ def ensure_unified_state(state: Union[Dict, UnifiedState]) -> UnifiedState:
         return UnifiedState(**state)
     return state
 
-# Node Definitions
-def market_monitor_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
+def market_monitor_node(state: Dict) -> Dict[str, Any]:
     """Handle market monitoring stage."""
+    # Convert input state
+    if isinstance(state, dict) and "state" in state:
+        state = state["state"]
     state = ensure_unified_state(state)
     
     try:
-        # Force transition to next stage after market monitoring
+        # Force transition to next stage
         state.current_stage = WorkflowStage.NEWS_MONITORING
         
     except Exception as e:
         state.api_errors.append(f"Market monitoring error: {str(e)}")
         state.current_stage = WorkflowStage.ERROR_RECOVERY
     
-    return state.model_dump()
+    return {"state": state.model_dump()}
 
-def news_monitor_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
+def news_monitor_node(state: Dict) -> Dict[str, Any]:
     """Handle news monitoring stage."""
+    # Convert input state
+    if isinstance(state, dict) and "state" in state:
+        state = state["state"]
     state = ensure_unified_state(state)
     
     try:
         # Force transition to next stage
-        state.current_stage = WorkflowStage.SOCIAL_MONITORING
+        state.current_stage = WorkflowStage.CYCLE_COMPLETE
         
     except Exception as e:
         state.api_errors.append(f"News monitoring error: {str(e)}")
         state.current_stage = WorkflowStage.ERROR_RECOVERY
     
-    return state.model_dump()
+    return {"state": state.model_dump()}
 
-def social_monitor_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
-    """Handle social media monitoring stage."""
-    state = ensure_unified_state(state)
-    
-    try:
-        # Force transition to next stage
-        state.current_stage = WorkflowStage.PATTERN_ANALYSIS
-        
-    except Exception as e:
-        state.api_errors.append(f"Social monitoring error: {str(e)}")
-        state.current_stage = WorkflowStage.ERROR_RECOVERY
-    
-    return state.model_dump()
-
-def pattern_analysis_node(state: Union[Dict, UnifiedState], llm: BaseLLM) -> Dict[str, Any]:
-    """Handle pattern analysis stage."""
-    state = ensure_unified_state(state)
-    
-    try:
-        if state.narrative.pending_analyses:
-            state.current_stage = WorkflowStage.NARRATIVE_GENERATION
-        else:
-            state.current_stage = WorkflowStage.CYCLE_COMPLETE
-        
-    except Exception as e:
-        state.api_errors.append(f"Pattern analysis error: {str(e)}")
-        state.current_stage = WorkflowStage.ERROR_RECOVERY
-    
-    return state.model_dump()
-
-def narrative_generation_node(state: Union[Dict, UnifiedState], llm: BaseLLM) -> Dict[str, Any]:
-    """Handle narrative generation stage."""
-    state = ensure_unified_state(state)
-    
-    try:
-        # For now, just go to cycle complete
-        state.current_stage = WorkflowStage.CYCLE_COMPLETE
-        
-    except Exception as e:
-        state.api_errors.append(f"Narrative generation error: {str(e)}")
-        state.current_stage = WorkflowStage.ERROR_RECOVERY
-    
-    return state.model_dump()
-
-def response_posting_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
-    """Handle response posting stage."""
-    state = ensure_unified_state(state)
-    
-    try:
-        state.current_stage = WorkflowStage.CYCLE_COMPLETE
-        
-    except Exception as e:
-        state.api_errors.append(f"Response posting error: {str(e)}")
-        state.current_stage = WorkflowStage.ERROR_RECOVERY
-    
-    return state.model_dump()
-
-def cycle_complete_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
+def cycle_complete_node(state: Dict) -> Dict[str, Any]:
     """Handle cycle completion."""
+    # Convert input state
+    if isinstance(state, dict) and "state" in state:
+        state = state["state"]
     state = ensure_unified_state(state)
     
     try:
@@ -137,10 +88,13 @@ def cycle_complete_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
         state.api_errors.append(f"Cycle completion error: {str(e)}")
         state.current_stage = WorkflowStage.SHUTDOWN
     
-    return state.model_dump()
+    return {"state": state.model_dump()}
 
-def error_recovery_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
+def error_recovery_node(state: Dict) -> Dict[str, Any]:
     """Handle error recovery."""
+    # Convert input state
+    if isinstance(state, dict) and "state" in state:
+        state = state["state"]
     state = ensure_unified_state(state)
     
     try:
@@ -159,16 +113,17 @@ def error_recovery_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
         state.messages.append(f"Critical error in recovery: {str(e)}")
         state.current_stage = WorkflowStage.SHUTDOWN
     
-    return state.model_dump()
+    return {"state": state.model_dump()}
 
-def shutdown_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
+def shutdown_node(state: Dict) -> Dict[str, Any]:
     """Handle graceful shutdown."""
+    # Convert input state
+    if isinstance(state, dict) and "state" in state:
+        state = state["state"]
     state = ensure_unified_state(state)
-    state.messages.append("Shutting down Gonzo...")
     
-    # Return both state and end indicator
-    final_state = state.model_dump()
-    return {"state": final_state, "end": True}
+    state.messages.append("Shutting down Gonzo...")
+    return {"state": state.model_dump(), "end": True}
 
 def create_workflow(
     llm: Optional[BaseLLM] = None,
@@ -177,7 +132,7 @@ def create_workflow(
     """Create the main workflow graph."""
     # Create graph with config
     config = config or {}
-    config['recursion_limit'] = config.get('recursion_limit', 50)
+    config['recursion_limit'] = config.get('recursion_limit', 100)
     
     workflow = StateGraph(
         UnifiedState,
@@ -187,24 +142,20 @@ def create_workflow(
     # Add nodes
     workflow.add_node("market_monitor", market_monitor_node)
     workflow.add_node("news_monitor", news_monitor_node)
-    workflow.add_node("social_monitor", social_monitor_node)
-    
-    workflow.add_node("pattern_analysis", 
-                     lambda x: pattern_analysis_node(x, llm))
-    workflow.add_node("narrative_generation", 
-                     lambda x: narrative_generation_node(x, llm))
-    workflow.add_node("response_posting", response_posting_node)
-    
     workflow.add_node("cycle_complete", cycle_complete_node)
     workflow.add_node("error_recovery", error_recovery_node)
     workflow.add_node("shutdown", shutdown_node)
     
     # Add edges
-    def get_stage(x: Union[Dict, UnifiedState]) -> str:
-        state = ensure_unified_state(x)
+    def get_stage(x: Dict) -> str:
+        # Extract state from wrapper if needed
+        if isinstance(x, dict) and "state" in x:
+            state = ensure_unified_state(x["state"])
+        else:
+            state = ensure_unified_state(x)
         return state.current_stage.value
     
-    # Add all conditional edges
+    # Add conditional edges
     workflow.add_conditional_edges(
         "market_monitor",
         get_stage,
@@ -218,50 +169,6 @@ def create_workflow(
     
     workflow.add_conditional_edges(
         "news_monitor",
-        get_stage,
-        {
-            WorkflowStage.SOCIAL_MONITORING.value: "social_monitor",
-            WorkflowStage.ERROR_RECOVERY.value: "error_recovery",
-            WorkflowStage.CYCLE_COMPLETE.value: "cycle_complete",
-            WorkflowStage.SHUTDOWN.value: "shutdown"
-        }
-    )
-    
-    workflow.add_conditional_edges(
-        "social_monitor",
-        get_stage,
-        {
-            WorkflowStage.PATTERN_ANALYSIS.value: "pattern_analysis",
-            WorkflowStage.ERROR_RECOVERY.value: "error_recovery",
-            WorkflowStage.CYCLE_COMPLETE.value: "cycle_complete",
-            WorkflowStage.SHUTDOWN.value: "shutdown"
-        }
-    )
-    
-    workflow.add_conditional_edges(
-        "pattern_analysis",
-        get_stage,
-        {
-            WorkflowStage.NARRATIVE_GENERATION.value: "narrative_generation",
-            WorkflowStage.ERROR_RECOVERY.value: "error_recovery",
-            WorkflowStage.CYCLE_COMPLETE.value: "cycle_complete",
-            WorkflowStage.SHUTDOWN.value: "shutdown"
-        }
-    )
-    
-    workflow.add_conditional_edges(
-        "narrative_generation",
-        get_stage,
-        {
-            WorkflowStage.RESPONSE_POSTING.value: "response_posting",
-            WorkflowStage.ERROR_RECOVERY.value: "error_recovery",
-            WorkflowStage.CYCLE_COMPLETE.value: "cycle_complete",
-            WorkflowStage.SHUTDOWN.value: "shutdown"
-        }
-    )
-    
-    workflow.add_conditional_edges(
-        "response_posting",
         get_stage,
         {
             WorkflowStage.ERROR_RECOVERY.value: "error_recovery",
