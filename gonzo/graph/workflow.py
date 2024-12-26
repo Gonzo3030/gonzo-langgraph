@@ -72,8 +72,10 @@ def pattern_analysis_node(state: Union[Dict, UnifiedState], llm: BaseLLM) -> Dic
     state = ensure_unified_state(state)
     
     try:
-        # Force to cycle complete for now
-        state.current_stage = WorkflowStage.CYCLE_COMPLETE
+        if state.narrative.pending_analyses:
+            state.current_stage = WorkflowStage.NARRATIVE_GENERATION
+        else:
+            state.current_stage = WorkflowStage.CYCLE_COMPLETE
         
     except Exception as e:
         state.api_errors.append(f"Pattern analysis error: {str(e)}")
@@ -86,8 +88,8 @@ def narrative_generation_node(state: Union[Dict, UnifiedState], llm: BaseLLM) ->
     state = ensure_unified_state(state)
     
     try:
-        # Force to response posting
-        state.current_stage = WorkflowStage.RESPONSE_POSTING
+        # For now, just go to cycle complete
+        state.current_stage = WorkflowStage.CYCLE_COMPLETE
         
     except Exception as e:
         state.api_errors.append(f"Narrative generation error: {str(e)}")
@@ -122,8 +124,14 @@ def cycle_complete_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
         state.narrative.social_events.clear()
         state.narrative.news_events.clear()
         
-        # Move back to market monitoring for next cycle
-        state.current_stage = WorkflowStage.MARKET_MONITORING
+        # Check cycle count
+        state.cycle_count = getattr(state, 'cycle_count', 0) + 1
+        
+        if state.cycle_count >= 3:  # For testing, limit to 3 cycles
+            state.current_stage = WorkflowStage.SHUTDOWN
+        else:
+            # Move back to market monitoring for next cycle
+            state.current_stage = WorkflowStage.MARKET_MONITORING
         
     except Exception as e:
         state.api_errors.append(f"Cycle completion error: {str(e)}")
@@ -155,15 +163,9 @@ def error_recovery_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
 
 def shutdown_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
     """Handle graceful shutdown."""
-    state = ensure_unified_state(state)
-    
     try:
-        # Log shutdown
-        state.messages.append("Shutting down Gonzo...")
         return END
-        
     except Exception as e:
-        # Even if logging fails, we need to end
         return END
 
 def create_workflow(
@@ -171,7 +173,14 @@ def create_workflow(
     config: Optional[Dict[str, Any]] = None
 ) -> StateGraph:
     """Create the main workflow graph."""
-    workflow = StateGraph(UnifiedState)
+    # Create graph with config
+    config = config or {}
+    config['recursion_limit'] = config.get('recursion_limit', 50)
+    
+    workflow = StateGraph(
+        UnifiedState,
+        config
+    )
     
     # Add nodes
     workflow.add_node("market_monitor", market_monitor_node)
@@ -209,7 +218,6 @@ def create_workflow(
         get_stage,
         {
             WorkflowStage.SOCIAL_MONITORING.value: "social_monitor",
-            WorkflowStage.PATTERN_ANALYSIS.value: "pattern_analysis",
             WorkflowStage.ERROR_RECOVERY.value: "error_recovery",
             WorkflowStage.CYCLE_COMPLETE.value: "cycle_complete",
             WorkflowStage.SHUTDOWN.value: "shutdown"
@@ -227,7 +235,6 @@ def create_workflow(
         }
     )
     
-    # Pattern analysis edges
     workflow.add_conditional_edges(
         "pattern_analysis",
         get_stage,
@@ -239,7 +246,6 @@ def create_workflow(
         }
     )
     
-    # Narrative generation edges
     workflow.add_conditional_edges(
         "narrative_generation",
         get_stage,
@@ -251,7 +257,6 @@ def create_workflow(
         }
     )
     
-    # Response posting edges
     workflow.add_conditional_edges(
         "response_posting",
         get_stage,
@@ -262,7 +267,6 @@ def create_workflow(
         }
     )
     
-    # Error recovery edges
     workflow.add_conditional_edges(
         "error_recovery",
         get_stage,
@@ -272,7 +276,6 @@ def create_workflow(
         }
     )
     
-    # Cycle complete edges
     workflow.add_conditional_edges(
         "cycle_complete",
         get_stage,
@@ -281,6 +284,8 @@ def create_workflow(
             WorkflowStage.SHUTDOWN.value: "shutdown"
         }
     )
+    
+    # No edges needed for shutdown - it always returns END
     
     # Set entry point
     workflow.set_entry_point("market_monitor")
