@@ -86,29 +86,32 @@ async def run_workflow_cycle(app, current_state):
     """Run a single workflow cycle"""
     try:
         # Run workflow cycle
-        inputs = {"state": current_state}
-        result = await app.acall(inputs)
+        async for output in app.astream(current_state):
+            if output is None:
+                continue
+                
+            # Check for end condition
+            if isinstance(output, dict) and output.get("end"):
+                logger.info("Workflow completed normally")
+                return None, True
+            
+            # Extract new state
+            if isinstance(output, dict) and "state" in output:
+                new_state = UnifiedState(**output["state"])
+            else:
+                new_state = UnifiedState(**output)
+            
+            # Log progress
+            logger.info(
+                f"Completed cycle. Stage: {new_state.current_stage}, "
+                f"Events: Market({len(new_state.narrative.market_events)}), "
+                f"News({len(new_state.narrative.news_events)}), "
+                f"Social({len(new_state.narrative.social_events)})"
+            )
+            
+            return new_state.model_dump(), False
         
-        # Check for end condition
-        if isinstance(result, dict) and result.get("end"):
-            logger.info("Workflow completed normally")
-            return None, True
-        
-        # Extract new state
-        if isinstance(result, dict) and "state" in result:
-            new_state = UnifiedState(**result["state"])
-        else:
-            new_state = UnifiedState(**result)
-        
-        # Log progress
-        logger.info(
-            f"Completed cycle. Stage: {new_state.current_stage}, "
-            f"Events: Market({len(new_state.narrative.market_events)}), "
-            f"News({len(new_state.narrative.news_events)}), "
-            f"Social({len(new_state.narrative.social_events)})"
-        )
-        
-        return new_state.model_dump(), False
+        return current_state, False
         
     except Exception as e:
         logger.error(f'Error in workflow cycle: {str(e)}')
@@ -131,7 +134,7 @@ async def run_gonzo_async():
         logger.info('Workflow created and compiled, starting Gonzo...')
         
         # Keep the workflow running
-        current_state = {"state": state.model_dump()}
+        current_state = state.model_dump()
         
         while True:
             try:
@@ -141,7 +144,7 @@ async def run_gonzo_async():
                     break
                     
                 if new_state:
-                    current_state = {"state": new_state}
+                    current_state = new_state
                     
             except KeyboardInterrupt:
                 logger.info('\nShutting down Gonzo gracefully...')
