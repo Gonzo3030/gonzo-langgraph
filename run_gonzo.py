@@ -7,7 +7,7 @@ from typing import Dict, Any
 from datetime import datetime
 from dotenv import load_dotenv
 
-from gonzo.state_management import UnifiedState, create_initial_state, WorkflowStage
+from gonzo.state_management import UnifiedState, create_initial_state, WorkflowStage, APICredentials
 from gonzo.graph.workflow import create_workflow
 from gonzo.config import SYSTEM_PROMPT
 
@@ -62,13 +62,13 @@ def setup_initial_state() -> UnifiedState:
     # Add system prompt to establish Gonzo's persona
     state.add_message(SYSTEM_PROMPT, source="system")
     
-    # Configure X integration
-    state.x_integration.direct_api.update({
-        'api_key': os.getenv('X_API_KEY'),
-        'api_secret': os.getenv('X_API_SECRET'),
-        'access_token': os.getenv('X_ACCESS_TOKEN'),
-        'access_secret': os.getenv('X_ACCESS_SECRET')
-    })
+    # Initialize and configure X integration
+    state.x_integration.direct_api = APICredentials(
+        api_key=os.getenv('X_API_KEY', ''),
+        api_secret=os.getenv('X_API_SECRET', ''),
+        access_token=os.getenv('X_ACCESS_TOKEN', ''),
+        access_secret=os.getenv('X_ACCESS_SECRET', '')
+    )
     
     # Store API keys in memory for various services
     state.memory.store(
@@ -134,7 +134,7 @@ async def run_gonzo_async():
         logger.info('Workflow created and compiled, starting Gonzo...')
         
         # Keep the workflow running
-        current_state = state.model_dump()
+        current_state = {"state": state.model_dump()}
         
         while True:
             try:
@@ -144,7 +144,7 @@ async def run_gonzo_async():
                     break
                     
                 if new_state:
-                    current_state = new_state
+                    current_state = {"state": new_state}
                     
             except KeyboardInterrupt:
                 logger.info('\nShutting down Gonzo gracefully...')
