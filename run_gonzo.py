@@ -93,9 +93,7 @@ def run_gonzo() -> None:
         logger.info('Initial state created')
         
         # Create workflow
-        workflow = create_workflow()
-        # Compile the workflow
-        app = workflow.compile()
+        app = create_workflow()
         logger.info('Workflow created, starting Gonzo...')
         
         # Keep the workflow running
@@ -105,12 +103,16 @@ def run_gonzo() -> None:
                 current_state = state.model_dump()
                 result = app.invoke(current_state)
                 
-                if result == "end":
+                # Check for end condition
+                if isinstance(result, dict) and result.get("end"):
                     logger.info("Workflow completed normally")
                     break
                 
                 # Extract new state
-                new_state = UnifiedState(**result)
+                if isinstance(result, dict) and "state" in result:
+                    new_state = UnifiedState(**result["state"])
+                else:
+                    new_state = UnifiedState(**result)
                 
                 # Log progress
                 logger.info(
