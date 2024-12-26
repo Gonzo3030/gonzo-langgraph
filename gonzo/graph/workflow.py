@@ -30,17 +30,7 @@ def market_monitor_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
     state = ensure_unified_state(state)
     
     try:
-        # Process market data
-        if state.market_data:
-            state.narrative.market_events.extend(
-                [event for event in state.market_data.values() 
-                 if event.significance > GRAPH_CONFIG['market_significance_threshold']]
-            )
-            
-            if state.narrative.market_events:
-                state.narrative.pending_analyses = True
-        
-        # Transition to next stage
+        # Force transition to next stage after market monitoring
         state.current_stage = WorkflowStage.NEWS_MONITORING
         
     except Exception as e:
@@ -54,20 +44,8 @@ def news_monitor_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
     state = ensure_unified_state(state)
     
     try:
-        # Process news data
-        if state.news_data:
-            state.narrative.news_events.extend(
-                [event for event in state.news_data 
-                 if event.relevance_score > GRAPH_CONFIG['news_relevance_threshold']]
-            )
-            
-            if state.narrative.news_events:
-                state.narrative.pending_analyses = True
-                state.current_stage = WorkflowStage.PATTERN_ANALYSIS
-            else:
-                state.current_stage = WorkflowStage.SOCIAL_MONITORING
-        else:
-            state.current_stage = WorkflowStage.SOCIAL_MONITORING
+        # Force transition to next stage
+        state.current_stage = WorkflowStage.SOCIAL_MONITORING
         
     except Exception as e:
         state.api_errors.append(f"News monitoring error: {str(e)}")
@@ -80,22 +58,7 @@ def social_monitor_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
     state = ensure_unified_state(state)
     
     try:
-        # Check rate limits
-        if state.x_integration.rate_limits['remaining'] <= 1:
-            state.current_stage = WorkflowStage.PATTERN_ANALYSIS
-            return state.model_dump()
-        
-        # Process social data
-        if state.social_data:
-            state.narrative.social_events.extend(
-                [event for event in state.social_data 
-                 if event.metrics.get('impact_score', 0) > 
-                    GRAPH_CONFIG['social_impact_threshold']]
-            )
-            
-            if state.narrative.social_events:
-                state.narrative.pending_analyses = True
-        
+        # Force transition to next stage
         state.current_stage = WorkflowStage.PATTERN_ANALYSIS
         
     except Exception as e:
@@ -109,27 +72,8 @@ def pattern_analysis_node(state: Union[Dict, UnifiedState], llm: BaseLLM) -> Dic
     state = ensure_unified_state(state)
     
     try:
-        if state.narrative.pending_analyses:
-            # Prepare context for pattern detection
-            context = {
-                'market_events': state.narrative.market_events,
-                'news_events': state.narrative.news_events,
-                'social_events': state.narrative.social_events,
-                'previous_patterns': state.narrative.patterns
-            }
-            
-            # Detect patterns using LLM
-            patterns = detect_patterns(context, llm)
-            state.narrative.patterns.extend(patterns)
-            
-            # If significant patterns found, move to narrative generation
-            if any(p.significance > GRAPH_CONFIG['pattern_significance_threshold'] 
-                   for p in patterns):
-                state.current_stage = WorkflowStage.NARRATIVE_GENERATION
-            else:
-                state.current_stage = WorkflowStage.CYCLE_COMPLETE
-        else:
-            state.current_stage = WorkflowStage.CYCLE_COMPLETE
+        # Force to cycle complete for now
+        state.current_stage = WorkflowStage.CYCLE_COMPLETE
         
     except Exception as e:
         state.api_errors.append(f"Pattern analysis error: {str(e)}")
@@ -142,25 +86,8 @@ def narrative_generation_node(state: Union[Dict, UnifiedState], llm: BaseLLM) ->
     state = ensure_unified_state(state)
     
     try:
-        # Generate narrative using LLM
-        narrative = generate_response(
-            patterns=state.narrative.patterns,
-            market_events=state.narrative.market_events,
-            news_events=state.narrative.news_events,
-            social_events=state.narrative.social_events,
-            llm=llm
-        )
-        
-        if narrative and narrative.content:
-            state.analysis.generated_narrative = narrative.content
-            state.analysis.significance = narrative.significance
-            
-            if narrative.significance > GRAPH_CONFIG['posting_threshold']:
-                state.current_stage = WorkflowStage.RESPONSE_POSTING
-            else:
-                state.current_stage = WorkflowStage.CYCLE_COMPLETE
-        else:
-            state.current_stage = WorkflowStage.CYCLE_COMPLETE
+        # Force to response posting
+        state.current_stage = WorkflowStage.RESPONSE_POSTING
         
     except Exception as e:
         state.api_errors.append(f"Narrative generation error: {str(e)}")
@@ -173,10 +100,6 @@ def response_posting_node(state: Union[Dict, UnifiedState]) -> Dict[str, Any]:
     state = ensure_unified_state(state)
     
     try:
-        if state.analysis.generated_narrative:
-            # TODO: Implement actual posting logic
-            state.messages.append(f"Would post: {state.analysis.generated_narrative}")
-        
         state.current_stage = WorkflowStage.CYCLE_COMPLETE
         
     except Exception as e:
@@ -304,6 +227,7 @@ def create_workflow(
         }
     )
     
+    # Pattern analysis edges
     workflow.add_conditional_edges(
         "pattern_analysis",
         get_stage,
@@ -315,6 +239,7 @@ def create_workflow(
         }
     )
     
+    # Narrative generation edges
     workflow.add_conditional_edges(
         "narrative_generation",
         get_stage,
@@ -326,12 +251,33 @@ def create_workflow(
         }
     )
     
+    # Response posting edges
     workflow.add_conditional_edges(
         "response_posting",
         get_stage,
         {
             WorkflowStage.ERROR_RECOVERY.value: "error_recovery",
             WorkflowStage.CYCLE_COMPLETE.value: "cycle_complete",
+            WorkflowStage.SHUTDOWN.value: "shutdown"
+        }
+    )
+    
+    # Error recovery edges
+    workflow.add_conditional_edges(
+        "error_recovery",
+        get_stage,
+        {
+            WorkflowStage.CYCLE_COMPLETE.value: "cycle_complete",
+            WorkflowStage.SHUTDOWN.value: "shutdown"
+        }
+    )
+    
+    # Cycle complete edges
+    workflow.add_conditional_edges(
+        "cycle_complete",
+        get_stage,
+        {
+            WorkflowStage.MARKET_MONITORING.value: "market_monitor",
             WorkflowStage.SHUTDOWN.value: "shutdown"
         }
     )
