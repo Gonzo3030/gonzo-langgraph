@@ -2,6 +2,7 @@
 
 import os
 import logging
+import asyncio
 from typing import Dict, Any
 from datetime import datetime
 from dotenv import load_dotenv
@@ -81,8 +82,39 @@ def setup_initial_state() -> UnifiedState:
     
     return state
 
-def run_gonzo() -> None:
-    """Main execution function for Gonzo"""
+async def run_workflow_cycle(app, current_state):
+    """Run a single workflow cycle"""
+    try:
+        # Run workflow cycle
+        result = await app.ainvoke(current_state)
+        
+        # Check for end condition
+        if isinstance(result, dict) and result.get("end"):
+            logger.info("Workflow completed normally")
+            return None, True
+        
+        # Extract new state
+        if isinstance(result, dict) and "state" in result:
+            new_state = UnifiedState(**result["state"])
+        else:
+            new_state = UnifiedState(**result)
+        
+        # Log progress
+        logger.info(
+            f"Completed cycle. Stage: {new_state.current_stage}, "
+            f"Events: Market({len(new_state.narrative.market_events)}), "
+            f"News({len(new_state.narrative.news_events)}), "
+            f"Social({len(new_state.narrative.social_events)})"
+        )
+        
+        return new_state.model_dump(), False
+        
+    except Exception as e:
+        logger.error(f'Error in workflow cycle: {str(e)}')
+        return current_state, False
+
+async def run_gonzo_async():
+    """Async main execution function for Gonzo"""
     try:
         # Initialize environment
         init_environment()
@@ -94,7 +126,6 @@ def run_gonzo() -> None:
         
         # Create and compile workflow
         workflow = create_workflow()
-        # Ensure workflow is compiled before running
         app = workflow.compile()
         logger.info('Workflow created and compiled, starting Gonzo...')
         
@@ -103,30 +134,13 @@ def run_gonzo() -> None:
         
         while True:
             try:
-                # Run workflow cycle using async call
-                result = app(current_state)
+                new_state, should_end = await run_workflow_cycle(app, current_state)
                 
-                # Check for end condition
-                if isinstance(result, dict) and result.get("end"):
-                    logger.info("Workflow completed normally")
+                if should_end:
                     break
-                
-                # Extract new state
-                if isinstance(result, dict) and "state" in result:
-                    new_state = UnifiedState(**result["state"])
-                else:
-                    new_state = UnifiedState(**result)
-                
-                # Log progress
-                logger.info(
-                    f"Completed cycle. Stage: {new_state.current_stage}, "
-                    f"Events: Market({len(new_state.narrative.market_events)}), "
-                    f"News({len(new_state.narrative.news_events)}), "
-                    f"Social({len(new_state.narrative.social_events)})"
-                )
-                
-                # Update state for next cycle
-                current_state = new_state.model_dump()
+                    
+                if new_state:
+                    current_state = new_state
                     
             except KeyboardInterrupt:
                 logger.info('\nShutting down Gonzo gracefully...')
@@ -141,6 +155,10 @@ def run_gonzo() -> None:
     except Exception as e:
         logger.error(f'Failed to start Gonzo: {str(e)}')
         raise
+
+def run_gonzo():
+    """Main execution function that runs the async workflow"""
+    asyncio.run(run_gonzo_async())
 
 if __name__ == '__main__':
     run_gonzo()
