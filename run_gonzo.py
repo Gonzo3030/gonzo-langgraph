@@ -86,7 +86,8 @@ async def run_workflow_cycle(app, current_state):
     """Run a single workflow cycle"""
     try:
         # Run workflow cycle
-        result = await app.ainvoke(current_state)
+        inputs = {"state": current_state}
+        result = await app.acall(inputs)
         
         # Check for end condition
         if isinstance(result, dict) and result.get("end"):
@@ -125,12 +126,12 @@ async def run_gonzo_async():
         logger.info('Initial state created')
         
         # Create and compile workflow
-        workflow = create_workflow()
+        workflow = create_workflow(config={'recursion_limit': 100})
         app = workflow.compile()
         logger.info('Workflow created and compiled, starting Gonzo...')
         
         # Keep the workflow running
-        current_state = state.model_dump()
+        current_state = {"state": state.model_dump()}
         
         while True:
             try:
@@ -140,7 +141,7 @@ async def run_gonzo_async():
                     break
                     
                 if new_state:
-                    current_state = new_state
+                    current_state = {"state": new_state}
                     
             except KeyboardInterrupt:
                 logger.info('\nShutting down Gonzo gracefully...')
