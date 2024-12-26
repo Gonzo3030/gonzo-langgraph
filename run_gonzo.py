@@ -93,33 +93,35 @@ def run_gonzo() -> None:
         logger.info('Initial state created')
         
         # Create workflow
-        app = create_workflow()
+        workflow = create_workflow()
+        # Compile the workflow
+        app = workflow.compile()
         logger.info('Workflow created, starting Gonzo...')
         
         # Keep the workflow running
         while True:
             try:
                 # Run workflow cycle
-                results = app.batch([state.model_dump()])
+                current_state = state.model_dump()
+                result = app.invoke(current_state)
                 
-                for result in results:
-                    if result == "end":
-                        logger.info("Workflow completed normally")
-                        return
-                    
-                    # Extract new state
-                    new_state = UnifiedState(**result)
-                    
-                    # Log progress
-                    logger.info(
-                        f"Completed cycle. Stage: {new_state.current_stage}, "
-                        f"Events: Market({len(new_state.narrative.market_events)}), "
-                        f"News({len(new_state.narrative.news_events)}), "
-                        f"Social({len(new_state.narrative.social_events)})"
-                    )
-                    
-                    # Update state for next cycle
-                    state = new_state
+                if result == "end":
+                    logger.info("Workflow completed normally")
+                    break
+                
+                # Extract new state
+                new_state = UnifiedState(**result)
+                
+                # Log progress
+                logger.info(
+                    f"Completed cycle. Stage: {new_state.current_stage}, "
+                    f"Events: Market({len(new_state.narrative.market_events)}), "
+                    f"News({len(new_state.narrative.news_events)}), "
+                    f"Social({len(new_state.narrative.social_events)})"
+                )
+                
+                # Update state for next cycle
+                state = new_state
                     
             except KeyboardInterrupt:
                 logger.info('\nShutting down Gonzo gracefully...')
