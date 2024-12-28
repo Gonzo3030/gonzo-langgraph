@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class BraveMonitor:
     """Handles Brave API searches for relevant content."""
     
-    BASE_URL = "https://api.search.brave.com/news/search"
+    BASE_URL = "https://api.search.brave.com/app/search"
     
     def __init__(self, api_key: str):
         self.api_key = api_key
@@ -29,7 +29,10 @@ class BraveMonitor:
         params = {
             "q": query,
             "count": count,
-            "freshness": "p1d"  # Past day
+            "search_type": "news",  # Specifically search for news
+            "text_format": "plain",
+            "freshness": "past_day",
+            "safesearch": "moderate"
         }
         
         logger.info(f"Searching Brave API for: {query}")
@@ -44,14 +47,13 @@ class BraveMonitor:
                     timeout=aiohttp.ClientTimeout(total=10)
                 ) as response:
                     response_text = await response.text()
-                    logger.debug(f"API Response: {response_text[:500]}...")
                     
                     if response.status != 200:
-                        logger.error(f"Brave API error: {response.status} - {response_text}")
+                        logger.error(f"Brave API error: {response.status} - {response_text[:500]}")
                         raise Exception(f"Brave API error: {response.status}")
                     
                     data = await response.json()
-                    articles = data.get("articles", [])
+                    articles = data.get("news", [])
                     logger.info(f"Found {len(articles)} articles for query: {query}")
                     return articles
                     
