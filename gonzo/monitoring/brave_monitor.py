@@ -12,13 +12,14 @@ logger = logging.getLogger(__name__)
 class BraveMonitor:
     """Handles Brave API searches for relevant content."""
     
-    BASE_URL = "https://api.search.brave.com/app/search"
+    BASE_URL = "https://api.search.brave.com/app/web/search"
     
     def __init__(self, api_key: str):
         self.api_key = api_key
         self.headers = {
             "Accept": "application/json",
-            "X-Subscription-Token": api_key
+            "Content-Type": "application/json",
+            "X-API-KEY": api_key
         }
         # Create SSL context with certifi certificates
         self.ssl_context = ssl.create_default_context(cafile=certifi.where())
@@ -27,12 +28,12 @@ class BraveMonitor:
     async def search_news(self, query: str, count: int = 10) -> List[Dict[str, Any]]:
         """Search for news articles using Brave API."""
         params = {
-            "q": query,
+            "q": f"news {query}",  # Add news context to query
             "count": count,
-            "search_type": "news",  # Specifically search for news
+            "freshness": "pd",  # Past day
             "text_format": "plain",
-            "freshness": "past_day",
-            "safesearch": "moderate"
+            "country": "US",
+            "properties": "news"
         }
         
         logger.info(f"Searching Brave API for: {query}")
@@ -49,13 +50,26 @@ class BraveMonitor:
                     response_text = await response.text()
                     
                     if response.status != 200:
-                        logger.error(f"Brave API error: {response.status} - {response_text[:500]}")
+                        logger.error(f"Brave API error ({response.status}): {response_text[:500]}")
                         raise Exception(f"Brave API error: {response.status}")
                     
                     data = await response.json()
-                    articles = data.get("news", [])
-                    logger.info(f"Found {len(articles)} articles for query: {query}")
-                    return articles
+                    logger.debug(f"API Response: {str(data)[:500]}...")
+                    
+                    # Extract relevant news items from web results
+                    results = data.get("data", {}).get("webResults", [])
+                    news_items = []
+                    for result in results:
+                        if "news" in result.get("properties", []):
+                            news_items.append({
+                                "title": result.get("title", ""),
+                                "description": result.get("description", ""),
+                                "url": result.get("url", ""),
+                                "source": result.get("siteName", "")
+                            })
+                    
+                    logger.info(f"Found {len(news_items)} news items for query: {query}")
+                    return news_items
                     
             except Exception as e:
                 logger.error(f"Error in search_news: {str(e)}")
