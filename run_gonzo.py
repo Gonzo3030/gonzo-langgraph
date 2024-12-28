@@ -52,20 +52,29 @@ async def run_workflow_cycle(app, initial_state: Dict) -> Tuple[Dict, bool]:
     run_id = None
     
     try:
+        # Convert initial state dictionary to string values
+        processed_state = {
+            k: v.value if isinstance(v, WorkflowStage) else v
+            for k, v in initial_state.items()
+        }
+        
         # Start trace if tracing is enabled
         if tracer.enabled:
-            state_obj = GonzoState(**initial_state)
             run_id = tracer.start_trace(
                 "gonzo_workflow_cycle",
                 metadata={
                     "timestamp": datetime.now().isoformat(),
-                    "initial_stage": state_obj.current_stage.value
+                    "initial_stage": processed_state["current_stage"]
                 }
             )
         
-        async for output in app.astream(initial_state):
+        async for output in app.astream(processed_state):
             if output is None:
                 continue
+            
+            # Convert current_stage back to enum if needed
+            if "current_stage" in output and isinstance(output["current_stage"], str):
+                output["current_stage"] = WorkflowStage(output["current_stage"])
             
             # Create state object from output
             state_obj = GonzoState(**output)
@@ -114,11 +123,18 @@ async def run_gonzo_async():
         app = workflow.compile()
         logger.info('Workflow compiled, starting Gonzo...')
         
-        # Run workflow with initial state
-        initial_state = state.model_dump()
+        # Convert state to dictionary with string values
+        initial_state = {
+            k: v.value if isinstance(v, WorkflowStage) else v
+            for k, v in state.model_dump().items()
+        }
+        
         new_state, completed = await run_workflow_cycle(app, initial_state)
         
-        # Create final state object
+        # Convert state back to proper types
+        if isinstance(new_state.get("current_stage"), str):
+            new_state["current_stage"] = WorkflowStage(new_state["current_stage"])
+            
         final_state = GonzoState(**new_state)
         
         if completed:
