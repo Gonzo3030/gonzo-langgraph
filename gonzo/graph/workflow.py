@@ -14,6 +14,8 @@ def ensure_state(state: Union[Dict, GonzoState]) -> GonzoState:
     """Ensure we're working with a GonzoState object"""
     if isinstance(state, GonzoState):
         return state
+    if isinstance(state, dict) and "state" in state:
+        return GonzoState(**state["state"])
     return GonzoState(**state)
 
 async def monitor_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
@@ -33,7 +35,10 @@ async def monitor_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
         # Get search queries
         queries = monitor.generate_queries()
         
+        # Initialize a fresh events list
+        state_obj.events = []
         total_events = 0
+        
         # Search for each query
         for query in queries:
             try:
@@ -49,7 +54,6 @@ async def monitor_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
                         source=item.get('source', ''),
                         url=item.get('url')
                     )
-                    # Important: Add event to state
                     state_obj.events.append(event)
                     total_events += 1
                     
@@ -74,8 +78,8 @@ async def monitor_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
         state_obj.errors.append(error_msg)
         state_obj.current_stage = WorkflowStage.ERROR
     
-    # Return updated state as dictionary
-    return state_obj.model_dump()
+    # Return the entire state wrapped in a state key
+    return {"state": state_obj.model_dump()}
 
 def analyze_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
     """Analyze events and identify patterns."""
@@ -93,7 +97,7 @@ def analyze_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
         state_obj.errors.append(error_msg)
         state_obj.current_stage = WorkflowStage.ERROR
     
-    return state_obj.model_dump()
+    return {"state": state_obj.model_dump()}
 
 def report_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
     """Generate Gonzo's insights and commentary."""
@@ -111,7 +115,7 @@ def report_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
         state_obj.errors.append(error_msg)
         state_obj.current_stage = WorkflowStage.ERROR
     
-    return state_obj.model_dump()
+    return {"state": state_obj.model_dump()}
 
 def error_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
     """Handle errors and attempt recovery."""
@@ -126,7 +130,7 @@ def error_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
         state_obj.errors.clear()
     
     state_obj.current_stage = WorkflowStage.COMPLETE
-    return state_obj.model_dump()
+    return {"state": state_obj.model_dump()}
 
 def create_workflow(config: Optional[Dict[str, Any]] = None) -> StateGraph:
     """Create the simplified workflow graph."""
@@ -140,7 +144,8 @@ def create_workflow(config: Optional[Dict[str, Any]] = None) -> StateGraph:
     
     # Add edges based on current_stage
     def get_stage(state: Union[Dict, GonzoState]) -> str:
-        return ensure_state(state).current_stage.value
+        state_obj = ensure_state(state)
+        return state_obj.current_stage.value
     
     workflow.add_conditional_edges(
         "monitor",
