@@ -2,7 +2,6 @@
 import os
 from typing import Optional, Dict, Any
 from langsmith import Client
-from langsmith.run_trees import RunTree
 
 def init_tracing(project_name: str = "gonzo-langgraph") -> None:
     """Initialize LangSmith tracing."""
@@ -10,11 +9,35 @@ def init_tracing(project_name: str = "gonzo-langgraph") -> None:
     os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
     os.environ["LANGCHAIN_PROJECT"] = project_name
 
-def create_run_tree(name: str, metadata: Optional[Dict[str, Any]] = None) -> RunTree:
-    """Create a run tree for tracing a specific operation."""
-    client = Client()
-    return client.create_run_tree(
-        name=name,
-        project_name=os.getenv("LANGCHAIN_PROJECT", "gonzo-langgraph"),
-        metadata=metadata or {}
-    )
+class TraceManager:
+    """Manages LangSmith tracing for Gonzo."""
+    
+    def __init__(self):
+        self.client = Client()
+        self.project = os.getenv("LANGCHAIN_PROJECT", "gonzo-langgraph")
+    
+    def start_trace(self, name: str, metadata: Optional[Dict[str, Any]] = None) -> str:
+        """Start a new trace."""
+        run = self.client.create_run(
+            name=name,
+            inputs={},
+            run_type="chain",
+            project_name=self.project,
+            extra={"metadata": metadata or {}}
+        )
+        return run.id
+    
+    def update_trace(self, run_id: str, metadata: Dict[str, Any]) -> None:
+        """Update trace metadata."""
+        self.client.update_run(
+            run_id,
+            extra={"metadata": metadata}
+        )
+    
+    def end_trace(self, run_id: str, outputs: Optional[Dict[str, Any]] = None) -> None:
+        """End a trace with optional outputs."""
+        self.client.update_run(
+            run_id,
+            outputs=outputs or {},
+            end_time=None  # Will use current time
+        )
