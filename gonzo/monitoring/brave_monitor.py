@@ -1,8 +1,11 @@
 """Brave API monitoring implementation."""
 import os
+import logging
 import aiohttp
 from typing import List, Dict, Any
 from datetime import datetime, timedelta
+
+logger = logging.getLogger(__name__)
 
 class BraveMonitor:
     """Handles Brave API searches for relevant content."""
@@ -15,6 +18,7 @@ class BraveMonitor:
             "Accept": "application/json",
             "X-Subscription-Token": api_key
         }
+        logger.info(f"Initializing BraveMonitor with API key: {api_key[:8]}...")
     
     async def search_news(self, query: str, count: int = 10) -> List[Dict[str, Any]]:
         """Search for news articles using Brave API."""
@@ -24,22 +28,35 @@ class BraveMonitor:
             "freshness": "p1d"  # Past day
         }
         
+        logger.info(f"Searching Brave API for: {query}")
+        
         async with aiohttp.ClientSession() as session:
-            async with session.get(
-                self.BASE_URL,
-                headers=self.headers,
-                params=params
-            ) as response:
-                if response.status != 200:
-                    raise Exception(f"Brave API error: {response.status}")
-                
-                data = await response.json()
-                return data.get("articles", [])
+            try:
+                async with session.get(
+                    self.BASE_URL,
+                    headers=self.headers,
+                    params=params
+                ) as response:
+                    response_text = await response.text()
+                    logger.debug(f"API Response: {response_text[:500]}...")
+                    
+                    if response.status != 200:
+                        logger.error(f"Brave API error: {response.status} - {response_text}")
+                        raise Exception(f"Brave API error: {response.status}")
+                    
+                    data = await response.json()
+                    articles = data.get("articles", [])
+                    logger.info(f"Found {len(articles)} articles for query: {query}")
+                    return articles
+                    
+            except Exception as e:
+                logger.error(f"Error in search_news: {str(e)}")
+                raise
     
     @staticmethod
     def generate_queries() -> List[str]:
         """Generate search queries based on Gonzo's interests."""
-        return [
+        queries = [
             # Tech and AI developments
             'artificial intelligence regulation developments',
             'tech surveillance privacy',
@@ -62,3 +79,5 @@ class BraveMonitor:
             'Russell Brand news',  # Specific focus on Brand's content
             'alternative media censorship'
         ]
+        logger.info(f"Generated {len(queries)} search queries")
+        return queries
