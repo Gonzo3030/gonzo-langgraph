@@ -54,15 +54,16 @@ async def run_workflow_cycle(app, current_state: Dict) -> Tuple[Dict, bool]:
     try:
         # Start trace if tracing is enabled
         if tracer.enabled:
+            current_stage = ensure_state(current_state).current_stage.value
             run_id = tracer.start_trace(
                 "gonzo_workflow_cycle",
                 metadata={
                     "timestamp": datetime.now().isoformat(),
-                    "initial_stage": ensure_state(current_state).current_stage.value
+                    "initial_stage": current_stage
                 }
             )
         
-        async for output in app.astream(current_state):
+        async for output in app.astream({"state": current_state}):
             if output is None:
                 continue
             
@@ -86,7 +87,7 @@ async def run_workflow_cycle(app, current_state: Dict) -> Tuple[Dict, bool]:
                     "insights_generated": len(new_state.insights)
                 })
             
-            # Ensure we return the state as a dictionary
+            # Return the state dictionary
             return new_state.model_dump(), True
         
         return current_state, False
