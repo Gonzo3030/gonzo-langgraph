@@ -22,15 +22,20 @@ def ensure_state_dict(state: Union[Dict, GonzoState]) -> Dict:
         state['current_stage'] = state['current_stage'].value
     return state
 
-def ensure_state_obj(state: Dict) -> GonzoState:
+def ensure_state_obj(state: Union[Dict, GonzoState]) -> GonzoState:
     """Ensure we're working with a GonzoState object"""
-    if isinstance(state.get('current_stage'), str):
-        state['current_stage'] = WorkflowStage(state['current_stage'])
-    return GonzoState(**state)
+    if isinstance(state, GonzoState):
+        return state
+        
+    state_dict = state.copy()  # Make a copy to avoid modifying the input
+    if isinstance(state_dict.get('current_stage'), str):
+        state_dict['current_stage'] = WorkflowStage(state_dict['current_stage'])
+    return GonzoState(**state_dict)
 
-async def monitor_node(state: Dict) -> Dict[str, Any]:
+async def monitor_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
     """Monitor for relevant events using Brave API."""
-    state_obj = ensure_state_obj(state)
+    state_dict = ensure_state_dict(state)
+    state_obj = ensure_state_obj(state_dict)
     logger.info("Starting monitoring phase")
     
     try:
@@ -90,9 +95,10 @@ async def monitor_node(state: Dict) -> Dict[str, Any]:
     
     return ensure_state_dict(state_obj)
 
-async def analyze_node(state: Dict) -> Dict[str, Any]:
+async def analyze_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
     """Analyze events and identify patterns."""
-    state_obj = ensure_state_obj(state)
+    state_dict = ensure_state_dict(state)
+    state_obj = ensure_state_obj(state_dict)
     logger.info("Starting analysis phase")
     
     try:
@@ -108,9 +114,10 @@ async def analyze_node(state: Dict) -> Dict[str, Any]:
     
     return ensure_state_dict(state_obj)
 
-async def report_node(state: Dict) -> Dict[str, Any]:
+async def report_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
     """Generate Gonzo's insights and commentary."""
-    state_obj = ensure_state_obj(state)
+    state_dict = ensure_state_dict(state)
+    state_obj = ensure_state_obj(state_dict)
     logger.info("Starting reporting phase")
     
     try:
@@ -126,9 +133,10 @@ async def report_node(state: Dict) -> Dict[str, Any]:
     
     return ensure_state_dict(state_obj)
 
-async def error_node(state: Dict) -> Dict[str, Any]:
+async def error_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
     """Handle errors and recovery."""
-    state_obj = ensure_state_obj(state)
+    state_dict = ensure_state_dict(state)
+    state_obj = ensure_state_obj(state_dict)
     
     # Log errors
     if state_obj.errors:
@@ -139,10 +147,15 @@ async def error_node(state: Dict) -> Dict[str, Any]:
     state_obj.current_stage = WorkflowStage.COMPLETE
     return ensure_state_dict(state_obj)
 
+def get_stage(state: Union[Dict, GonzoState]) -> str:
+    """Get stage value, handling both dict and GonzoState inputs"""
+    state_dict = ensure_state_dict(state)
+    return state_dict['current_stage']
+
 def create_workflow(config: Optional[Dict[str, Any]] = None) -> StateGraph:
     """Create the simplified workflow graph."""
-    # Create workflow with state type
-    workflow = StateGraph(GonzoState)
+    # Create workflow
+    workflow = StateGraph()
     
     # Add nodes
     workflow.add_node("monitor", monitor_node)
@@ -151,11 +164,6 @@ def create_workflow(config: Optional[Dict[str, Any]] = None) -> StateGraph:
     workflow.add_node("error", error_node)
     
     # Add edges based on current_stage
-    def get_stage(state: Dict) -> str:
-        if isinstance(state.get('current_stage'), WorkflowStage):
-            return state['current_stage'].value
-        return state['current_stage']
-    
     workflow.add_conditional_edges(
         "monitor",
         get_stage,
