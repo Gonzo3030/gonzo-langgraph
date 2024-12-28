@@ -43,8 +43,9 @@ def ensure_state_obj(state: Union[Dict, GonzoState]) -> GonzoState:
 
 async def monitor_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """Monitor for relevant events using Brave API."""
-    state_dict = ensure_state_dict(state)
-    state_obj = ensure_state_obj(state_dict)
+    # Always work with a copy of the state
+    current_state = state.copy()
+    state_obj = ensure_state_obj(current_state)
     logger.info("Starting monitoring phase")
     
     try:
@@ -59,8 +60,8 @@ async def monitor_node(state: Dict[str, Any]) -> Dict[str, Any]:
         # Get search queries
         queries = monitor.generate_queries()
         
-        # Initialize a fresh events list
-        state_obj.events = []
+        # Initialize event collection
+        new_events = []
         total_events = 0
         
         # Search for each query
@@ -78,88 +79,89 @@ async def monitor_node(state: Dict[str, Any]) -> Dict[str, Any]:
                         source=item.get('source', ''),
                         url=item.get('url')
                     )
-                    state_obj.events.append(event)
+                    new_events.append(event)
                     total_events += 1
                     
             except Exception as e:
                 error_msg = f"Error searching {query}: {str(e)}"
                 logger.error(error_msg)
-                state_obj.errors.append(error_msg)
+                current_state['errors'] = current_state.get('errors', []) + [error_msg]
         
         logger.info(f"Completed monitoring phase. Found {total_events} events")
         
+        # Update state with new events
+        current_state['events'] = new_events
+        
         # Move to analysis stage if we found any events
         if total_events > 0:
-            state_obj.current_stage = WorkflowStage.ANALYSIS
-            logger.info(f"Moving to ANALYSIS stage with {len(state_obj.events)} events")
+            current_state['current_stage'] = WorkflowStage.ANALYSIS.value
+            logger.info(f"Moving to ANALYSIS stage with {total_events} events")
         else:
             logger.warning("No events found during monitoring")
-            state_obj.current_stage = WorkflowStage.COMPLETE
+            current_state['current_stage'] = WorkflowStage.COMPLETE.value
         
     except Exception as e:
         error_msg = f"Monitoring error: {str(e)}"
         logger.error(error_msg)
-        state_obj.errors.append(error_msg)
-        state_obj.current_stage = WorkflowStage.ERROR
+        current_state['errors'] = current_state.get('errors', []) + [error_msg]
+        current_state['current_stage'] = WorkflowStage.ERROR.value
     
-    return ensure_state_dict(state_obj)
+    return current_state
 
 async def analyze_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """Analyze events and identify patterns."""
-    state_dict = ensure_state_dict(state)
-    state_obj = ensure_state_obj(state_dict)
+    current_state = state.copy()
     logger.info("Starting analysis phase")
     
     try:
-        logger.info(f"Analyzing {len(state_obj.events)} events")
+        logger.info(f"Analyzing {len(current_state['events'])} events")
         # TODO: Implement pattern analysis
-        state_obj.current_stage = WorkflowStage.REPORTING
+        current_state['current_stage'] = WorkflowStage.REPORTING.value
         
     except Exception as e:
         error_msg = f"Analysis error: {str(e)}"
         logger.error(error_msg)
-        state_obj.errors.append(error_msg)
-        state_obj.current_stage = WorkflowStage.ERROR
+        current_state['errors'] = current_state.get('errors', []) + [error_msg]
+        current_state['current_stage'] = WorkflowStage.ERROR.value
     
-    return ensure_state_dict(state_obj)
+    return current_state
 
 async def report_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """Generate Gonzo's insights and commentary."""
-    state_dict = ensure_state_dict(state)
-    state_obj = ensure_state_obj(state_dict)
+    current_state = state.copy()
     logger.info("Starting reporting phase")
     
     try:
-        logger.info(f"Generating insights from {len(state_obj.patterns)} patterns")
+        logger.info(f"Generating insights from {len(current_state.get('patterns', []))} patterns")
         # TODO: Implement insight generation
-        state_obj.current_stage = WorkflowStage.COMPLETE
+        current_state['current_stage'] = WorkflowStage.COMPLETE.value
         
     except Exception as e:
         error_msg = f"Reporting error: {str(e)}"
         logger.error(error_msg)
-        state_obj.errors.append(error_msg)
-        state_obj.current_stage = WorkflowStage.ERROR
+        current_state['errors'] = current_state.get('errors', []) + [error_msg]
+        current_state['current_stage'] = WorkflowStage.ERROR.value
     
-    return ensure_state_dict(state_obj)
+    return current_state
 
 async def error_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """Handle errors and recovery."""
-    state_dict = ensure_state_dict(state)
-    state_obj = ensure_state_obj(state_dict)
+    current_state = state.copy()
     
     # Log errors
-    if state_obj.errors:
-        for error in state_obj.errors:
+    if current_state.get('errors'):
+        for error in current_state['errors']:
             logger.error(f"Error encountered: {error}")
-        state_obj.errors.clear()
+        current_state['errors'] = []
     
-    state_obj.current_stage = WorkflowStage.COMPLETE
-    return ensure_state_dict(state_obj)
+    current_state['current_stage'] = WorkflowStage.COMPLETE.value
+    return current_state
 
 def get_stage(state: Dict[str, Any]) -> str:
     """Get stage value, handling both dict and GonzoState inputs"""
-    state_dict = ensure_state_dict(state)
-    return state_dict['current_stage']
+    if isinstance(state.get('current_stage'), WorkflowStage):
+        return state['current_stage'].value
+    return state['current_stage']
 
 def create_workflow(config: Optional[Dict[str, Any]] = None) -> StateGraph:
     """Create the simplified workflow graph."""
