@@ -1,9 +1,11 @@
 """Simplified workflow implementation for Gonzo MVP."""
+import os
 from typing import Dict, Any, Optional, Union
 from datetime import datetime
 from langgraph.graph import StateGraph, END
 
-from ..state_management import GonzoState, WorkflowStage, Event, Pattern, Insight
+from ..state_management import GonzoState, WorkflowStage, Event
+from ..monitoring.brave_monitor import BraveMonitor
 
 def ensure_state(state: Union[Dict, GonzoState]) -> GonzoState:
     """Ensure we're working with a GonzoState object"""
@@ -11,13 +13,37 @@ def ensure_state(state: Union[Dict, GonzoState]) -> GonzoState:
         return state
     return GonzoState(**state)
 
-def monitor_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
+async def monitor_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
     """Monitor for relevant events using Brave API."""
     state_obj = ensure_state(state)
     
     try:
-        # TODO: Implement Brave API search
-        # For now, just transition to next stage
+        # Initialize Brave monitor
+        monitor = BraveMonitor(os.getenv('BRAVE_API_KEY'))
+        
+        # Get search queries
+        queries = monitor.generate_queries()
+        
+        # Search for each query
+        for query in queries:
+            try:
+                articles = await monitor.search_news(query)
+                
+                # Convert articles to events
+                for article in articles:
+                    event = Event(
+                        timestamp=datetime.now(),  # Brave API doesn't always provide publish date
+                        title=article.get('title', ''),
+                        content=article.get('description', ''),
+                        source=article.get('source', ''),
+                        url=article.get('url')
+                    )
+                    state_obj.events.append(event)
+                    
+            except Exception as e:
+                state_obj.errors.append(f"Error searching {query}: {str(e)}")
+        
+        # Move to analysis stage
         state_obj.current_stage = WorkflowStage.ANALYSIS
         
     except Exception as e:
