@@ -24,7 +24,7 @@ def monitor_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
         state_obj.errors.append(f"Monitoring error: {str(e)}")
         state_obj.current_stage = WorkflowStage.ERROR
     
-    return state_obj.dict()
+    return state_obj.model_dump()
 
 def analyze_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
     """Analyze events and identify patterns."""
@@ -39,7 +39,7 @@ def analyze_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
         state_obj.errors.append(f"Analysis error: {str(e)}")
         state_obj.current_stage = WorkflowStage.ERROR
     
-    return state_obj.dict()
+    return state_obj.model_dump()
 
 def report_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
     """Generate Gonzo's insights and commentary."""
@@ -54,7 +54,7 @@ def report_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
         state_obj.errors.append(f"Reporting error: {str(e)}")
         state_obj.current_stage = WorkflowStage.ERROR
     
-    return state_obj.dict()
+    return state_obj.model_dump()
 
 def error_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
     """Handle errors and attempt recovery."""
@@ -67,7 +67,7 @@ def error_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
     state_obj.errors.clear()
     state_obj.current_stage = WorkflowStage.COMPLETE
     
-    return state_obj.dict()
+    return state_obj.model_dump()
 
 def create_workflow(config: Optional[Dict[str, Any]] = None) -> StateGraph:
     """Create the simplified workflow graph."""
