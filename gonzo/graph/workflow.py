@@ -14,8 +14,11 @@ def ensure_state(state: Union[Dict, GonzoState]) -> GonzoState:
     """Ensure we're working with a GonzoState object"""
     if isinstance(state, GonzoState):
         return state
-    if isinstance(state, dict) and "state" in state:
-        return GonzoState(**state["state"])
+    if isinstance(state, dict):
+        # Convert current_stage to WorkflowStage if it's a string
+        if "current_stage" in state and isinstance(state["current_stage"], str):
+            state["current_stage"] = WorkflowStage(state["current_stage"])
+        return GonzoState(**state)
     return GonzoState(**state)
 
 async def monitor_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
@@ -78,12 +81,12 @@ async def monitor_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
         state_obj.errors.append(error_msg)
         state_obj.current_stage = WorkflowStage.ERROR
     
-    # Return unpacked state
+    # Return unpacked state with string enum value
     return {
         "events": state_obj.events,
         "patterns": state_obj.patterns,
         "insights": state_obj.insights,
-        "current_stage": state_obj.current_stage,
+        "current_stage": state_obj.current_stage.value,  # Convert enum to string
         "errors": state_obj.errors
     }
 
@@ -107,7 +110,7 @@ def analyze_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
         "events": state_obj.events,
         "patterns": state_obj.patterns,
         "insights": state_obj.insights,
-        "current_stage": state_obj.current_stage,
+        "current_stage": state_obj.current_stage.value,  # Convert enum to string
         "errors": state_obj.errors
     }
 
@@ -131,7 +134,7 @@ def report_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
         "events": state_obj.events,
         "patterns": state_obj.patterns,
         "insights": state_obj.insights,
-        "current_stage": state_obj.current_stage,
+        "current_stage": state_obj.current_stage.value,  # Convert enum to string
         "errors": state_obj.errors
     }
 
@@ -152,7 +155,7 @@ def error_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
         "events": state_obj.events,
         "patterns": state_obj.patterns,
         "insights": state_obj.insights,
-        "current_stage": state_obj.current_stage,
+        "current_stage": state_obj.current_stage.value,  # Convert enum to string
         "errors": state_obj.errors
     }
 
