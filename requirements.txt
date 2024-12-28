@@ -3,6 +3,11 @@ pydantic>=2.0.0
 langgraph>=0.0.15
 python-dotenv
 aiohttp>=3.8.0
+certifi>=2024.0.0
 
 # API clients
 anthropic>=0.5.0
+
+# Tracing
+langsmith>=0.0.75
+langchain>=0.1.0
