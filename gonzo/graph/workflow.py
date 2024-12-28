@@ -19,33 +19,20 @@ class GonzoGraphState(TypedDict):
     current_stage: str
     errors: list
 
-def ensure_state_dict(state: Union[Dict, GonzoState]) -> Dict:
-    """Ensure we're working with a dictionary"""
-    if isinstance(state, GonzoState):
-        state_dict = state.model_dump()
-        # Convert enum to string
-        if isinstance(state_dict.get('current_stage'), WorkflowStage):
-            state_dict['current_stage'] = state_dict['current_stage'].value
-        return state_dict
-    if isinstance(state, dict) and isinstance(state.get('current_stage'), WorkflowStage):
-        state['current_stage'] = state['current_stage'].value
-    return state
-
-def ensure_state_obj(state: Union[Dict, GonzoState]) -> GonzoState:
-    """Ensure we're working with a GonzoState object"""
-    if isinstance(state, GonzoState):
-        return state
-        
-    state_dict = state.copy()  # Make a copy to avoid modifying the input
-    if isinstance(state_dict.get('current_stage'), str):
-        state_dict['current_stage'] = WorkflowStage(state_dict['current_stage'])
-    return GonzoState(**state_dict)
+def create_empty_state() -> Dict[str, Any]:
+    """Create an empty state dictionary with all required fields."""
+    return {
+        "events": [],
+        "patterns": [],
+        "insights": [],
+        "current_stage": WorkflowStage.MONITORING.value,
+        "errors": []
+    }
 
 async def monitor_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """Monitor for relevant events using Brave API."""
     # Always work with a copy of the state
-    current_state = state.copy()
-    state_obj = ensure_state_obj(current_state)
+    current_state = state.copy() if state else create_empty_state()
     logger.info("Starting monitoring phase")
     
     try:
@@ -79,7 +66,7 @@ async def monitor_node(state: Dict[str, Any]) -> Dict[str, Any]:
                         source=item.get('source', ''),
                         url=item.get('url')
                     )
-                    new_events.append(event)
+                    new_events.append(event.model_dump())
                     total_events += 1
                     
             except Exception as e:
@@ -110,7 +97,7 @@ async def monitor_node(state: Dict[str, Any]) -> Dict[str, Any]:
 
 async def analyze_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """Analyze events and identify patterns."""
-    current_state = state.copy()
+    current_state = state.copy() if state else create_empty_state()
     logger.info("Starting analysis phase")
     
     try:
@@ -128,7 +115,7 @@ async def analyze_node(state: Dict[str, Any]) -> Dict[str, Any]:
 
 async def report_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """Generate Gonzo's insights and commentary."""
-    current_state = state.copy()
+    current_state = state.copy() if state else create_empty_state()
     logger.info("Starting reporting phase")
     
     try:
@@ -146,7 +133,7 @@ async def report_node(state: Dict[str, Any]) -> Dict[str, Any]:
 
 async def error_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """Handle errors and recovery."""
-    current_state = state.copy()
+    current_state = state.copy() if state else create_empty_state()
     
     # Log errors
     if current_state.get('errors'):
@@ -158,9 +145,9 @@ async def error_node(state: Dict[str, Any]) -> Dict[str, Any]:
     return current_state
 
 def get_stage(state: Dict[str, Any]) -> str:
-    """Get stage value, handling both dict and GonzoState inputs"""
-    if isinstance(state.get('current_stage'), WorkflowStage):
-        return state['current_stage'].value
+    """Get stage value from state."""
+    if not state or 'current_stage' not in state:
+        return WorkflowStage.MONITORING.value
     return state['current_stage']
 
 def create_workflow(config: Optional[Dict[str, Any]] = None) -> StateGraph:
