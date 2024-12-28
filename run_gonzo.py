@@ -8,7 +8,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 from gonzo.state_management import GonzoState, create_initial_state, WorkflowStage
-from gonzo.graph.workflow import create_workflow, ensure_state_dict, ensure_state_obj
+from gonzo.graph.workflow import create_workflow, create_empty_state
 from gonzo.tracing import init_tracing, TraceManager
 
 # Configure logging
@@ -58,7 +58,7 @@ async def run_workflow_cycle(app, initial_state: Dict) -> Tuple[Dict, bool]:
                 "gonzo_workflow_cycle",
                 metadata={
                     "timestamp": datetime.now().isoformat(),
-                    "initial_stage": initial_state['current_stage']
+                    "initial_stage": initial_state.get('current_stage', WorkflowStage.MONITORING.value)
                 }
             )
         
@@ -71,7 +71,7 @@ async def run_workflow_cycle(app, initial_state: Dict) -> Tuple[Dict, bool]:
             
             # Log progress
             logger.info(
-                f"Stage: {current_state['current_stage']}, "
+                f"Stage: {current_state.get('current_stage')}, "
                 f"Events: {len(current_state.get('events', []))}, "
                 f"Patterns: {len(current_state.get('patterns', []))}, "
                 f"Insights: {len(current_state.get('insights', []))}"
@@ -80,7 +80,7 @@ async def run_workflow_cycle(app, initial_state: Dict) -> Tuple[Dict, bool]:
             # Update trace if enabled
             if run_id:
                 tracer.update_trace(run_id, {
-                    "final_stage": current_state['current_stage'],
+                    "final_stage": current_state.get('current_stage'),
                     "events_found": len(current_state.get('events', [])),
                     "patterns_found": len(current_state.get('patterns', [])),
                     "insights_generated": len(current_state.get('insights', []))
@@ -105,16 +105,13 @@ async def run_gonzo_async():
         logger.info('Environment initialized')
         
         # Create initial state
-        state = create_initial_state()
+        initial_state = create_empty_state()
         logger.info('Initial state created')
         
         # Create and compile workflow
         workflow = create_workflow()
         app = workflow.compile()
         logger.info('Workflow compiled, starting Gonzo...')
-        
-        # Convert state to dictionary
-        initial_state = ensure_state_dict(state)
         
         # Run workflow
         new_state, completed = await run_workflow_cycle(app, initial_state)
