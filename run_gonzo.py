@@ -26,6 +26,10 @@ def init_environment() -> None:
     required_vars = [
         'ANTHROPIC_API_KEY',  # For analysis/commentary
         'BRAVE_API_KEY',      # For news monitoring
+    ]
+    
+    # Optional API keys
+    optional_vars = [
         'LANGCHAIN_API_KEY'   # For tracing
     ]
     
@@ -34,23 +38,29 @@ def init_environment() -> None:
     if missing:
         raise ValueError(f'Missing required environment variables: {missing}')
         
-    # Initialize tracing
-    init_tracing()
+    # Check optional variables
+    missing_optional = [var for var in optional_vars if not os.getenv(var)]
+    if missing_optional:
+        logger.warning(f'Missing optional variables (some features disabled): {missing_optional}')
+    else:
+        # Only initialize tracing if we have the API key
+        init_tracing()
 
 async def run_workflow_cycle(app, current_state: Dict) -> Tuple[Dict, bool]:
-    """Run a single workflow cycle with tracing."""
+    """Run a single workflow cycle with optional tracing."""
     tracer = TraceManager()
     run_id = None
     
     try:
-        # Start trace for this cycle
-        run_id = tracer.start_trace(
-            "gonzo_workflow_cycle",
-            metadata={
-                "timestamp": datetime.now().isoformat(),
-                "initial_stage": ensure_state(current_state).current_stage.value
-            }
-        )
+        # Start trace if tracing is enabled
+        if tracer.enabled:
+            run_id = tracer.start_trace(
+                "gonzo_workflow_cycle",
+                metadata={
+                    "timestamp": datetime.now().isoformat(),
+                    "initial_stage": ensure_state(current_state).current_stage.value
+                }
+            )
         
         async for output in app.astream(current_state):
             if output is None:
@@ -67,7 +77,7 @@ async def run_workflow_cycle(app, current_state: Dict) -> Tuple[Dict, bool]:
                 f"Insights: {len(new_state.insights)}"
             )
             
-            # Update trace
+            # Update trace if enabled
             if run_id:
                 tracer.update_trace(run_id, {
                     "final_stage": new_state.current_stage.value,
