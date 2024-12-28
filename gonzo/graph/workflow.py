@@ -1,13 +1,19 @@
 """Simplified workflow implementation for Gonzo MVP."""
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 from datetime import datetime
 from langgraph.graph import StateGraph, END
 
 from ..state_management import GonzoState, WorkflowStage, Event, Pattern, Insight
 
-def monitor_node(state: Dict) -> Dict[str, Any]:
+def ensure_state(state: Union[Dict, GonzoState]) -> GonzoState:
+    """Ensure we're working with a GonzoState object"""
+    if isinstance(state, GonzoState):
+        return state
+    return GonzoState(**state)
+
+def monitor_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
     """Monitor for relevant events using Brave API."""
-    state_obj = GonzoState(**state)
+    state_obj = ensure_state(state)
     
     try:
         # TODO: Implement Brave API search
@@ -18,11 +24,11 @@ def monitor_node(state: Dict) -> Dict[str, Any]:
         state_obj.errors.append(f"Monitoring error: {str(e)}")
         state_obj.current_stage = WorkflowStage.ERROR
     
-    return state_obj.model_dump()
+    return state_obj.dict()
 
-def analyze_node(state: Dict) -> Dict[str, Any]:
+def analyze_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
     """Analyze events and identify patterns."""
-    state_obj = GonzoState(**state)
+    state_obj = ensure_state(state)
     
     try:
         # TODO: Implement pattern analysis
@@ -33,11 +39,11 @@ def analyze_node(state: Dict) -> Dict[str, Any]:
         state_obj.errors.append(f"Analysis error: {str(e)}")
         state_obj.current_stage = WorkflowStage.ERROR
     
-    return state_obj.model_dump()
+    return state_obj.dict()
 
-def report_node(state: Dict) -> Dict[str, Any]:
+def report_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
     """Generate Gonzo's insights and commentary."""
-    state_obj = GonzoState(**state)
+    state_obj = ensure_state(state)
     
     try:
         # TODO: Implement insight generation
@@ -48,11 +54,11 @@ def report_node(state: Dict) -> Dict[str, Any]:
         state_obj.errors.append(f"Reporting error: {str(e)}")
         state_obj.current_stage = WorkflowStage.ERROR
     
-    return state_obj.model_dump()
+    return state_obj.dict()
 
-def error_node(state: Dict) -> Dict[str, Any]:
+def error_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
     """Handle errors and attempt recovery."""
-    state_obj = GonzoState(**state)
+    state_obj = ensure_state(state)
     
     # Log errors
     print(f"Errors encountered: {state_obj.errors}")
@@ -61,7 +67,7 @@ def error_node(state: Dict) -> Dict[str, Any]:
     state_obj.errors.clear()
     state_obj.current_stage = WorkflowStage.COMPLETE
     
-    return state_obj.model_dump()
+    return state_obj.dict()
 
 def create_workflow(config: Optional[Dict[str, Any]] = None) -> StateGraph:
     """Create the simplified workflow graph."""
@@ -74,8 +80,8 @@ def create_workflow(config: Optional[Dict[str, Any]] = None) -> StateGraph:
     workflow.add_node("error", error_node)
     
     # Add edges based on current_stage
-    def get_stage(state: Dict) -> str:
-        return GonzoState(**state).current_stage.value
+    def get_stage(state: Union[Dict, GonzoState]) -> str:
+        return ensure_state(state).current_stage.value
     
     workflow.add_conditional_edges(
         "monitor",
