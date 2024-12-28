@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 from gonzo.state_management import GonzoState, create_initial_state
 from gonzo.graph.workflow import create_workflow, ensure_state
-from gonzo.tracing import init_tracing, create_run_tree
+from gonzo.tracing import init_tracing, TraceManager
 
 # Configure logging
 logging.basicConfig(
@@ -39,13 +39,16 @@ def init_environment() -> None:
 
 async def run_workflow_cycle(app, current_state: Dict) -> Tuple[Dict, bool]:
     """Run a single workflow cycle with tracing."""
+    tracer = TraceManager()
+    run_id = None
+    
     try:
-        # Create run tree for this cycle
-        run_tree = create_run_tree(
+        # Start trace for this cycle
+        run_id = tracer.start_trace(
             "gonzo_workflow_cycle",
             metadata={
                 "timestamp": datetime.now().isoformat(),
-                "stage": ensure_state(current_state).current_stage.value
+                "initial_stage": ensure_state(current_state).current_stage.value
             }
         )
         
@@ -64,13 +67,14 @@ async def run_workflow_cycle(app, current_state: Dict) -> Tuple[Dict, bool]:
                 f"Insights: {len(new_state.insights)}"
             )
             
-            # Update run metadata
-            run_tree.metadata.update({
-                "final_stage": new_state.current_stage.value,
-                "events_found": len(new_state.events),
-                "patterns_found": len(new_state.patterns),
-                "insights_generated": len(new_state.insights)
-            })
+            # Update trace
+            if run_id:
+                tracer.update_trace(run_id, {
+                    "final_stage": new_state.current_stage.value,
+                    "events_found": len(new_state.events),
+                    "patterns_found": len(new_state.patterns),
+                    "insights_generated": len(new_state.insights)
+                })
             
             return new_state.model_dump(), True
         
@@ -78,8 +82,9 @@ async def run_workflow_cycle(app, current_state: Dict) -> Tuple[Dict, bool]:
         
     except Exception as e:
         logger.error(f'Error in workflow cycle: {str(e)}')
-        if 'run_tree' in locals():
-            run_tree.metadata["error"] = str(e)
+        if run_id:
+            tracer.update_trace(run_id, {"error": str(e)})
+            tracer.end_trace(run_id)
         return current_state, False
 
 async def run_gonzo_async():
