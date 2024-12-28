@@ -1,128 +1,47 @@
-"""State management for Gonzo system."""
-from typing import Dict, Any, List, Optional
-from datetime import datetime
+"""State management for Gonzo MVP."""
 from enum import Enum
+from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
+from datetime import datetime
 
 class WorkflowStage(str, Enum):
-    """Enum for workflow stages"""
-    INITIALIZATION = "initialization"
-    MARKET_MONITORING = "market_monitoring"
-    NEWS_MONITORING = "news_monitoring"
-    SOCIAL_MONITORING = "social_monitoring"
-    PATTERN_ANALYSIS = "pattern_analysis"
-    NARRATIVE_GENERATION = "narrative_generation"
-    RESPONSE_POSTING = "response_posting"
-    CYCLE_COMPLETE = "cycle_complete"
-    ERROR_RECOVERY = "error_recovery"
-    SHUTDOWN = "shutdown"
+    """Basic workflow stages"""
+    MONITORING = 'monitoring'
+    ANALYSIS = 'analysis'
+    REPORTING = 'reporting'
+    ERROR = 'error'
+    COMPLETE = 'complete'
 
-class APICredentials(BaseModel):
-    """API credentials model"""
-    api_key: str = ""
-    api_secret: str = ""
-    access_token: str = ""
-    access_secret: str = ""
-
-class MarketData(BaseModel):
-    """Market data structure"""
-    price: float
+class Event(BaseModel):
+    """Represents a monitored event/development"""
     timestamp: datetime
-    volume: float
-    change_24h: float
-    symbol: str
-
-class SocialData(BaseModel):
-    """Social media data structure"""
-    content: str
-    timestamp: datetime
-    metrics: Dict[str, int]
-    author_id: str
-
-class NewsData(BaseModel):
-    """News data structure"""
     title: str
-    url: str
-    published_date: datetime
+    content: str
     source: str
+    url: Optional[str] = None
+
+class Pattern(BaseModel):
+    """Represents an identified pattern between events"""
+    events: List[Event]
     description: str
-    relevance_score: float
-    topics: List[str]
-    sentiment: float
-    related_assets: List[str] = []
+    significance: float  # 0-1 scale of pattern significance
+    implications: List[str]
 
-class Analysis(BaseModel):
-    """Analysis results structure"""
-    market_patterns: List[Dict[str, Any]] = []
-    social_patterns: List[Dict[str, Any]] = []
-    news_patterns: List[Dict[str, Any]] = []  # Added news patterns
-    correlations: List[Dict[str, Any]] = []
-    sentiment_score: float = 0.0
-    significance: float = 0.0
-    generated_narrative: Optional[str] = None
+class Insight(BaseModel):
+    """Represents Gonzo's analysis and commentary"""
+    pattern: Pattern
+    commentary: str
+    warnings: List[str]
+    timestamp: datetime
 
-class NarrativeContext(BaseModel):
-    """Narrative context structure"""
-    market_events: List[Dict[str, Any]] = []
-    social_events: List[Dict[str, Any]] = []
-    news_events: List[Dict[str, Any]] = []  # Added news events
-    patterns: List[Dict[str, Any]] = []
-    topics: List[str] = []
-    pending_analyses: bool = False
+class GonzoState(BaseModel):
+    """Simplified state for Gonzo MVP"""
+    events: List[Event] = []
+    patterns: List[Pattern] = []
+    insights: List[Insight] = []
+    current_stage: WorkflowStage = WorkflowStage.MONITORING
+    errors: List[str] = []
 
-class XIntegration(BaseModel):
-    """X Integration state"""
-    direct_api: Optional[APICredentials] = None
-    rate_limits: Dict[str, Any] = {
-        "remaining": 180,
-        "reset_time": None,
-        "last_request": None
-    }
-
-class Memory(BaseModel):
-    """Memory system"""
-    short_term: Dict[str, Any] = {}
-    long_term: Dict[str, Any] = {}
-    
-    def store(self, key: str, value: Any, memory_type: str = "short_term"):
-        """Store data in memory"""
-        if memory_type == "long_term":
-            self.long_term[key] = value
-        else:
-            self.short_term[key] = value
-
-class UnifiedState(BaseModel):
-    """Complete unified state for Gonzo"""
-    messages: List[str] = []
-    api_queries: List[str] = []
-    api_responses: Dict[str, Any] = {}
-    api_errors: List[str] = []
-    next_steps: List[str] = []
-    
-    # Core components
-    market_data: Dict[str, MarketData] = {}
-    social_data: List[SocialData] = []
-    news_data: List[NewsData] = []  # Added news data
-    analysis: Analysis = Analysis()
-    narrative: NarrativeContext = NarrativeContext()
-    
-    # Integration states
-    x_integration: XIntegration = XIntegration()
-    
-    # Memory system
-    memory: Memory = Memory()
-    
-    # Current stage
-    current_stage: WorkflowStage = WorkflowStage.MARKET_MONITORING
-    
-    def add_message(self, message: str, source: str = "system"):
-        """Add a message to the state"""
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self.messages.append(f"[{timestamp}] [{source}] {message}")
-
-def create_initial_state() -> UnifiedState:
-    """Create the initial state for Gonzo"""
-    state = UnifiedState()
-    # Ensure we start at market monitoring
-    state.current_stage = WorkflowStage.MARKET_MONITORING
-    return state
+def create_initial_state() -> GonzoState:
+    """Create initial state for Gonzo"""
+    return GonzoState()
