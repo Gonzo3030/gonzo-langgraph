@@ -28,10 +28,10 @@ class BraveMonitor:
         """Search for news articles using Brave API."""
         params = {
             "q": query,
-            "count": count,
+            "count": str(count),  # Convert to string
             "freshness": "pd",  # Past day
             "text_format": "plain",
-            "snippets": True
+            "snippets": "1"  # Use string "1" instead of boolean True
         }
         
         logger.info(f"Searching Brave API for: {query}")
@@ -54,13 +54,14 @@ class BraveMonitor:
                     data = await response.json()
                     logger.debug(f"API Response: {str(data)[:500]}...")
                     
+                    # Extract results and handle possible missing fields
                     results = data.get("results", [])
                     news_items = [{
                         "title": item.get("title", ""),
-                        "description": item.get("description", ""),
+                        "description": item.get("description", "") or item.get("snippet", ""),
                         "url": item.get("url", ""),
-                        "source": item.get("source", "")
-                    } for item in results]
+                        "source": item.get("source", "") or item.get("siteName", "")
+                    } for item in results if item]
                     
                     logger.info(f"Found {len(news_items)} news items for query: {query}")
                     return news_items
