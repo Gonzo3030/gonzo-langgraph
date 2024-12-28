@@ -3,13 +3,12 @@
 import os
 import logging
 import asyncio
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 from datetime import datetime
 from dotenv import load_dotenv
 
-from gonzo.state_management import UnifiedState, create_initial_state, WorkflowStage, APICredentials
+from gonzo.state_management import GonzoState, create_initial_state
 from gonzo.graph.workflow import create_workflow
-from gonzo.config import SYSTEM_PROMPT
 
 # Configure logging
 logging.basicConfig(
@@ -22,94 +21,36 @@ def init_environment() -> None:
     """Initialize environment variables"""
     load_dotenv()
     
-    # Required API keys
+    # Required API keys for MVP
     required_vars = [
-        'ANTHROPIC_API_KEY',
-        'OPENAI_API_KEY',
-        'X_API_KEY',
-        'X_API_SECRET',
-        'X_ACCESS_TOKEN',
-        'X_ACCESS_SECRET',
-        'BRAVE_API_KEY',  # For market and news monitoring
-        'CRYPTOCOMPARE_API_KEY'  # For crypto market data
-    ]
-    
-    # Optional but recommended APIs
-    optional_vars = [
-        'LANGCHAIN_API_KEY',
-        'YOUTUBE_API_KEY'
+        'ANTHROPIC_API_KEY',  # For analysis/commentary
+        'BRAVE_API_KEY',      # For news monitoring
     ]
     
     # Check required variables
     missing = [var for var in required_vars if not os.getenv(var)]
     if missing:
         raise ValueError(f'Missing required environment variables: {missing}')
-    
-    # Log warning for missing optional variables
-    missing_optional = [var for var in optional_vars if not os.getenv(var)]
-    if missing_optional:
-        logger.warning(f'Missing optional API keys (some features will be disabled): {missing_optional}')
-    
-    # Set up LangChain monitoring
-    os.environ.setdefault('LANGCHAIN_TRACING_V2', 'true')
-    os.environ.setdefault('LANGCHAIN_ENDPOINT', 'https://api.smith.langchain.com')
-    os.environ.setdefault('LANGCHAIN_PROJECT', 'gonzo-langgraph')
 
-def setup_initial_state() -> UnifiedState:
-    """Create initial state with proper configuration"""
-    state = create_initial_state()
-    
-    # Add system prompt to establish Gonzo's persona
-    state.add_message(SYSTEM_PROMPT, source="system")
-    
-    # Initialize and configure X integration
-    state.x_integration.direct_api = APICredentials(
-        api_key=os.getenv('X_API_KEY', ''),
-        api_secret=os.getenv('X_API_SECRET', ''),
-        access_token=os.getenv('X_ACCESS_TOKEN', ''),
-        access_secret=os.getenv('X_ACCESS_SECRET', '')
-    )
-    
-    # Store API keys in memory for various services
-    state.memory.store(
-        "api_credentials",
-        {
-            'brave_key': os.getenv('BRAVE_API_KEY'),
-            'crypto_compare_key': os.getenv('CRYPTOCOMPARE_API_KEY')
-        },
-        "long_term"
-    )
-    
-    return state
-
-async def run_workflow_cycle(app, current_state):
+async def run_workflow_cycle(app, current_state) -> Tuple[Dict, bool]:
     """Run a single workflow cycle"""
     try:
-        # Run workflow cycle
         async for output in app.astream(current_state):
             if output is None:
                 continue
-                
-            # Check for end condition
-            if isinstance(output, dict) and output.get("end"):
-                logger.info("Workflow completed normally")
-                return None, True
             
             # Extract new state
-            if isinstance(output, dict) and "state" in output:
-                new_state = UnifiedState(**output["state"])
-            else:
-                new_state = UnifiedState(**output)
+            new_state = GonzoState(**output)
             
             # Log progress
             logger.info(
-                f"Completed cycle. Stage: {new_state.current_stage}, "
-                f"Events: Market({len(new_state.narrative.market_events)}), "
-                f"News({len(new_state.narrative.news_events)}), "
-                f"Social({len(new_state.narrative.social_events)})"
+                f"Stage: {new_state.current_stage}, "
+                f"Events: {len(new_state.events)}, "
+                f"Patterns: {len(new_state.patterns)}, "
+                f"Insights: {len(new_state.insights)}"
             )
             
-            return new_state.model_dump(), False
+            return new_state.model_dump(), True
         
         return current_state, False
         
@@ -125,43 +66,32 @@ async def run_gonzo_async():
         logger.info('Environment initialized')
         
         # Create initial state
-        state = setup_initial_state()
+        state = create_initial_state()
         logger.info('Initial state created')
         
         # Create and compile workflow
-        workflow = create_workflow(config={'recursion_limit': 100})
+        workflow = create_workflow()
         app = workflow.compile()
-        logger.info('Workflow created and compiled, starting Gonzo...')
+        logger.info('Workflow compiled, starting Gonzo...')
         
-        # Keep the workflow running
-        current_state = {"state": state.model_dump()}
+        # Run workflow
+        current_state = state.model_dump()
         
-        while True:
-            try:
-                new_state, should_end = await run_workflow_cycle(app, current_state)
-                
-                if should_end:
-                    break
-                    
-                if new_state:
-                    current_state = {"state": new_state}
-                    
-            except KeyboardInterrupt:
-                logger.info('\nShutting down Gonzo gracefully...')
-                break
-            except Exception as e:
-                logger.error(f'Error in workflow cycle: {str(e)}')
-                # Continue to next cycle rather than crashing
-                continue
+        new_state, completed = await run_workflow_cycle(app, current_state)
         
+        if completed:
+            logger.info('Workflow completed successfully')
+        else:
+            logger.warning('Workflow ended without completion')
+            
     except KeyboardInterrupt:
         logger.info('Shutting down Gonzo gracefully...')
     except Exception as e:
-        logger.error(f'Failed to start Gonzo: {str(e)}')
+        logger.error(f'Failed to run Gonzo: {str(e)}')
         raise
 
 def run_gonzo():
-    """Main execution function that runs the async workflow"""
+    """Main execution function"""
     asyncio.run(run_gonzo_async())
 
 if __name__ == '__main__':
