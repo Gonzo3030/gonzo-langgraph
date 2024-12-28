@@ -78,8 +78,14 @@ async def monitor_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
         state_obj.errors.append(error_msg)
         state_obj.current_stage = WorkflowStage.ERROR
     
-    # Return the entire state wrapped in a state key
-    return {"state": state_obj.model_dump()}
+    # Return unpacked state
+    return {
+        "events": state_obj.events,
+        "patterns": state_obj.patterns,
+        "insights": state_obj.insights,
+        "current_stage": state_obj.current_stage,
+        "errors": state_obj.errors
+    }
 
 def analyze_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
     """Analyze events and identify patterns."""
@@ -97,7 +103,13 @@ def analyze_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
         state_obj.errors.append(error_msg)
         state_obj.current_stage = WorkflowStage.ERROR
     
-    return {"state": state_obj.model_dump()}
+    return {
+        "events": state_obj.events,
+        "patterns": state_obj.patterns,
+        "insights": state_obj.insights,
+        "current_stage": state_obj.current_stage,
+        "errors": state_obj.errors
+    }
 
 def report_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
     """Generate Gonzo's insights and commentary."""
@@ -115,7 +127,13 @@ def report_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
         state_obj.errors.append(error_msg)
         state_obj.current_stage = WorkflowStage.ERROR
     
-    return {"state": state_obj.model_dump()}
+    return {
+        "events": state_obj.events,
+        "patterns": state_obj.patterns,
+        "insights": state_obj.insights,
+        "current_stage": state_obj.current_stage,
+        "errors": state_obj.errors
+    }
 
 def error_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
     """Handle errors and attempt recovery."""
@@ -130,7 +148,13 @@ def error_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
         state_obj.errors.clear()
     
     state_obj.current_stage = WorkflowStage.COMPLETE
-    return {"state": state_obj.model_dump()}
+    return {
+        "events": state_obj.events,
+        "patterns": state_obj.patterns,
+        "insights": state_obj.insights,
+        "current_stage": state_obj.current_stage,
+        "errors": state_obj.errors
+    }
 
 def create_workflow(config: Optional[Dict[str, Any]] = None) -> StateGraph:
     """Create the simplified workflow graph."""
