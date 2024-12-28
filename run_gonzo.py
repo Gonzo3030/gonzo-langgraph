@@ -66,7 +66,7 @@ async def run_workflow_cycle(app, current_state: Dict) -> Tuple[Dict, bool]:
             if output is None:
                 continue
             
-            # Extract new state
+            # Extract new state and ensure it's properly converted
             new_state = ensure_state(output)
             
             # Log progress
@@ -86,6 +86,7 @@ async def run_workflow_cycle(app, current_state: Dict) -> Tuple[Dict, bool]:
                     "insights_generated": len(new_state.insights)
                 })
             
+            # Ensure we return the state as a dictionary
             return new_state.model_dump(), True
         
         return current_state, False
@@ -117,9 +118,14 @@ async def run_gonzo_async():
         current_state = state.model_dump()
         
         new_state, completed = await run_workflow_cycle(app, current_state)
+        final_state = ensure_state(new_state)
         
         if completed:
-            logger.info('Workflow completed successfully')
+            logger.info(
+                f'Workflow completed successfully with {len(final_state.events)} events, '
+                f'{len(final_state.patterns)} patterns, and '
+                f'{len(final_state.insights)} insights'
+            )
         else:
             logger.warning('Workflow ended without completion')
             
