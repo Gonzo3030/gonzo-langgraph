@@ -8,7 +8,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 from gonzo.state_management import GonzoState, create_initial_state, WorkflowStage
-from gonzo.graph.workflow import create_workflow, ensure_state
+from gonzo.graph.workflow import create_workflow
 from gonzo.tracing import init_tracing, TraceManager
 
 # Configure logging
@@ -46,7 +46,7 @@ def init_environment() -> None:
         # Only initialize tracing if we have the API key
         init_tracing()
 
-async def run_workflow_cycle(app, current_state: Dict) -> Tuple[Dict, bool]:
+async def run_workflow_cycle(app, initial_state: Dict) -> Tuple[Dict, bool]:
     """Run a single workflow cycle with optional tracing."""
     tracer = TraceManager()
     run_id = None
@@ -54,7 +54,7 @@ async def run_workflow_cycle(app, current_state: Dict) -> Tuple[Dict, bool]:
     try:
         # Start trace if tracing is enabled
         if tracer.enabled:
-            state_obj = ensure_state(current_state)
+            state_obj = GonzoState(**initial_state)
             run_id = tracer.start_trace(
                 "gonzo_workflow_cycle",
                 metadata={
@@ -63,24 +63,12 @@ async def run_workflow_cycle(app, current_state: Dict) -> Tuple[Dict, bool]:
                 }
             )
         
-        async for output in app.astream(current_state):
+        async for output in app.astream(initial_state):
             if output is None:
                 continue
             
-            # Extract new state, converting current_stage to enum
-            current_stage = (
-                WorkflowStage(output["current_stage"])
-                if output.get("current_stage")
-                else WorkflowStage.MONITORING
-            )
-            
-            state_obj = GonzoState(
-                events=output.get("events", []),
-                patterns=output.get("patterns", []),
-                insights=output.get("insights", []),
-                current_stage=current_stage,
-                errors=output.get("errors", [])
-            )
+            # Create state object from output
+            state_obj = GonzoState(**output)
             
             # Log progress
             logger.info(
@@ -99,17 +87,16 @@ async def run_workflow_cycle(app, current_state: Dict) -> Tuple[Dict, bool]:
                     "insights_generated": len(state_obj.insights)
                 })
             
-            # Return the state dictionary
             return output, True
         
-        return current_state, False
+        return initial_state, False
         
     except Exception as e:
         logger.error(f'Error in workflow cycle: {str(e)}')
         if run_id:
             tracer.update_trace(run_id, {"error": str(e)})
             tracer.end_trace(run_id)
-        return current_state, False
+        return initial_state, False
 
 async def run_gonzo_async():
     """Async main execution function for Gonzo"""
@@ -127,31 +114,12 @@ async def run_gonzo_async():
         app = workflow.compile()
         logger.info('Workflow compiled, starting Gonzo...')
         
-        # Run workflow with unpacked state
-        current_state = {
-            "events": state.events,
-            "patterns": state.patterns,
-            "insights": state.insights,
-            "current_stage": state.current_stage.value,  # Convert enum to string
-            "errors": state.errors
-        }
+        # Run workflow with initial state
+        initial_state = state.model_dump()
+        new_state, completed = await run_workflow_cycle(app, initial_state)
         
-        new_state, completed = await run_workflow_cycle(app, current_state)
-        
-        # Convert current_stage back to enum
-        current_stage = (
-            WorkflowStage(new_state["current_stage"])
-            if new_state.get("current_stage")
-            else WorkflowStage.MONITORING
-        )
-        
-        final_state = GonzoState(
-            events=new_state.get("events", []),
-            patterns=new_state.get("patterns", []),
-            insights=new_state.get("insights", []),
-            current_stage=current_stage,
-            errors=new_state.get("errors", [])
-        )
+        # Create final state object
+        final_state = GonzoState(**new_state)
         
         if completed:
             logger.info(
