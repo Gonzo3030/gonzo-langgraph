@@ -7,7 +7,7 @@ from typing import Dict, Any, Tuple
 from datetime import datetime
 from dotenv import load_dotenv
 
-from gonzo.state_management import GonzoState, create_initial_state
+from gonzo.state_management import GonzoState, create_initial_state, WorkflowStage
 from gonzo.graph.workflow import create_workflow, ensure_state
 from gonzo.tracing import init_tracing, TraceManager
 
@@ -67,12 +67,18 @@ async def run_workflow_cycle(app, current_state: Dict) -> Tuple[Dict, bool]:
             if output is None:
                 continue
             
-            # Extract new state
+            # Extract new state, converting current_stage to enum
+            current_stage = (
+                WorkflowStage(output["current_stage"])
+                if output.get("current_stage")
+                else WorkflowStage.MONITORING
+            )
+            
             state_obj = GonzoState(
                 events=output.get("events", []),
                 patterns=output.get("patterns", []),
                 insights=output.get("insights", []),
-                current_stage=output.get("current_stage"),
+                current_stage=current_stage,
                 errors=output.get("errors", [])
             )
             
@@ -126,16 +132,24 @@ async def run_gonzo_async():
             "events": state.events,
             "patterns": state.patterns,
             "insights": state.insights,
-            "current_stage": state.current_stage,
+            "current_stage": state.current_stage.value,  # Convert enum to string
             "errors": state.errors
         }
         
         new_state, completed = await run_workflow_cycle(app, current_state)
+        
+        # Convert current_stage back to enum
+        current_stage = (
+            WorkflowStage(new_state["current_stage"])
+            if new_state.get("current_stage")
+            else WorkflowStage.MONITORING
+        )
+        
         final_state = GonzoState(
             events=new_state.get("events", []),
             patterns=new_state.get("patterns", []),
             insights=new_state.get("insights", []),
-            current_stage=new_state.get("current_stage"),
+            current_stage=current_stage,
             errors=new_state.get("errors", [])
         )
         
