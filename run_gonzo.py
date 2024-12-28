@@ -8,7 +8,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 from gonzo.state_management import GonzoState, create_initial_state, WorkflowStage
-from gonzo.graph.workflow import create_workflow
+from gonzo.graph.workflow import create_workflow, ensure_state_dict, ensure_state_obj
 from gonzo.tracing import init_tracing, TraceManager
 
 # Configure logging
@@ -52,32 +52,23 @@ async def run_workflow_cycle(app, initial_state: Dict) -> Tuple[Dict, bool]:
     run_id = None
     
     try:
-        # Convert initial state dictionary to string values
-        processed_state = {
-            k: v.value if isinstance(v, WorkflowStage) else v
-            for k, v in initial_state.items()
-        }
-        
         # Start trace if tracing is enabled
         if tracer.enabled:
+            state_obj = ensure_state_obj(initial_state)
             run_id = tracer.start_trace(
                 "gonzo_workflow_cycle",
                 metadata={
                     "timestamp": datetime.now().isoformat(),
-                    "initial_stage": processed_state["current_stage"]
+                    "initial_stage": state_obj.current_stage.value
                 }
             )
         
-        async for output in app.astream(processed_state):
+        async for output in app.astream(initial_state):
             if output is None:
                 continue
             
-            # Convert current_stage back to enum if needed
-            if "current_stage" in output and isinstance(output["current_stage"], str):
-                output["current_stage"] = WorkflowStage(output["current_stage"])
-            
             # Create state object from output
-            state_obj = GonzoState(**output)
+            state_obj = ensure_state_obj(output)
             
             # Log progress
             logger.info(
@@ -123,19 +114,11 @@ async def run_gonzo_async():
         app = workflow.compile()
         logger.info('Workflow compiled, starting Gonzo...')
         
-        # Convert state to dictionary with string values
-        initial_state = {
-            k: v.value if isinstance(v, WorkflowStage) else v
-            for k, v in state.model_dump().items()
-        }
+        # Convert state to dictionary
+        initial_state = ensure_state_dict(state)
         
         new_state, completed = await run_workflow_cycle(app, initial_state)
-        
-        # Convert state back to proper types
-        if isinstance(new_state.get("current_stage"), str):
-            new_state["current_stage"] = WorkflowStage(new_state["current_stage"])
-            
-        final_state = GonzoState(**new_state)
+        final_state = ensure_state_obj(new_state)
         
         if completed:
             logger.info(
