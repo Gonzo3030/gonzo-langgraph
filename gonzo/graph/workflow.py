@@ -1,9 +1,8 @@
 """Simplified workflow implementation for Gonzo MVP."""
 import os
 import logging
-from typing import Dict, Any, Optional, Union, TypedDict, Annotated
+from typing import Dict, Any, Optional, Union
 from datetime import datetime
-from operator import itemgetter
 from langgraph.graph import StateGraph, END
 
 from ..state_management import GonzoState, WorkflowStage, Event
@@ -11,9 +10,27 @@ from ..monitoring.brave_monitor import BraveMonitor
 
 logger = logging.getLogger(__name__)
 
+def ensure_state_dict(state: Union[Dict, GonzoState]) -> Dict:
+    """Ensure we're working with a dictionary"""
+    if isinstance(state, GonzoState):
+        state_dict = state.model_dump()
+        # Convert enum to string
+        if isinstance(state_dict.get('current_stage'), WorkflowStage):
+            state_dict['current_stage'] = state_dict['current_stage'].value
+        return state_dict
+    if isinstance(state, dict) and isinstance(state.get('current_stage'), WorkflowStage):
+        state['current_stage'] = state['current_stage'].value
+    return state
+
+def ensure_state_obj(state: Dict) -> GonzoState:
+    """Ensure we're working with a GonzoState object"""
+    if isinstance(state.get('current_stage'), str):
+        state['current_stage'] = WorkflowStage(state['current_stage'])
+    return GonzoState(**state)
+
 async def monitor_node(state: Dict) -> Dict[str, Any]:
     """Monitor for relevant events using Brave API."""
-    state_obj = GonzoState(**state)
+    state_obj = ensure_state_obj(state)
     logger.info("Starting monitoring phase")
     
     try:
@@ -71,11 +88,11 @@ async def monitor_node(state: Dict) -> Dict[str, Any]:
         state_obj.errors.append(error_msg)
         state_obj.current_stage = WorkflowStage.ERROR
     
-    return state_obj.model_dump()
+    return ensure_state_dict(state_obj)
 
 async def analyze_node(state: Dict) -> Dict[str, Any]:
     """Analyze events and identify patterns."""
-    state_obj = GonzoState(**state)
+    state_obj = ensure_state_obj(state)
     logger.info("Starting analysis phase")
     
     try:
@@ -89,11 +106,11 @@ async def analyze_node(state: Dict) -> Dict[str, Any]:
         state_obj.errors.append(error_msg)
         state_obj.current_stage = WorkflowStage.ERROR
     
-    return state_obj.model_dump()
+    return ensure_state_dict(state_obj)
 
 async def report_node(state: Dict) -> Dict[str, Any]:
     """Generate Gonzo's insights and commentary."""
-    state_obj = GonzoState(**state)
+    state_obj = ensure_state_obj(state)
     logger.info("Starting reporting phase")
     
     try:
@@ -107,11 +124,11 @@ async def report_node(state: Dict) -> Dict[str, Any]:
         state_obj.errors.append(error_msg)
         state_obj.current_stage = WorkflowStage.ERROR
     
-    return state_obj.model_dump()
+    return ensure_state_dict(state_obj)
 
 async def error_node(state: Dict) -> Dict[str, Any]:
     """Handle errors and recovery."""
-    state_obj = GonzoState(**state)
+    state_obj = ensure_state_obj(state)
     
     # Log errors
     if state_obj.errors:
@@ -120,7 +137,7 @@ async def error_node(state: Dict) -> Dict[str, Any]:
         state_obj.errors.clear()
     
     state_obj.current_stage = WorkflowStage.COMPLETE
-    return state_obj.model_dump()
+    return ensure_state_dict(state_obj)
 
 def create_workflow(config: Optional[Dict[str, Any]] = None) -> StateGraph:
     """Create the simplified workflow graph."""
@@ -135,7 +152,9 @@ def create_workflow(config: Optional[Dict[str, Any]] = None) -> StateGraph:
     
     # Add edges based on current_stage
     def get_stage(state: Dict) -> str:
-        return state["current_stage"].value if isinstance(state["current_stage"], WorkflowStage) else state["current_stage"]
+        if isinstance(state.get('current_stage'), WorkflowStage):
+            return state['current_stage'].value
+        return state['current_stage']
     
     workflow.add_conditional_edges(
         "monitor",
