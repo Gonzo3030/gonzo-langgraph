@@ -50,7 +50,7 @@ async def run_workflow_cycle(app, current_state: Dict) -> Tuple[Dict, bool]:
                 f"Insights: {len(new_state.insights)}"
             )
             
-            return new_state.dict(), True
+            return new_state.model_dump(), True
         
         return current_state, False
         
@@ -75,7 +75,7 @@ async def run_gonzo_async():
         logger.info('Workflow compiled, starting Gonzo...')
         
         # Run workflow
-        current_state = state.dict()
+        current_state = state.model_dump()
         
         new_state, completed = await run_workflow_cycle(app, current_state)
         
