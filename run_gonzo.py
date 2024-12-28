@@ -63,11 +63,12 @@ async def run_workflow_cycle(app, initial_state: Dict) -> Tuple[Dict, bool]:
                 }
             )
         
-        async for output in app.astream(initial_state):
+        state_dict = ensure_state_dict(initial_state)
+        async for output in app.astream(state_dict):
             if output is None:
                 continue
             
-            # Create state object from output
+            # Convert output to state object for logging
             state_obj = ensure_state_obj(output)
             
             # Log progress
@@ -118,13 +119,13 @@ async def run_gonzo_async():
         initial_state = ensure_state_dict(state)
         
         new_state, completed = await run_workflow_cycle(app, initial_state)
-        final_state = ensure_state_obj(new_state)
+        state_obj = ensure_state_obj(new_state)
         
         if completed:
             logger.info(
-                f'Workflow completed successfully with {len(final_state.events)} events, '
-                f'{len(final_state.patterns)} patterns, and '
-                f'{len(final_state.insights)} insights'
+                f'Workflow completed successfully with {len(state_obj.events)} events, '
+                f'{len(state_obj.patterns)} patterns, and '
+                f'{len(state_obj.insights)} insights'
             )
         else:
             logger.warning('Workflow ended without completion')
