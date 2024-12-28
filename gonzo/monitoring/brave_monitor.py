@@ -1,5 +1,7 @@
 """Brave API monitoring implementation."""
 import os
+import ssl
+import certifi
 import logging
 import aiohttp
 from typing import List, Dict, Any
@@ -18,6 +20,8 @@ class BraveMonitor:
             "Accept": "application/json",
             "X-Subscription-Token": api_key
         }
+        # Create SSL context with certifi certificates
+        self.ssl_context = ssl.create_default_context(cafile=certifi.where())
         logger.info(f"Initializing BraveMonitor with API key: {api_key[:8]}...")
     
     async def search_news(self, query: str, count: int = 10) -> List[Dict[str, Any]]:
@@ -30,12 +34,14 @@ class BraveMonitor:
         
         logger.info(f"Searching Brave API for: {query}")
         
-        async with aiohttp.ClientSession() as session:
+        connector = aiohttp.TCPConnector(ssl=self.ssl_context)
+        async with aiohttp.ClientSession(connector=connector) as session:
             try:
                 async with session.get(
                     self.BASE_URL,
                     headers=self.headers,
-                    params=params
+                    params=params,
+                    timeout=aiohttp.ClientTimeout(total=10)
                 ) as response:
                     response_text = await response.text()
                     logger.debug(f"API Response: {response_text[:500]}...")
