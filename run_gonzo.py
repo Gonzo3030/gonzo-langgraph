@@ -8,7 +8,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 from gonzo.state_management import GonzoState, create_initial_state
-from gonzo.graph.workflow import create_workflow
+from gonzo.graph.workflow import create_workflow, ensure_state
 
 # Configure logging
 logging.basicConfig(
@@ -32,7 +32,7 @@ def init_environment() -> None:
     if missing:
         raise ValueError(f'Missing required environment variables: {missing}')
 
-async def run_workflow_cycle(app, current_state) -> Tuple[Dict, bool]:
+async def run_workflow_cycle(app, current_state: Dict) -> Tuple[Dict, bool]:
     """Run a single workflow cycle"""
     try:
         async for output in app.astream(current_state):
@@ -40,7 +40,7 @@ async def run_workflow_cycle(app, current_state) -> Tuple[Dict, bool]:
                 continue
             
             # Extract new state
-            new_state = GonzoState(**output)
+            new_state = ensure_state(output)
             
             # Log progress
             logger.info(
@@ -50,7 +50,7 @@ async def run_workflow_cycle(app, current_state) -> Tuple[Dict, bool]:
                 f"Insights: {len(new_state.insights)}"
             )
             
-            return new_state.model_dump(), True
+            return new_state.dict(), True
         
         return current_state, False
         
@@ -75,7 +75,7 @@ async def run_gonzo_async():
         logger.info('Workflow compiled, starting Gonzo...')
         
         # Run workflow
-        current_state = state.model_dump()
+        current_state = state.dict()
         
         new_state, completed = await run_workflow_cycle(app, current_state)
         
