@@ -54,41 +54,47 @@ async def run_workflow_cycle(app, current_state: Dict) -> Tuple[Dict, bool]:
     try:
         # Start trace if tracing is enabled
         if tracer.enabled:
-            current_stage = ensure_state(current_state).current_stage.value
+            state_obj = ensure_state(current_state)
             run_id = tracer.start_trace(
                 "gonzo_workflow_cycle",
                 metadata={
                     "timestamp": datetime.now().isoformat(),
-                    "initial_stage": current_stage
+                    "initial_stage": state_obj.current_stage.value
                 }
             )
         
-        async for output in app.astream({"state": current_state}):
+        async for output in app.astream(current_state):
             if output is None:
                 continue
             
-            # Extract new state and ensure it's properly converted
-            new_state = ensure_state(output)
+            # Extract new state
+            state_obj = GonzoState(
+                events=output.get("events", []),
+                patterns=output.get("patterns", []),
+                insights=output.get("insights", []),
+                current_stage=output.get("current_stage"),
+                errors=output.get("errors", [])
+            )
             
             # Log progress
             logger.info(
-                f"Stage: {new_state.current_stage}, "
-                f"Events: {len(new_state.events)}, "
-                f"Patterns: {len(new_state.patterns)}, "
-                f"Insights: {len(new_state.insights)}"
+                f"Stage: {state_obj.current_stage}, "
+                f"Events: {len(state_obj.events)}, "
+                f"Patterns: {len(state_obj.patterns)}, "
+                f"Insights: {len(state_obj.insights)}"
             )
             
             # Update trace if enabled
             if run_id:
                 tracer.update_trace(run_id, {
-                    "final_stage": new_state.current_stage.value,
-                    "events_found": len(new_state.events),
-                    "patterns_found": len(new_state.patterns),
-                    "insights_generated": len(new_state.insights)
+                    "final_stage": state_obj.current_stage.value,
+                    "events_found": len(state_obj.events),
+                    "patterns_found": len(state_obj.patterns),
+                    "insights_generated": len(state_obj.insights)
                 })
             
             # Return the state dictionary
-            return new_state.model_dump(), True
+            return output, True
         
         return current_state, False
         
@@ -115,11 +121,23 @@ async def run_gonzo_async():
         app = workflow.compile()
         logger.info('Workflow compiled, starting Gonzo...')
         
-        # Run workflow
-        current_state = state.model_dump()
+        # Run workflow with unpacked state
+        current_state = {
+            "events": state.events,
+            "patterns": state.patterns,
+            "insights": state.insights,
+            "current_stage": state.current_stage,
+            "errors": state.errors
+        }
         
         new_state, completed = await run_workflow_cycle(app, current_state)
-        final_state = ensure_state(new_state)
+        final_state = GonzoState(
+            events=new_state.get("events", []),
+            patterns=new_state.get("patterns", []),
+            insights=new_state.get("insights", []),
+            current_stage=new_state.get("current_stage"),
+            errors=new_state.get("errors", [])
+        )
         
         if completed:
             logger.info(
