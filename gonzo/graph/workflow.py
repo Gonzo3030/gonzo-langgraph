@@ -33,22 +33,23 @@ async def monitor_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
         # Get search queries
         queries = monitor.generate_queries()
         
-        # Search for each query
         total_events = 0
+        # Search for each query
         for query in queries:
             try:
                 logger.info(f"Processing query: {query}")
-                articles = await monitor.search_news(query)
+                news_items = await monitor.search_news(query)
                 
-                # Convert articles to events
-                for article in articles:
+                # Convert news items to events
+                for item in news_items:
                     event = Event(
                         timestamp=datetime.now(),
-                        title=article.get('title', ''),
-                        content=article.get('description', ''),
-                        source=article.get('source', ''),
-                        url=article.get('url')
+                        title=item.get('title', ''),
+                        content=item.get('description', ''),
+                        source=item.get('source', ''),
+                        url=item.get('url')
                     )
+                    # Important: Add event to state
                     state_obj.events.append(event)
                     total_events += 1
                     
@@ -62,6 +63,7 @@ async def monitor_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
         # Move to analysis stage if we found any events
         if total_events > 0:
             state_obj.current_stage = WorkflowStage.ANALYSIS
+            logger.info(f"Moving to ANALYSIS stage with {len(state_obj.events)} events")
         else:
             logger.warning("No events found during monitoring")
             state_obj.current_stage = WorkflowStage.COMPLETE
@@ -72,6 +74,7 @@ async def monitor_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
         state_obj.errors.append(error_msg)
         state_obj.current_stage = WorkflowStage.ERROR
     
+    # Return updated state as dictionary
     return state_obj.model_dump()
 
 def analyze_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
@@ -80,8 +83,8 @@ def analyze_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
     logger.info("Starting analysis phase")
     
     try:
+        logger.info(f"Analyzing {len(state_obj.events)} events")
         # TODO: Implement pattern analysis
-        # For now, just transition to next stage
         state_obj.current_stage = WorkflowStage.REPORTING
         
     except Exception as e:
@@ -98,8 +101,8 @@ def report_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
     logger.info("Starting reporting phase")
     
     try:
+        logger.info(f"Generating insights from {len(state_obj.patterns)} patterns")
         # TODO: Implement insight generation
-        # For now, just transition to complete
         state_obj.current_stage = WorkflowStage.COMPLETE
         
     except Exception as e:
@@ -115,13 +118,14 @@ def error_node(state: Union[Dict, GonzoState]) -> Dict[str, Any]:
     state_obj = ensure_state(state)
     
     # Log errors
-    for error in state_obj.errors:
-        logger.error(f"Error encountered: {error}")
+    if state_obj.errors:
+        for error in state_obj.errors:
+            logger.error(f"Error encountered: {error}")
     
-    # Clear errors and attempt to continue
-    state_obj.errors.clear()
+        # Clear errors and attempt to continue
+        state_obj.errors.clear()
+    
     state_obj.current_stage = WorkflowStage.COMPLETE
-    
     return state_obj.model_dump()
 
 def create_workflow(config: Optional[Dict[str, Any]] = None) -> StateGraph:
@@ -153,7 +157,8 @@ def create_workflow(config: Optional[Dict[str, Any]] = None) -> StateGraph:
         get_stage,
         {
             WorkflowStage.REPORTING.value: "report",
-            WorkflowStage.ERROR.value: "error"
+            WorkflowStage.ERROR.value: "error",
+            WorkflowStage.COMPLETE.value: END
         }
     )
     
