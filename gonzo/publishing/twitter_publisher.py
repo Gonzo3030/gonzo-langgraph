@@ -168,10 +168,10 @@ class TwitterPublisher:
     def from_env(cls, wait_time: float = 1.0) -> 'TwitterPublisher':
         """Create TwitterPublisher from environment variables."""
         required_vars = [
-            'TWITTER_API_KEY',
-            'TWITTER_API_SECRET',
-            'TWITTER_ACCESS_TOKEN',
-            'TWITTER_ACCESS_TOKEN_SECRET'
+            'X_API_KEY',
+            'X_API_SECRET',
+            'X_ACCESS_TOKEN',
+            'X_ACCESS_SECRET'
         ]
         
         missing = [var for var in required_vars if not os.getenv(var)]
@@ -179,9 +179,9 @@ class TwitterPublisher:
             raise ValueError(f"Missing required environment variables: {missing}")
             
         return cls(
-            api_key=os.getenv('TWITTER_API_KEY'),
-            api_secret=os.getenv('TWITTER_API_SECRET'),
-            access_token=os.getenv('TWITTER_ACCESS_TOKEN'),
-            access_token_secret=os.getenv('TWITTER_ACCESS_TOKEN_SECRET'),
+            api_key=os.getenv('X_API_KEY'),
+            api_secret=os.getenv('X_API_SECRET'),
+            access_token=os.getenv('X_ACCESS_TOKEN'),
+            access_token_secret=os.getenv('X_ACCESS_SECRET'),
             wait_time=wait_time
         )
