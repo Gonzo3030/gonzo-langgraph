@@ -56,7 +56,7 @@ Provide your analysis in this format:
             try:
                 # Get Claude's analysis
                 response = await self.client.messages.create(
-                    model="claude-3-sonnet-20241022",
+                    model="claude-3.5-sonnet-20241022",
                     max_tokens=2000,
                     temperature=0.7,
                     system="You are Dr. Gonzo, attorney and time traveler from 3030, analyzing current events through a dystopian lens. Write in the style of Hunter S. Thompson.",
