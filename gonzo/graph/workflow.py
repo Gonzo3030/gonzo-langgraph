@@ -9,6 +9,7 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from ..state_management import GonzoState, WorkflowStage, Event, GonzoGraphState
 from ..monitoring.brave_monitor import BraveMonitor
+from ..analysis.event_analyzer import EventAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -85,11 +86,29 @@ async def analyze_node(state: GonzoGraphState) -> Dict[str, Any]:
     logger.info("Starting analysis phase")
     
     try:
-        events = state.get('events', [])
+        # Get events from state
+        events = [Event(**event_data) for event_data in state.get('events', [])]
         logger.info(f"Analyzing {len(events)} events")
         
-        # TODO: Implement pattern analysis
+        if not events:
+            logger.warning("No events to analyze")
+            return {
+                "current_stage": WorkflowStage.COMPLETE.value
+            }
+        
+        # Initialize analyzer
+        analyzer = EventAnalyzer()
+        
+        # Analyze events
+        patterns = await analyzer.analyze_events(events)
+        
+        # Convert patterns to dict for state
+        pattern_dicts = [pattern.model_dump() for pattern in patterns]
+        
+        logger.info(f"Analysis complete. Found {len(patterns)} patterns")
+        
         return {
+            "patterns": pattern_dicts,
             "current_stage": WorkflowStage.REPORTING.value
         }
         
