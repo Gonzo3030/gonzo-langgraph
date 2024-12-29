@@ -69,14 +69,18 @@ async def run_workflow_cycle(app, memory, initial_state: Dict) -> Tuple[Dict, bo
         
         current_state = initial_state.copy()
         found_events = False
-        async for event_or_state in app.astream_events(
+        async for event_or_state in app.astream(
             current_state,
-            config={"configurable": {"thread_id": thread_id}}
+            config={
+                "configurable": {"thread_id": thread_id},
+            }
         ):
+            if event_or_state is None:
+                continue
+            
             # Handle state updates
-            if isinstance(event_or_state, dict) and 'events' in event_or_state:
-                current_state = event_or_state.copy()
-                found_events = len(current_state.get('events', [])) > 0
+            current_state = event_or_state.copy()
+            found_events = len(current_state.get('events', [])) > 0
             
             # Log progress
             logger.info(
@@ -94,13 +98,14 @@ async def run_workflow_cycle(app, memory, initial_state: Dict) -> Tuple[Dict, bo
                     "patterns_found": len(current_state.get('patterns', [])),
                     "insights_generated": len(current_state.get('insights', []))
                 })
-            
-            if event_or_state == 'end':
-                break
         
-        # Retrieve final state from memory
-        final_state = memory.get(thread_id) or current_state
-        return final_state, True
+        # Get the final state from memory
+        if found_events:
+            checkpoint = await memory.get_latest_checkpoint(thread_id)
+            if checkpoint and checkpoint.state:
+                current_state = checkpoint.state
+        
+        return current_state, True
         
     except Exception as e:
         logger.error(f'Error in workflow cycle: {str(e)}')
