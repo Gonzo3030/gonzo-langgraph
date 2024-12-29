@@ -46,10 +46,15 @@ def init_environment() -> None:
         # Only initialize tracing if we have the API key
         init_tracing()
 
-async def run_workflow_cycle(app, initial_state: Dict) -> Tuple[Dict, bool]:
+def get_thread_id() -> str:
+    """Create a unique thread ID for state persistence."""
+    return f"gonzo_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+async def run_workflow_cycle(app, memory, initial_state: Dict) -> Tuple[Dict, bool]:
     """Run a single workflow cycle with optional tracing."""
     tracer = TraceManager()
     run_id = None
+    thread_id = get_thread_id()
     
     try:
         # Start trace if tracing is enabled
@@ -62,18 +67,16 @@ async def run_workflow_cycle(app, initial_state: Dict) -> Tuple[Dict, bool]:
                 }
             )
         
-        # Create a thread ID for persistence
-        thread_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
         current_state = initial_state.copy()
-        async for output in app.astream(
+        found_events = False
+        async for event_or_state in app.astream_events(
             current_state,
             config={"configurable": {"thread_id": thread_id}}
         ):
-            if output is None:
-                continue
-            
-            current_state = output.copy()
+            # Handle state updates
+            if isinstance(event_or_state, dict) and 'events' in event_or_state:
+                current_state = event_or_state.copy()
+                found_events = len(current_state.get('events', [])) > 0
             
             # Log progress
             logger.info(
@@ -92,9 +95,12 @@ async def run_workflow_cycle(app, initial_state: Dict) -> Tuple[Dict, bool]:
                     "insights_generated": len(current_state.get('insights', []))
                 })
             
-            return current_state, True
+            if event_or_state == 'end':
+                break
         
-        return initial_state, False
+        # Retrieve final state from memory
+        final_state = memory.get(thread_id) or current_state
+        return final_state, True
         
     except Exception as e:
         logger.error(f'Error in workflow cycle: {str(e)}')
@@ -120,7 +126,7 @@ async def run_gonzo_async():
         logger.info('Workflow compiled, starting Gonzo...')
         
         # Run workflow
-        new_state, completed = await run_workflow_cycle(app, initial_state)
+        new_state, completed = await run_workflow_cycle(app, memory, initial_state)
         
         if completed:
             logger.info(
