@@ -7,20 +7,14 @@ from datetime import datetime
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 
-from ..state_management import GonzoState, WorkflowStage, Event, GonzoGraphState
+from ..state_management import GonzoState, WorkflowStage, Event, GonzoGraphState, create_empty_graph_state
 from ..monitoring.brave_monitor import BraveMonitor
 
 logger = logging.getLogger(__name__)
 
 def create_empty_state() -> GonzoGraphState:
     """Create an empty state dictionary with all required fields."""
-    return GonzoGraphState(
-        events=[],
-        patterns=[],
-        insights=[],
-        current_stage=WorkflowStage.MONITORING.value,
-        errors=[]
-    )
+    return create_empty_graph_state()
 
 async def monitor_node(state: GonzoGraphState) -> Dict[str, Any]:
     """Monitor for relevant events using Brave API."""
