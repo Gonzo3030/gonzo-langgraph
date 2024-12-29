@@ -67,54 +67,20 @@ async def run_workflow_cycle(workflow, memory, initial_state: GonzoGraphState) -
                 }
             )
         
-        # Compile workflow with config
-        app = workflow.compile(
-            checkpointer=memory,
-            config={
-                "configurable": {
-                    "thread_id": thread_id,
-                    "persist_state": True
-                }
-            }
-        )
+        # Compile with simple config like the example
+        graph = workflow.compile(checkpointer=memory)
+        config = {"configurable": {"thread_id": thread_id}}
         
         # Stream through workflow states
-        async for event_or_state in app.astream(
-            initial_state,
-            config={
-                "configurable": {
-                    "thread_id": thread_id,
-                    "persist_state": True
-                }
-            }
-        ):
-            if event_or_state is None:
-                continue
-                
-            # Update current state with new state
-            current_state = event_or_state
-            
-            # Log progress with actual state values
-            logger.info(
-                f"Stage: {current_state.get('current_stage')}, "
-                f"Events: {len(current_state.get('events', []))}, "
-                f"Patterns: {len(current_state.get('patterns', []))}, "
-                f"Insights: {len(current_state.get('insights', []))}"
-            )
-            
-            # Update trace if enabled
-            if run_id:
-                tracer.update_trace(run_id, {
-                    "current_stage": current_state.get('current_stage'),
-                    "events_found": len(current_state.get('events', [])),
-                    "patterns_found": len(current_state.get('patterns', [])),
-                    "insights_generated": len(current_state.get('insights', []))
-                })
+        current_state = await graph.ainvoke(initial_state, config)
         
-        # Get final state from checkpoint
-        final_state = await memory.get_latest_checkpoint(thread_id)
-        if final_state and final_state.state:
-            current_state = final_state.state
+        # Log final state
+        logger.info(
+            f"Stage: {current_state.get('current_stage')}, "
+            f"Events: {len(current_state.get('events', []))}, "
+            f"Patterns: {len(current_state.get('patterns', []))}, "
+            f"Insights: {len(current_state.get('insights', []))}"
+        )
         
         return current_state, True
         
