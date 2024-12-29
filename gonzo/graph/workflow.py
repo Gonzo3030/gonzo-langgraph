@@ -2,7 +2,7 @@
 import os
 import logging
 from typing import Dict, Any, Optional, Union, TypedDict, Annotated, Tuple
-from operator import setitem
+from operator import add
 from datetime import datetime
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
@@ -14,11 +14,11 @@ logger = logging.getLogger(__name__)
 
 # Define state schema for LangGraph
 class GonzoGraphState(TypedDict):
-    events: Annotated[list, setitem]
-    patterns: Annotated[list, setitem]
-    insights: Annotated[list, setitem]
-    current_stage: str
-    errors: Annotated[list, setitem]
+    events: Annotated[list, add]      # Use add for list concatenation
+    patterns: Annotated[list, add]    # Use add for list concatenation
+    insights: Annotated[list, add]    # Use add for list concatenation
+    current_stage: str                # Simple string field
+    errors: Annotated[list, add]      # Use add for list concatenation
 
 def create_empty_state() -> Dict[str, Any]:
     """Create an empty state dictionary with all required fields."""
@@ -73,13 +73,16 @@ async def monitor_node(state: Dict[str, Any]) -> Dict[str, Any]:
             except Exception as e:
                 error_msg = f"Error searching {query}: {str(e)}"
                 logger.error(error_msg)
-                current_state['errors'] = current_state.get('errors', []) + [error_msg]
+                return {
+                    "errors": [error_msg],
+                    "current_stage": WorkflowStage.ERROR.value
+                }
         
         logger.info(f"Completed monitoring phase. Found {total_events} events")
         
         # Move to analysis stage if we found any events
         if total_events > 0:
-            # Return state updates
+            logger.info(f"Moving to ANALYSIS stage with {total_events} events")
             return {
                 "events": new_events,
                 "current_stage": WorkflowStage.ANALYSIS.value
@@ -101,7 +104,8 @@ async def analyze_node(state: Dict[str, Any]) -> Dict[str, Any]:
     logger.info("Starting analysis phase")
     
     try:
-        logger.info(f"Analyzing {len(state.get('events', []))} events")
+        events = state.get('events', [])
+        logger.info(f"Analyzing {len(events)} events")
         # TODO: Implement pattern analysis
         return {"current_stage": WorkflowStage.REPORTING.value}
         
