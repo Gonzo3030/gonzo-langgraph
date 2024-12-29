@@ -7,8 +7,8 @@ from typing import Dict, Any, Tuple
 from datetime import datetime
 from dotenv import load_dotenv
 
-from gonzo.state_management import GonzoState, create_initial_state, WorkflowStage
-from gonzo.graph.workflow import create_workflow, create_empty_state
+from gonzo.state_management import WorkflowStage, create_empty_graph_state, GonzoGraphState
+from gonzo.graph.workflow import create_workflow
 from gonzo.tracing import init_tracing, TraceManager
 
 # Configure logging
@@ -50,7 +50,7 @@ def get_thread_id() -> str:
     """Create a unique thread ID for state persistence."""
     return f"gonzo_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-async def run_workflow_cycle(app, memory, initial_state: Dict) -> Tuple[Dict, bool]:
+async def run_workflow_cycle(app, memory, initial_state: GonzoGraphState) -> Tuple[GonzoGraphState, bool]:
     """Run a single workflow cycle with optional tracing."""
     tracer = TraceManager()
     run_id = None
@@ -80,14 +80,8 @@ async def run_workflow_cycle(app, memory, initial_state: Dict) -> Tuple[Dict, bo
             if event_or_state is None:
                 continue
                 
-            # Merge the new state updates with current state
-            for key, value in event_or_state.items():
-                if isinstance(value, list) and key in current_state:
-                    # For list fields, extend the existing list
-                    current_state[key].extend(value)
-                else:
-                    # For other fields, update directly
-                    current_state[key] = value
+            # Update current state with new state (LangGraph handles merging via reducers)
+            current_state = event_or_state
             
             # Update found_events flag
             events = current_state.get('events', [])
@@ -110,21 +104,6 @@ async def run_workflow_cycle(app, memory, initial_state: Dict) -> Tuple[Dict, bo
                     "insights_generated": len(current_state.get('insights', []))
                 })
         
-        # Get the final state from memory if we found events
-        if found_events:
-            checkpoint = await memory.get_latest_checkpoint(thread_id)
-            if checkpoint and checkpoint.state:
-                # Merge checkpoint state with current state
-                for key, value in checkpoint.state.items():
-                    if isinstance(value, list):
-                        # Ensure we don't duplicate list items
-                        current_items = set(str(item) for item in current_state.get(key, []))
-                        for item in value:
-                            if str(item) not in current_items:
-                                current_state.setdefault(key, []).append(item)
-                    else:
-                        current_state[key] = value
-        
         return current_state, True
         
     except Exception as e:
@@ -142,7 +121,7 @@ async def run_gonzo_async():
         logger.info('Environment initialized')
         
         # Create initial state
-        initial_state = create_empty_state()
+        initial_state = create_empty_graph_state()
         logger.info('Initial state created')
         
         # Create and compile workflow with memory
