@@ -62,8 +62,14 @@ async def run_workflow_cycle(app, initial_state: Dict) -> Tuple[Dict, bool]:
                 }
             )
         
+        # Create a thread ID for persistence
+        thread_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
         current_state = initial_state.copy()
-        async for output in app.astream(current_state):
+        async for output in app.astream(
+            current_state,
+            config={"configurable": {"thread_id": thread_id}}
+        ):
             if output is None:
                 continue
             
@@ -108,9 +114,9 @@ async def run_gonzo_async():
         initial_state = create_empty_state()
         logger.info('Initial state created')
         
-        # Create and compile workflow
-        workflow = create_workflow()
-        app = workflow.compile()
+        # Create and compile workflow with memory
+        workflow, memory = create_workflow()
+        app = workflow.compile(checkpointer=memory)
         logger.info('Workflow compiled, starting Gonzo...')
         
         # Run workflow
