@@ -6,14 +6,13 @@ from operator import add
 from datetime import datetime
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
-from langgraph.prebuilt.state_graph import run_config_builder
 
 from ..state_management import GonzoState, WorkflowStage, Event, GonzoGraphState, create_empty_graph_state
 from ..monitoring.brave_monitor import BraveMonitor
 
 logger = logging.getLogger(__name__)
 
-# Keep existing code until create_workflow ...
+# Keep existing node functions the same...
 
 def create_workflow(config: Optional[Dict[str, Any]] = None) -> Tuple[StateGraph, MemorySaver]:
     """Create the simplified workflow graph and memory saver."""
@@ -68,15 +67,7 @@ def create_workflow(config: Optional[Dict[str, Any]] = None) -> Tuple[StateGraph
     workflow.set_entry_point("monitor")
     
     # Create memory saver with persistence config
-    memory = MemorySaver(
-        persist_run_metadata=True,
-        persist_intermediate_steps=True
-    )
+    memory = MemorySaver()
     
-    # Configure workflow
-    workflow = workflow.compile(
-        checkpointer=memory,
-        config=run_config_builder(config)
-    )
-    
+    # Return uncompiled workflow and memory
     return workflow, memory
