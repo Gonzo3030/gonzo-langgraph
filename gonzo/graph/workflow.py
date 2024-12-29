@@ -32,8 +32,9 @@ def create_empty_state() -> Dict[str, Any]:
 
 async def monitor_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """Monitor for relevant events using Brave API."""
-    # Always work with a copy of the state
-    current_state = state.copy()
+    # Start with an empty update dict to collect changes
+    state_updates = {}
+    
     logger.info("Starting monitoring phase")
     
     try:
@@ -80,16 +81,16 @@ async def monitor_node(state: Dict[str, Any]) -> Dict[str, Any]:
         
         logger.info(f"Completed monitoring phase. Found {total_events} events")
         
-        # Move to analysis stage if we found any events
+        # Only update events if we found any
         if total_events > 0:
             logger.info(f"Moving to ANALYSIS stage with {total_events} events")
-            return {
-                "events": new_events,
-                "current_stage": WorkflowStage.ANALYSIS.value
-            }
+            state_updates["events"] = new_events  # Will be merged using add reducer
+            state_updates["current_stage"] = WorkflowStage.ANALYSIS.value
         else:
             logger.warning("No events found during monitoring")
-            return {"current_stage": WorkflowStage.COMPLETE.value}
+            state_updates["current_stage"] = WorkflowStage.COMPLETE.value
+        
+        return state_updates
         
     except Exception as e:
         error_msg = f"Monitoring error: {str(e)}"
@@ -101,13 +102,19 @@ async def monitor_node(state: Dict[str, Any]) -> Dict[str, Any]:
 
 async def analyze_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """Analyze events and identify patterns."""
+    # Start with an empty update dict
+    state_updates = {}
+    
     logger.info("Starting analysis phase")
     
     try:
         events = state.get('events', [])
         logger.info(f"Analyzing {len(events)} events")
+        
         # TODO: Implement pattern analysis
-        return {"current_stage": WorkflowStage.REPORTING.value}
+        # For now, just transition to next stage while preserving events
+        state_updates["current_stage"] = WorkflowStage.REPORTING.value
+        return state_updates
         
     except Exception as e:
         error_msg = f"Analysis error: {str(e)}"
@@ -119,12 +126,18 @@ async def analyze_node(state: Dict[str, Any]) -> Dict[str, Any]:
 
 async def report_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """Generate Gonzo's insights and commentary."""
+    # Start with an empty update dict
+    state_updates = {}
+    
     logger.info("Starting reporting phase")
     
     try:
-        logger.info(f"Generating insights from {len(state.get('patterns', []))} patterns")
+        patterns = state.get('patterns', [])
+        logger.info(f"Generating insights from {len(patterns)} patterns")
+        
         # TODO: Implement insight generation
-        return {"current_stage": WorkflowStage.COMPLETE.value}
+        state_updates["current_stage"] = WorkflowStage.COMPLETE.value
+        return state_updates
         
     except Exception as e:
         error_msg = f"Reporting error: {str(e)}"
@@ -142,7 +155,7 @@ async def error_node(state: Dict[str, Any]) -> Dict[str, Any]:
             logger.error(f"Error encountered: {error}")
     
     return {
-        "errors": [],
+        "errors": [],  # Clear errors
         "current_stage": WorkflowStage.COMPLETE.value
     }
 
