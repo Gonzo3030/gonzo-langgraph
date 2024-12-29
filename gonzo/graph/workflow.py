@@ -1,7 +1,7 @@
 """Simplified workflow implementation for Gonzo MVP."""
 import os
 import logging
-from typing import Dict, Any, Optional, Union, TypedDict, Annotated
+from typing import Dict, Any, Optional, Union, TypedDict, Annotated, Tuple
 from datetime import datetime
 from operator import itemgetter
 from langgraph.graph import StateGraph, END
