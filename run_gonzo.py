@@ -69,6 +69,8 @@ async def run_workflow_cycle(app, memory, initial_state: Dict) -> Tuple[Dict, bo
         
         current_state = initial_state.copy()
         found_events = False
+        
+        # Stream through workflow states
         async for event_or_state in app.astream(
             current_state,
             config={
@@ -77,15 +79,24 @@ async def run_workflow_cycle(app, memory, initial_state: Dict) -> Tuple[Dict, bo
         ):
             if event_or_state is None:
                 continue
+                
+            # Merge the new state updates with current state
+            for key, value in event_or_state.items():
+                if isinstance(value, list) and key in current_state:
+                    # For list fields, extend the existing list
+                    current_state[key].extend(value)
+                else:
+                    # For other fields, update directly
+                    current_state[key] = value
             
-            # Handle state updates
-            current_state = event_or_state.copy()
-            found_events = len(current_state.get('events', [])) > 0
+            # Update found_events flag
+            events = current_state.get('events', [])
+            found_events = len(events) > 0
             
-            # Log progress
+            # Log progress with actual state values
             logger.info(
                 f"Stage: {current_state.get('current_stage')}, "
-                f"Events: {len(current_state.get('events', []))}, "
+                f"Events: {len(events)}, "
                 f"Patterns: {len(current_state.get('patterns', []))}, "
                 f"Insights: {len(current_state.get('insights', []))}"
             )
@@ -93,17 +104,26 @@ async def run_workflow_cycle(app, memory, initial_state: Dict) -> Tuple[Dict, bo
             # Update trace if enabled
             if run_id:
                 tracer.update_trace(run_id, {
-                    "final_stage": current_state.get('current_stage'),
-                    "events_found": len(current_state.get('events', [])),
+                    "current_stage": current_state.get('current_stage'),
+                    "events_found": len(events),
                     "patterns_found": len(current_state.get('patterns', [])),
                     "insights_generated": len(current_state.get('insights', []))
                 })
         
-        # Get the final state from memory
+        # Get the final state from memory if we found events
         if found_events:
             checkpoint = await memory.get_latest_checkpoint(thread_id)
             if checkpoint and checkpoint.state:
-                current_state = checkpoint.state
+                # Merge checkpoint state with current state
+                for key, value in checkpoint.state.items():
+                    if isinstance(value, list):
+                        # Ensure we don't duplicate list items
+                        current_items = set(str(item) for item in current_state.get(key, []))
+                        for item in value:
+                            if str(item) not in current_items:
+                                current_state.setdefault(key, []).append(item)
+                    else:
+                        current_state[key] = value
         
         return current_state, True
         
