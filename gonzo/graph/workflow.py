@@ -7,9 +7,10 @@ from datetime import datetime
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 
-from ..state_management import GonzoState, WorkflowStage, Event, GonzoGraphState
+from ..state_management import GonzoState, WorkflowStage, Event, Pattern, GonzoGraphState
 from ..monitoring.brave_monitor import BraveMonitor
 from ..analysis.event_analyzer import EventAnalyzer
+from ..reporting.insight_generator import InsightGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -125,11 +126,23 @@ async def report_node(state: GonzoGraphState) -> Dict[str, Any]:
     logger.info("Starting reporting phase")
     
     try:
-        patterns = state.get('patterns', [])
+        patterns = [Pattern(**p) for p in state.get('patterns', [])]
         logger.info(f"Generating insights from {len(patterns)} patterns")
         
-        # TODO: Implement insight generation
+        if not patterns:
+            logger.warning("No patterns to generate insights from")
+            return {
+                "current_stage": WorkflowStage.COMPLETE.value
+            }
+        
+        # Generate insights
+        generator = InsightGenerator()
+        insights = await generator.generate_insights(patterns)
+        
+        logger.info(f"Generated {len(insights)} Twitter threads")
+        
         return {
+            "insights": insights,
             "current_stage": WorkflowStage.COMPLETE.value
         }
         
