@@ -1,40 +1,29 @@
 """Simplified workflow implementation for Gonzo MVP."""
 import os
 import logging
-from typing import Dict, Any, Optional, Union, TypedDict, Annotated, Tuple
+from typing import Dict, Any, Optional, Union, Tuple
 from operator import add
 from datetime import datetime
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 
-from ..state_management import GonzoState, WorkflowStage, Event
+from ..state_management import GonzoState, WorkflowStage, Event, GonzoGraphState
 from ..monitoring.brave_monitor import BraveMonitor
 
 logger = logging.getLogger(__name__)
 
-# Define state schema for LangGraph
-class GonzoGraphState(TypedDict):
-    events: Annotated[list, add]      # Use add for list concatenation
-    patterns: Annotated[list, add]    # Use add for list concatenation
-    insights: Annotated[list, add]    # Use add for list concatenation
-    current_stage: str                # Simple string field
-    errors: Annotated[list, add]      # Use add for list concatenation
-
-def create_empty_state() -> Dict[str, Any]:
+def create_empty_state() -> GonzoGraphState:
     """Create an empty state dictionary with all required fields."""
-    return {
-        "events": [],
-        "patterns": [],
-        "insights": [],
-        "current_stage": WorkflowStage.MONITORING.value,
-        "errors": []
-    }
+    return GonzoGraphState(
+        events=[],
+        patterns=[],
+        insights=[],
+        current_stage=WorkflowStage.MONITORING.value,
+        errors=[]
+    )
 
-async def monitor_node(state: Dict[str, Any]) -> Dict[str, Any]:
+async def monitor_node(state: GonzoGraphState) -> Dict[str, Any]:
     """Monitor for relevant events using Brave API."""
-    # Start with an empty update dict to collect changes
-    state_updates = {}
-    
     logger.info("Starting monitoring phase")
     
     try:
@@ -51,7 +40,6 @@ async def monitor_node(state: Dict[str, Any]) -> Dict[str, Any]:
         
         # Initialize event collection
         new_events = []
-        total_events = 0
         
         # Search for each query
         for query in queries:
@@ -69,101 +57,126 @@ async def monitor_node(state: Dict[str, Any]) -> Dict[str, Any]:
                         url=item.get('url')
                     )
                     new_events.append(event.model_dump())
-                    total_events += 1
                     
             except Exception as e:
                 error_msg = f"Error searching {query}: {str(e)}"
                 logger.error(error_msg)
-                return {
-                    "errors": [error_msg],
-                    "current_stage": WorkflowStage.ERROR.value
-                }
+                return GonzoGraphState(
+                    events=state['events'],
+                    patterns=state['patterns'],
+                    insights=state['insights'],
+                    current_stage=WorkflowStage.ERROR.value,
+                    errors=[error_msg]
+                )
         
+        total_events = len(new_events)
         logger.info(f"Completed monitoring phase. Found {total_events} events")
         
-        # Only update events if we found any
+        # Move to analysis stage if we found any events
         if total_events > 0:
             logger.info(f"Moving to ANALYSIS stage with {total_events} events")
-            state_updates["events"] = new_events  # Will be merged using add reducer
-            state_updates["current_stage"] = WorkflowStage.ANALYSIS.value
+            return GonzoGraphState(
+                events=new_events,  # This will be merged via add reducer
+                patterns=state['patterns'],
+                insights=state['insights'],
+                current_stage=WorkflowStage.ANALYSIS.value,
+                errors=state['errors']
+            )
         else:
             logger.warning("No events found during monitoring")
-            state_updates["current_stage"] = WorkflowStage.COMPLETE.value
-        
-        return state_updates
+            return GonzoGraphState(
+                events=state['events'],
+                patterns=state['patterns'],
+                insights=state['insights'],
+                current_stage=WorkflowStage.COMPLETE.value,
+                errors=state['errors']
+            )
         
     except Exception as e:
         error_msg = f"Monitoring error: {str(e)}"
         logger.error(error_msg)
-        return {
-            "errors": [error_msg],
-            "current_stage": WorkflowStage.ERROR.value
-        }
+        return GonzoGraphState(
+            events=state['events'],
+            patterns=state['patterns'],
+            insights=state['insights'],
+            current_stage=WorkflowStage.ERROR.value,
+            errors=[error_msg]
+        )
 
-async def analyze_node(state: Dict[str, Any]) -> Dict[str, Any]:
+async def analyze_node(state: GonzoGraphState) -> Dict[str, Any]:
     """Analyze events and identify patterns."""
-    # Start with an empty update dict
-    state_updates = {}
-    
     logger.info("Starting analysis phase")
     
     try:
-        events = state.get('events', [])
+        events = state['events']
         logger.info(f"Analyzing {len(events)} events")
         
         # TODO: Implement pattern analysis
-        # For now, just transition to next stage while preserving events
-        state_updates["current_stage"] = WorkflowStage.REPORTING.value
-        return state_updates
+        return GonzoGraphState(
+            events=state['events'],
+            patterns=state['patterns'],
+            insights=state['insights'],
+            current_stage=WorkflowStage.REPORTING.value,
+            errors=state['errors']
+        )
         
     except Exception as e:
         error_msg = f"Analysis error: {str(e)}"
         logger.error(error_msg)
-        return {
-            "errors": [error_msg],
-            "current_stage": WorkflowStage.ERROR.value
-        }
+        return GonzoGraphState(
+            events=state['events'],
+            patterns=state['patterns'],
+            insights=state['insights'],
+            current_stage=WorkflowStage.ERROR.value,
+            errors=[error_msg]
+        )
 
-async def report_node(state: Dict[str, Any]) -> Dict[str, Any]:
+async def report_node(state: GonzoGraphState) -> Dict[str, Any]:
     """Generate Gonzo's insights and commentary."""
-    # Start with an empty update dict
-    state_updates = {}
-    
     logger.info("Starting reporting phase")
     
     try:
-        patterns = state.get('patterns', [])
+        patterns = state['patterns']
         logger.info(f"Generating insights from {len(patterns)} patterns")
         
         # TODO: Implement insight generation
-        state_updates["current_stage"] = WorkflowStage.COMPLETE.value
-        return state_updates
+        return GonzoGraphState(
+            events=state['events'],
+            patterns=state['patterns'],
+            insights=state['insights'],
+            current_stage=WorkflowStage.COMPLETE.value,
+            errors=state['errors']
+        )
         
     except Exception as e:
         error_msg = f"Reporting error: {str(e)}"
         logger.error(error_msg)
-        return {
-            "errors": [error_msg],
-            "current_stage": WorkflowStage.ERROR.value
-        }
+        return GonzoGraphState(
+            events=state['events'],
+            patterns=state['patterns'],
+            insights=state['insights'],
+            current_stage=WorkflowStage.ERROR.value,
+            errors=[error_msg]
+        )
 
-async def error_node(state: Dict[str, Any]) -> Dict[str, Any]:
+async def error_node(state: GonzoGraphState) -> Dict[str, Any]:
     """Handle errors and recovery."""
     # Log errors
-    if state.get('errors'):
+    if state['errors']:
         for error in state['errors']:
             logger.error(f"Error encountered: {error}")
     
-    return {
-        "errors": [],  # Clear errors
-        "current_stage": WorkflowStage.COMPLETE.value
-    }
+    return GonzoGraphState(
+        events=state['events'],
+        patterns=state['patterns'],
+        insights=state['insights'],
+        current_stage=WorkflowStage.COMPLETE.value,
+        errors=[]
+    )
 
-def get_stage(state: Dict[str, Any]) -> str:
+def get_stage(state: GonzoGraphState) -> str:
     """Get stage value from state."""
-    if not state or 'current_stage' not in state:
-        return WorkflowStage.MONITORING.value
-    return state['current_stage']
+    return state.get('current_stage', WorkflowStage.MONITORING.value)
 
 def create_workflow(config: Optional[Dict[str, Any]] = None) -> Tuple[StateGraph, MemorySaver]:
     """Create the simplified workflow graph and memory saver."""

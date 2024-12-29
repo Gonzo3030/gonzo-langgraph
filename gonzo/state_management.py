@@ -1,6 +1,7 @@
 """Simplified state management for Gonzo MVP."""
 from enum import Enum
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, TypedDict, Annotated
+from operator import add
 from pydantic import BaseModel
 from datetime import datetime
 
@@ -34,14 +35,20 @@ class Insight(BaseModel):
     warnings: List[str]
     timestamp: datetime
 
-class GonzoState(BaseModel):
-    """Simplified state for Gonzo MVP"""
-    events: List[Event] = []
-    patterns: List[Pattern] = []
-    insights: List[Insight] = []
-    current_stage: WorkflowStage = WorkflowStage.MONITORING
-    errors: List[str] = []
+class GonzoGraphState(TypedDict):
+    """State schema for LangGraph"""
+    events: Annotated[list, add]      # Use add for list concatenation
+    patterns: Annotated[list, add]    # Use add for list concatenation
+    insights: Annotated[list, add]    # Use add for list concatenation
+    current_stage: str                # Simple string field
+    errors: Annotated[list, add]      # Use add for list concatenation
 
-def create_initial_state() -> GonzoState:
+def create_initial_state() -> GonzoGraphState:
     """Create initial state for Gonzo"""
-    return GonzoState()
+    return GonzoGraphState(
+        events=[],
+        patterns=[],
+        insights=[],
+        current_stage=WorkflowStage.MONITORING.value,
+        errors=[]
+    )
