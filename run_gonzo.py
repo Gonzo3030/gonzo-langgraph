@@ -50,7 +50,7 @@ def get_thread_id() -> str:
     """Create a unique thread ID for state persistence."""
     return f"gonzo_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-async def run_workflow_cycle(app, memory, initial_state: GonzoGraphState) -> Tuple[GonzoGraphState, bool]:
+async def run_workflow_cycle(workflow, memory, initial_state: GonzoGraphState) -> Tuple[GonzoGraphState, bool]:
     """Run a single workflow cycle with optional tracing."""
     tracer = TraceManager()
     run_id = None
@@ -67,30 +67,37 @@ async def run_workflow_cycle(app, memory, initial_state: GonzoGraphState) -> Tup
                 }
             )
         
-        current_state = initial_state.copy()
-        found_events = False
+        # Compile workflow with config
+        app = workflow.compile(
+            checkpointer=memory,
+            config={
+                "configurable": {
+                    "thread_id": thread_id,
+                    "persist_state": True
+                }
+            }
+        )
         
         # Stream through workflow states
         async for event_or_state in app.astream(
-            current_state,
+            initial_state,
             config={
-                "configurable": {"thread_id": thread_id},
+                "configurable": {
+                    "thread_id": thread_id,
+                    "persist_state": True
+                }
             }
         ):
             if event_or_state is None:
                 continue
                 
-            # Update current state with new state (LangGraph handles merging via reducers)
+            # Update current state with new state
             current_state = event_or_state
-            
-            # Update found_events flag
-            events = current_state.get('events', [])
-            found_events = len(events) > 0
             
             # Log progress with actual state values
             logger.info(
                 f"Stage: {current_state.get('current_stage')}, "
-                f"Events: {len(events)}, "
+                f"Events: {len(current_state.get('events', []))}, "
                 f"Patterns: {len(current_state.get('patterns', []))}, "
                 f"Insights: {len(current_state.get('insights', []))}"
             )
@@ -99,10 +106,15 @@ async def run_workflow_cycle(app, memory, initial_state: GonzoGraphState) -> Tup
             if run_id:
                 tracer.update_trace(run_id, {
                     "current_stage": current_state.get('current_stage'),
-                    "events_found": len(events),
+                    "events_found": len(current_state.get('events', [])),
                     "patterns_found": len(current_state.get('patterns', [])),
                     "insights_generated": len(current_state.get('insights', []))
                 })
+        
+        # Get final state from checkpoint
+        final_state = await memory.get_latest_checkpoint(thread_id)
+        if final_state and final_state.state:
+            current_state = final_state.state
         
         return current_state, True
         
@@ -124,13 +136,12 @@ async def run_gonzo_async():
         initial_state = create_empty_graph_state()
         logger.info('Initial state created')
         
-        # Create and compile workflow with memory
+        # Create workflow
         workflow, memory = create_workflow()
-        app = workflow.compile(checkpointer=memory)
-        logger.info('Workflow compiled, starting Gonzo...')
+        logger.info('Workflow created, starting Gonzo...')
         
         # Run workflow
-        new_state, completed = await run_workflow_cycle(app, memory, initial_state)
+        new_state, completed = await run_workflow_cycle(workflow, memory, initial_state)
         
         if completed:
             logger.info(
