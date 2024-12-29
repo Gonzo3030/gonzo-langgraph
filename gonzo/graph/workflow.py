@@ -2,8 +2,8 @@
 import os
 import logging
 from typing import Dict, Any, Optional, Union, TypedDict, Annotated, Tuple
+from operator import setitem
 from datetime import datetime
-from operator import itemgetter
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 
@@ -14,11 +14,11 @@ logger = logging.getLogger(__name__)
 
 # Define state schema for LangGraph
 class GonzoGraphState(TypedDict):
-    events: list
-    patterns: list
-    insights: list
+    events: Annotated[list, setitem]
+    patterns: Annotated[list, setitem]
+    insights: Annotated[list, setitem]
     current_stage: str
-    errors: list
+    errors: Annotated[list, setitem]
 
 def create_empty_state() -> Dict[str, Any]:
     """Create an empty state dictionary with all required fields."""
@@ -33,7 +33,7 @@ def create_empty_state() -> Dict[str, Any]:
 async def monitor_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """Monitor for relevant events using Brave API."""
     # Always work with a copy of the state
-    current_state = state.copy() if state else create_empty_state()
+    current_state = state.copy()
     logger.info("Starting monitoring phase")
     
     try:
@@ -77,73 +77,70 @@ async def monitor_node(state: Dict[str, Any]) -> Dict[str, Any]:
         
         logger.info(f"Completed monitoring phase. Found {total_events} events")
         
-        # Update state with new events
-        current_state['events'] = new_events
-        
         # Move to analysis stage if we found any events
         if total_events > 0:
-            current_state['current_stage'] = WorkflowStage.ANALYSIS.value
-            logger.info(f"Moving to ANALYSIS stage with {total_events} events")
+            # Return state updates
+            return {
+                "events": new_events,
+                "current_stage": WorkflowStage.ANALYSIS.value
+            }
         else:
             logger.warning("No events found during monitoring")
-            current_state['current_stage'] = WorkflowStage.COMPLETE.value
+            return {"current_stage": WorkflowStage.COMPLETE.value}
         
     except Exception as e:
         error_msg = f"Monitoring error: {str(e)}"
         logger.error(error_msg)
-        current_state['errors'] = current_state.get('errors', []) + [error_msg]
-        current_state['current_stage'] = WorkflowStage.ERROR.value
-    
-    return current_state
+        return {
+            "errors": [error_msg],
+            "current_stage": WorkflowStage.ERROR.value
+        }
 
 async def analyze_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """Analyze events and identify patterns."""
-    current_state = state.copy() if state else create_empty_state()
     logger.info("Starting analysis phase")
     
     try:
-        logger.info(f"Analyzing {len(current_state.get('events', []))} events")
+        logger.info(f"Analyzing {len(state.get('events', []))} events")
         # TODO: Implement pattern analysis
-        current_state['current_stage'] = WorkflowStage.REPORTING.value
+        return {"current_stage": WorkflowStage.REPORTING.value}
         
     except Exception as e:
         error_msg = f"Analysis error: {str(e)}"
         logger.error(error_msg)
-        current_state['errors'] = current_state.get('errors', []) + [error_msg]
-        current_state['current_stage'] = WorkflowStage.ERROR.value
-    
-    return current_state
+        return {
+            "errors": [error_msg],
+            "current_stage": WorkflowStage.ERROR.value
+        }
 
 async def report_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """Generate Gonzo's insights and commentary."""
-    current_state = state.copy() if state else create_empty_state()
     logger.info("Starting reporting phase")
     
     try:
-        logger.info(f"Generating insights from {len(current_state.get('patterns', []))} patterns")
+        logger.info(f"Generating insights from {len(state.get('patterns', []))} patterns")
         # TODO: Implement insight generation
-        current_state['current_stage'] = WorkflowStage.COMPLETE.value
+        return {"current_stage": WorkflowStage.COMPLETE.value}
         
     except Exception as e:
         error_msg = f"Reporting error: {str(e)}"
         logger.error(error_msg)
-        current_state['errors'] = current_state.get('errors', []) + [error_msg]
-        current_state['current_stage'] = WorkflowStage.ERROR.value
-    
-    return current_state
+        return {
+            "errors": [error_msg],
+            "current_stage": WorkflowStage.ERROR.value
+        }
 
 async def error_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """Handle errors and recovery."""
-    current_state = state.copy() if state else create_empty_state()
-    
     # Log errors
-    if current_state.get('errors'):
-        for error in current_state['errors']:
+    if state.get('errors'):
+        for error in state['errors']:
             logger.error(f"Error encountered: {error}")
-        current_state['errors'] = []
     
-    current_state['current_stage'] = WorkflowStage.COMPLETE.value
-    return current_state
+    return {
+        "errors": [],
+        "current_stage": WorkflowStage.COMPLETE.value
+    }
 
 def get_stage(state: Dict[str, Any]) -> str:
     """Get stage value from state."""
