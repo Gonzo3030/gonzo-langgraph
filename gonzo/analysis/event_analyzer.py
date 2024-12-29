@@ -63,10 +63,12 @@ Provide your analysis in this format:
                     messages=[{"role": "user", "content": prompt}]
                 )
                 
-                analysis = response.content
+                # Extract text content from the response
+                analysis = response.content[0].text if hasattr(response.content[0], 'text') else str(response.content)
+                
+                logger.debug(f"Analysis received: {analysis[:200]}...")
                 
                 # Parse the analysis into a Pattern
-                # TODO: Implement better parsing logic
                 pattern = Pattern(
                     events=batch,
                     description=analysis,
