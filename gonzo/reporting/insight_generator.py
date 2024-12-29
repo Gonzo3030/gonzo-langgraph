@@ -60,18 +60,20 @@ Remember: You're warning people about the dystopian future you've witnessed."""
         insights = []
         
         for pattern in patterns:
-            # Only create threads for significant patterns
-            if pattern.significance >= 0.7:
-                logger.info(f"Generating thread for pattern with significance {pattern.significance}")
-                tweets = await self.generate_thread(pattern)
-                if tweets:
-                    insight = {
-                        'pattern': pattern.model_dump(),
-                        'thread': tweets,
-                        'timestamp': datetime.now().isoformat()
-                    }
-                    insights.append(insight)
-                    logger.info(f"Generated insight with {len(tweets)} tweets")
+            # Debug log the pattern and its significance
+            logger.info(f"Processing pattern with significance {pattern.significance}")
+            logger.debug(f"Pattern details: {pattern.model_dump()}")
+            
+            # Temporarily removing significance threshold for testing
+            tweets = await self.generate_thread(pattern)
+            if tweets:
+                insight = {
+                    'pattern': pattern.model_dump(),
+                    'thread': tweets,
+                    'timestamp': datetime.now().isoformat()
+                }
+                insights.append(insight)
+                logger.info(f"Generated insight with {len(tweets)} tweets")
         
         logger.info(f"Generated {len(insights)} total insights")
         return insights
