@@ -5,6 +5,7 @@ from typing import Dict, Any, Optional, Union, TypedDict, Annotated
 from datetime import datetime
 from operator import itemgetter
 from langgraph.graph import StateGraph, END
+from langgraph.checkpoint.memory import MemorySaver
 
 from ..state_management import GonzoState, WorkflowStage, Event
 from ..monitoring.brave_monitor import BraveMonitor
@@ -101,7 +102,7 @@ async def analyze_node(state: Dict[str, Any]) -> Dict[str, Any]:
     logger.info("Starting analysis phase")
     
     try:
-        logger.info(f"Analyzing {len(current_state['events'])} events")
+        logger.info(f"Analyzing {len(current_state.get('events', []))} events")
         # TODO: Implement pattern analysis
         current_state['current_stage'] = WorkflowStage.REPORTING.value
         
@@ -150,8 +151,8 @@ def get_stage(state: Dict[str, Any]) -> str:
         return WorkflowStage.MONITORING.value
     return state['current_stage']
 
-def create_workflow(config: Optional[Dict[str, Any]] = None) -> StateGraph:
-    """Create the simplified workflow graph."""
+def create_workflow(config: Optional[Dict[str, Any]] = None) -> Tuple[StateGraph, MemorySaver]:
+    """Create the simplified workflow graph and memory saver."""
     # Create workflow with state schema
     workflow = StateGraph(state_schema=GonzoGraphState)
     
@@ -202,4 +203,7 @@ def create_workflow(config: Optional[Dict[str, Any]] = None) -> StateGraph:
     # Set entry point
     workflow.set_entry_point("monitor")
     
-    return workflow
+    # Create memory saver
+    memory = MemorySaver()
+    
+    return workflow, memory
