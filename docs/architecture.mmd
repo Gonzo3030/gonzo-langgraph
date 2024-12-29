@@ -1,0 +1,53 @@
+```mermaid
+graph TB
+    subgraph State Management
+        state["GonzoGraphState"]
+        state --> |"events: list[Event]"| events
+        state --> |"patterns: list[Pattern]"| patterns
+        state --> |"insights: list[Insight]"| insights
+        state --> |"current_stage: str"| stage
+        state --> |"errors: list[str]"| errors
+    end
+
+    subgraph Workflow Stages
+        monitor["Monitor Node"] --> analyze["Analyze Node"]
+        analyze --> report["Report Node"]
+        monitor --> |"Error"| error["Error Node"]
+        analyze --> |"Error"| error
+        report --> |"Error"| error
+        error --> |"Complete"| complete
+        monitor --> |"No Events"| complete(("Complete"))
+        report --> complete
+    end
+
+    subgraph Monitor Implementation
+        brave["Brave API"] --> |"Search News"| queries["Generated Queries"]
+        queries --> |"Process Results"| events["Events"]
+    end
+
+    subgraph Analyze Implementation["Analyze Implementation (Planned)"]
+        style Analyze Implementation fill:#f9f,stroke:#333,stroke-width:2px
+        event_input["Input Events"] --> pattern_detection["Pattern Detection"]
+        pattern_detection --> |"Claude Analysis"| themes["Theme Identification"]
+        themes --> |"Significance Scoring"| patterns["Patterns"]
+    end
+
+    subgraph Report Implementation["Report Implementation (Planned)"]
+        style Report Implementation fill:#f9f,stroke:#333,stroke-width:2px
+        pattern_input["Input Patterns"] --> commentary["Generate Commentary"]
+        commentary --> |"Claude/HST Voice"| narrative["Create Narrative"]
+        narrative --> implications["Societal Implications"]
+        implications --> insights["Generated Insights"]
+    end
+
+    subgraph State Persistence
+        thread["Thread ID"] --> memory["MemorySaver"]
+        memory --> |"Checkpoint"| state_store["State Storage"]
+    end
+
+    %% Connections between subgraphs
+    events --> state
+    patterns --> state
+    insights --> state
+    state_store --> state
+```
