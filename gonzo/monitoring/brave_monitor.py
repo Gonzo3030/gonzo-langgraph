@@ -108,28 +108,15 @@ class BraveMonitor:
     
     @staticmethod
     def generate_queries() -> List[str]:
-        """Generate search queries focused on Russell Brand content."""
+        """Generate focused search queries for Russell Brand content."""
         queries = [
-            # Direct Brand Content
-            'Russell Brand latest news',
-            'Russell Brand Rumble show',
-            'Stay Free with Russell Brand',
-            
-            # Brand's Key Topics
-            'Russell Brand big pharma',
-            'Russell Brand corporate media',
-            'Russell Brand censorship',
-            'Russell Brand conspiracy',
-            'Russell Brand controversy',
-            
-            # Brand's Commentary
-            'Russell Brand political commentary',
-            'Russell Brand system critique',
-            'Russell Brand establishment',
-            
-            # Related Platforms/Channels
-            'Russell Brand Rumble channel',
-            'Russell Brand alternative media'
+            # Most effective queries from testing
+            '"Russell Brand" "Stay Free" Rumble latest',
+            '"Russell Brand" "big pharma" "media" recent',
+            '"Russell Brand" "corporate media" commentary',
+            '"Stay Free with Russell Brand" new episode',
+            '"Russell Brand" "government control" discussion',
+            '"Russell Brand" Rumble "analysis" today'
         ]
         logger.info(f"Generated {len(queries)} Russell Brand-focused queries")
         return queries
