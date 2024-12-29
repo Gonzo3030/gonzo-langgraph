@@ -55,13 +55,10 @@ async def monitor_node(state: GonzoGraphState) -> Dict[str, Any]:
             except Exception as e:
                 error_msg = f"Error searching {query}: {str(e)}"
                 logger.error(error_msg)
-                return GonzoGraphState(
-                    events=state['events'],
-                    patterns=state['patterns'],
-                    insights=state['insights'],
-                    current_stage=WorkflowStage.ERROR.value,
-                    errors=[error_msg]
-                )
+                return {
+                    "errors": [error_msg],
+                    "current_stage": WorkflowStage.ERROR.value
+                }
         
         total_events = len(new_events)
         logger.info(f"Completed monitoring phase. Found {total_events} events")
@@ -69,33 +66,23 @@ async def monitor_node(state: GonzoGraphState) -> Dict[str, Any]:
         # Move to analysis stage if we found any events
         if total_events > 0:
             logger.info(f"Moving to ANALYSIS stage with {total_events} events")
-            return GonzoGraphState(
-                events=new_events,  # This will be merged via add reducer
-                patterns=state['patterns'],
-                insights=state['insights'],
-                current_stage=WorkflowStage.ANALYSIS.value,
-                errors=state['errors']
-            )
+            return {
+                "events": new_events,  # Will be merged via add reducer
+                "current_stage": WorkflowStage.ANALYSIS.value
+            }
         else:
             logger.warning("No events found during monitoring")
-            return GonzoGraphState(
-                events=state['events'],
-                patterns=state['patterns'],
-                insights=state['insights'],
-                current_stage=WorkflowStage.COMPLETE.value,
-                errors=state['errors']
-            )
+            return {
+                "current_stage": WorkflowStage.COMPLETE.value
+            }
         
     except Exception as e:
         error_msg = f"Monitoring error: {str(e)}"
         logger.error(error_msg)
-        return GonzoGraphState(
-            events=state['events'],
-            patterns=state['patterns'],
-            insights=state['insights'],
-            current_stage=WorkflowStage.ERROR.value,
-            errors=[error_msg]
-        )
+        return {
+            "errors": [error_msg],
+            "current_stage": WorkflowStage.ERROR.value
+        }
 
 async def analyze_node(state: GonzoGraphState) -> Dict[str, Any]:
     """Analyze events and identify patterns."""
@@ -106,67 +93,50 @@ async def analyze_node(state: GonzoGraphState) -> Dict[str, Any]:
         logger.info(f"Analyzing {len(events)} events")
         
         # TODO: Implement pattern analysis
-        return GonzoGraphState(
-            events=state['events'],
-            patterns=state['patterns'],
-            insights=state['insights'],
-            current_stage=WorkflowStage.REPORTING.value,
-            errors=state['errors']
-        )
+        return {
+            "current_stage": WorkflowStage.REPORTING.value
+        }
         
     except Exception as e:
         error_msg = f"Analysis error: {str(e)}"
         logger.error(error_msg)
-        return GonzoGraphState(
-            events=state['events'],
-            patterns=state['patterns'],
-            insights=state['insights'],
-            current_stage=WorkflowStage.ERROR.value,
-            errors=[error_msg]
-        )
+        return {
+            "errors": [error_msg],
+            "current_stage": WorkflowStage.ERROR.value
+        }
 
 async def report_node(state: GonzoGraphState) -> Dict[str, Any]:
     """Generate Gonzo's insights and commentary."""
     logger.info("Starting reporting phase")
     
     try:
-        patterns = state['patterns']
+        patterns = state.get('patterns', [])
         logger.info(f"Generating insights from {len(patterns)} patterns")
         
         # TODO: Implement insight generation
-        return GonzoGraphState(
-            events=state['events'],
-            patterns=state['patterns'],
-            insights=state['insights'],
-            current_stage=WorkflowStage.COMPLETE.value,
-            errors=state['errors']
-        )
+        return {
+            "current_stage": WorkflowStage.COMPLETE.value
+        }
         
     except Exception as e:
         error_msg = f"Reporting error: {str(e)}"
         logger.error(error_msg)
-        return GonzoGraphState(
-            events=state['events'],
-            patterns=state['patterns'],
-            insights=state['insights'],
-            current_stage=WorkflowStage.ERROR.value,
-            errors=[error_msg]
-        )
+        return {
+            "errors": [error_msg],
+            "current_stage": WorkflowStage.ERROR.value
+        }
 
 async def error_node(state: GonzoGraphState) -> Dict[str, Any]:
     """Handle errors and recovery."""
     # Log errors
-    if state['errors']:
+    if state.get('errors'):
         for error in state['errors']:
             logger.error(f"Error encountered: {error}")
     
-    return GonzoGraphState(
-        events=state['events'],
-        patterns=state['patterns'],
-        insights=state['insights'],
-        current_stage=WorkflowStage.COMPLETE.value,
-        errors=[]
-    )
+    return {
+        "errors": [],  # Clear errors
+        "current_stage": WorkflowStage.COMPLETE.value
+    }
 
 def get_stage(state: GonzoGraphState) -> str:
     """Get stage value from state."""
