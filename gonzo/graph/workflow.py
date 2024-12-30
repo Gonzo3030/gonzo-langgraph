@@ -1,9 +1,9 @@
-"""Simplified workflow implementation for Gonzo MVP."""
+"""Main content generation workflow for Gonzo."""
 import os
 import logging
 from typing import Dict, Any, Optional, Union, Tuple
 from operator import add
-from datetime import datetime
+from datetime import datetime, timedelta
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 
@@ -11,7 +11,6 @@ from ..state_management import GonzoState, WorkflowStage, Event, Pattern, GonzoG
 from ..monitoring.brave_monitor import BraveMonitor
 from ..analysis.event_analyzer import EventAnalyzer
 from ..reporting.insight_generator import InsightGenerator
-from ..publishing.publisher import Publisher
 
 logger = logging.getLogger(__name__)
 
@@ -123,7 +122,7 @@ async def analyze_node(state: GonzoGraphState) -> Dict[str, Any]:
         }
 
 async def report_node(state: GonzoGraphState) -> Dict[str, Any]:
-    """Generate Gonzo's insights and commentary."""
+    """Generate Gonzo's insights and queue them for publishing."""
     logger.info("Starting reporting phase")
     
     try:
@@ -142,24 +141,31 @@ async def report_node(state: GonzoGraphState) -> Dict[str, Any]:
         
         logger.info(f"Generated {len(insights)} Twitter threads")
         
-        # Publish insights
-        try:
-            publisher = Publisher.from_env(wait_time=1.0)
-            publish_results = await publisher.publish_insights(insights)
-            logger.info(f"Published {len(publish_results)} threads to X")
-            
-            return {
-                "insights": insights,
-                "published": publish_results,
-                "current_stage": WorkflowStage.COMPLETE.value
-            }
-            
-        except Exception as e:
-            logger.error(f"Error publishing to X: {str(e)}")
-            return {
-                "insights": insights,
-                "current_stage": WorkflowStage.COMPLETE.value
-            }
+        # Schedule insights
+        now = datetime.now()
+        scheduled_posts = []
+        
+        for i, insight in enumerate(insights):
+            # Schedule posts with 30-minute gaps
+            scheduled_time = now + timedelta(minutes=30 * i)
+            scheduled_posts.append({
+                'insight': insight,
+                'scheduled_time': scheduled_time.isoformat(),
+                'status': 'queued'
+            })
+            logger.info(f"Queued insight for {scheduled_time}")
+        
+        # Get existing queue
+        existing_queue = state.get('queued_posts', [])
+        updated_queue = existing_queue + scheduled_posts
+        
+        logger.info(f"Added {len(scheduled_posts)} posts to queue. Total queued: {len(updated_queue)}")
+        
+        return {
+            "insights": insights,
+            "queued_posts": updated_queue,
+            "current_stage": WorkflowStage.COMPLETE.value
+        }
         
     except Exception as e:
         error_msg = f"Reporting error: {str(e)}"
@@ -186,7 +192,7 @@ def get_stage(state: GonzoGraphState) -> str:
     return state.get('current_stage', WorkflowStage.MONITORING.value)
 
 def create_workflow(config: Optional[Dict[str, Any]] = None) -> Tuple[StateGraph, MemorySaver]:
-    """Create the simplified workflow graph and memory saver."""
+    """Create the content generation workflow graph."""
     # Create workflow with state schema
     workflow = StateGraph(state_schema=GonzoGraphState)
     
