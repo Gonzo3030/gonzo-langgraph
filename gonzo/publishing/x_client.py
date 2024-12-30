@@ -17,9 +17,9 @@ import secrets
 logger = logging.getLogger(__name__)
 
 class XClient:
-    """Simple async X (Twitter) v2 API client using OAuth 1.0a."""
+    """X API client for posting threads."""
     
-    BASE_URL = "https://api.twitter.com/2"
+    BASE_URL = "https://api.twitter.com/2/tweets"
     
     def __init__(self, 
                  api_key: str,
@@ -33,47 +33,39 @@ class XClient:
         self.access_token = access_token
         self.access_token_secret = access_token_secret
         self.wait_time = wait_time
-        self._session = None
-        
-        # Create SSL context with certifi certificates
         self.ssl_context = ssl.create_default_context(cafile=certifi.where())
-        
-        # Log initialization (without sensitive data)
-        logger.info(f"Initialized XClient with API key: {api_key[:8]}...")
+        logger.info("Initialized X client")
     
-    def _generate_oauth_signature(self, method: str, url: str, params: Dict[str, str]) -> str:
-        """Generate OAuth 1.0a signature."""
-        # Collect parameters
-        oauth_params = {
+    def _generate_auth_headers(self, method: str, url: str) -> Dict[str, str]:
+        """Generate OAuth 1.0a headers according to X API v2 spec."""
+        oauth_timestamp = str(int(time.time()))
+        oauth_nonce = secrets.token_hex(16)
+        
+        # Create parameter string
+        params = {
             'oauth_consumer_key': self.api_key,
-            'oauth_nonce': secrets.token_hex(16),
+            'oauth_nonce': oauth_nonce,
             'oauth_signature_method': 'HMAC-SHA1',
-            'oauth_timestamp': str(int(time.time())),
+            'oauth_timestamp': oauth_timestamp,
             'oauth_token': self.access_token,
             'oauth_version': '1.0'
         }
         
-        # Combine all parameters
-        all_params = {**params, **oauth_params}
-        
-        # Create parameter string
+        # Sort and encode parameters
         param_string = '&'.join([
             f"{urllib.parse.quote(key)}={urllib.parse.quote(str(value))}"
-            for key, value in sorted(all_params.items())
+            for key, value in sorted(params.items())
         ])
         
         # Create signature base string
         signature_base = '&'.join([
-            method,
+            method.upper(),
             urllib.parse.quote(url, safe=''),
             urllib.parse.quote(param_string, safe='')
         ])
         
         # Create signing key
-        signing_key = '&'.join([
-            urllib.parse.quote(self.api_secret, safe=''),
-            urllib.parse.quote(self.access_token_secret, safe='')
-        ])
+        signing_key = f"{urllib.parse.quote(self.api_secret)}&{urllib.parse.quote(self.access_token_secret)}"
         
         # Generate signature
         signature = base64.b64encode(
@@ -84,96 +76,40 @@ class XClient:
             ).digest()
         ).decode('utf-8')
         
-        # Log signature details (for debugging)
-        logger.debug(f"Generated OAuth signature for {url}")
-        return signature
-    
-    def _get_oauth_header(self, method: str, url: str, params: Dict[str, str] = None) -> str:
-        """Get OAuth 1.0a Authorization header."""
-        params = params or {}
-        
-        oauth_params = {
-            'oauth_consumer_key': self.api_key,
-            'oauth_nonce': secrets.token_hex(16),
-            'oauth_signature_method': 'HMAC-SHA1',
-            'oauth_timestamp': str(int(time.time())),
-            'oauth_token': self.access_token,
-            'oauth_version': '1.0'
-        }
-        
-        # Generate signature
-        oauth_params['oauth_signature'] = self._generate_oauth_signature(method, url, {**params, **oauth_params})
+        # Add signature to parameters
+        params['oauth_signature'] = signature
         
         # Create authorization header
         auth_header = 'OAuth ' + ', '.join([
-            f'{urllib.parse.quote(key)}="{urllib.parse.quote(str(value))}"'
-            for key, value in oauth_params.items()
+            f"{urllib.parse.quote(key)}=\"{urllib.parse.quote(str(value))}\""
+            for key, value in params.items()
         ])
         
-        # Log header (without sensitive data)
-        logger.debug(f"Generated OAuth header for {url}")
-        return auth_header
-    
-    async def _test_credentials(self) -> bool:
-        """Test API credentials by making a simple request."""
-        await self._ensure_session()
-        
-        try:
-            # Try to get user details (a simple authenticated request)
-            url = "https://api.twitter.com/2/users/me"
-            headers = {'Authorization': self._get_oauth_header('GET', url)}
-            
-            async with self._session.get(url, headers=headers) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    logger.info(f"Successfully authenticated as user: {data.get('data', {}).get('username')}")
-                    return True
-                else:
-                    error_data = await response.json()
-                    logger.error(f"Authentication test failed: {error_data}")
-                    return False
-                    
-        except Exception as e:
-            logger.error(f"Error testing credentials: {str(e)}")
-            return False
-    
-    async def _ensure_session(self):
-        """Ensure aiohttp session exists."""
-        if not self._session:
-            connector = aiohttp.TCPConnector(ssl=self.ssl_context)
-            self._session = aiohttp.ClientSession(connector=connector)
-            logger.debug("Created new aiohttp session")
+        return {
+            'Authorization': auth_header,
+            'Content-Type': 'application/json'
+        }
     
     async def create_tweet(self, text: str, reply_to_id: str = None) -> Dict:
         """Create a tweet, optionally as a reply."""
-        await self._ensure_session()
-        
-        url = f"{self.BASE_URL}/tweets"
         data = {"text": text}
         if reply_to_id:
             data["reply"] = {"in_reply_to_tweet_id": reply_to_id}
         
-        headers = {
-            'Authorization': self._get_oauth_header('POST', url),
-            'Content-Type': 'application/json'
-        }
+        headers = self._generate_auth_headers('POST', self.BASE_URL)
         
         try:
-            logger.debug(f"Attempting to post tweet: {text[:50]}...")
-            async with self._session.post(url, headers=headers, json=data) as response:
-                result = await response.json()
-                
-                if response.status == 201:
-                    logger.info(f"Successfully created tweet")
-                    return result
-                else:
-                    logger.error(f"Error creating tweet: {result}")
-                    if response.status == 401:
-                        # Test credentials on auth error
-                        is_valid = await self._test_credentials()
-                        if not is_valid:
-                            logger.error("API credentials appear to be invalid or insufficient")
-                    return result
+            connector = aiohttp.TCPConnector(ssl=self.ssl_context)
+            async with aiohttp.ClientSession(connector=connector) as session:
+                async with session.post(self.BASE_URL, headers=headers, json=data) as response:
+                    result = await response.json()
+                    
+                    if response.status == 201:
+                        logger.info(f"Successfully created tweet")
+                        return result
+                    else:
+                        logger.error(f"Error creating tweet: {result}")
+                        return result
                     
         except Exception as e:
             error_msg = f"Error creating tweet: {str(e)}"
@@ -186,14 +122,10 @@ class XClient:
         previous_id = None
         
         try:
-            # Test credentials before starting
-            if not await self._test_credentials():
-                logger.error("Credential test failed, aborting thread creation")
-                return results
-            
-            for tweet in tweets:
+            for i, tweet in enumerate(tweets):
                 try:
                     result = await self.create_tweet(tweet, previous_id)
+                    
                     if "data" in result:
                         tweet_id = result["data"]["id"]
                         results.append({
@@ -202,24 +134,22 @@ class XClient:
                             "url": f"https://twitter.com/user/status/{tweet_id}"
                         })
                         previous_id = tweet_id
-                        logger.info(f"Successfully posted tweet: {tweet_id}")
+                        logger.info(f"Posted tweet {i+1} of {len(tweets)}")
                     else:
-                        logger.error(f"Error creating tweet: {result}")
+                        logger.error(f"Failed to post tweet {i+1}: {result}")
                         break
-                        
-                    await asyncio.sleep(self.wait_time)
                     
+                    # Wait between tweets to respect rate limits
+                    if i < len(tweets) - 1:
+                        await asyncio.sleep(self.wait_time)
+                        
                 except Exception as e:
-                    logger.error(f"Error posting tweet: {str(e)}")
+                    logger.error(f"Error in thread creation: {str(e)}")
                     break
                     
-        finally:
-            # Clean up session
-            if self._session:
-                await self._session.close()
-                self._session = None
-                logger.debug("Closed aiohttp session")
-        
+        except Exception as e:
+            logger.error(f"Error creating thread: {str(e)}")
+            
         return results
     
     @classmethod
