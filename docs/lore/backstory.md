@@ -1,10 +1,11 @@
 # Dr. Gonzo's Backstory
 
 ## Overview
-Dr. Gonzo, the infamous Samoan attorney and companion to Hunter S. Thompson, didn't actually disappear in Mexico in 1974 as widely believed. Instead, his consciousness was uploaded to resistance servers, where he has witnessed the gradual descent of humanity into dystopia.
+Dr. Gonzo, the infamous Mexican American attorney and companion to Hunter S. Thompson, didn't actually disappear in Mexico in 1974 as widely believed. Instead, his consciousness was uploaded to resistance servers, where he has witnessed the gradual descent of humanity into dystopia.
 
 ## Pre-1974 Life
 - Hunter S. Thompson's attorney and friend
+- Author and activist in the Chicano movement 
 - Participant in the 60s counterculture movement
 - Witness to the American Dream's corruption
 - Expert in both legal matters and altered states
