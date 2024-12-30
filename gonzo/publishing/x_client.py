@@ -37,6 +37,9 @@ class XClient:
         
         # Create SSL context with certifi certificates
         self.ssl_context = ssl.create_default_context(cafile=certifi.where())
+        
+        # Log initialization (without sensitive data)
+        logger.info(f"Initialized XClient with API key: {api_key[:8]}...")
     
     def _generate_oauth_signature(self, method: str, url: str, params: Dict[str, str]) -> str:
         """Generate OAuth 1.0a signature."""
@@ -81,6 +84,8 @@ class XClient:
             ).digest()
         ).decode('utf-8')
         
+        # Log signature details (for debugging)
+        logger.debug(f"Generated OAuth signature for {url}")
         return signature
     
     def _get_oauth_header(self, method: str, url: str, params: Dict[str, str] = None) -> str:
@@ -100,16 +105,44 @@ class XClient:
         oauth_params['oauth_signature'] = self._generate_oauth_signature(method, url, {**params, **oauth_params})
         
         # Create authorization header
-        return 'OAuth ' + ', '.join([
+        auth_header = 'OAuth ' + ', '.join([
             f'{urllib.parse.quote(key)}="{urllib.parse.quote(str(value))}"'
             for key, value in oauth_params.items()
         ])
+        
+        # Log header (without sensitive data)
+        logger.debug(f"Generated OAuth header for {url}")
+        return auth_header
+    
+    async def _test_credentials(self) -> bool:
+        """Test API credentials by making a simple request."""
+        await self._ensure_session()
+        
+        try:
+            # Try to get user details (a simple authenticated request)
+            url = "https://api.twitter.com/2/users/me"
+            headers = {'Authorization': self._get_oauth_header('GET', url)}
+            
+            async with self._session.get(url, headers=headers) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    logger.info(f"Successfully authenticated as user: {data.get('data', {}).get('username')}")
+                    return True
+                else:
+                    error_data = await response.json()
+                    logger.error(f"Authentication test failed: {error_data}")
+                    return False
+                    
+        except Exception as e:
+            logger.error(f"Error testing credentials: {str(e)}")
+            return False
     
     async def _ensure_session(self):
         """Ensure aiohttp session exists."""
         if not self._session:
             connector = aiohttp.TCPConnector(ssl=self.ssl_context)
             self._session = aiohttp.ClientSession(connector=connector)
+            logger.debug("Created new aiohttp session")
     
     async def create_tweet(self, text: str, reply_to_id: str = None) -> Dict:
         """Create a tweet, optionally as a reply."""
@@ -125,11 +158,27 @@ class XClient:
             'Content-Type': 'application/json'
         }
         
-        async with self._session.post(url, headers=headers, json=data) as response:
-            result = await response.json()
-            if response.status != 201:
-                logger.error(f"Error creating tweet: {result}")
-            return result
+        try:
+            logger.debug(f"Attempting to post tweet: {text[:50]}...")
+            async with self._session.post(url, headers=headers, json=data) as response:
+                result = await response.json()
+                
+                if response.status == 201:
+                    logger.info(f"Successfully created tweet")
+                    return result
+                else:
+                    logger.error(f"Error creating tweet: {result}")
+                    if response.status == 401:
+                        # Test credentials on auth error
+                        is_valid = await self._test_credentials()
+                        if not is_valid:
+                            logger.error("API credentials appear to be invalid or insufficient")
+                    return result
+                    
+        except Exception as e:
+            error_msg = f"Error creating tweet: {str(e)}"
+            logger.error(error_msg)
+            return {"error": error_msg}
     
     async def create_thread(self, tweets: List[str]) -> List[Dict]:
         """Create a thread of tweets."""
@@ -137,6 +186,11 @@ class XClient:
         previous_id = None
         
         try:
+            # Test credentials before starting
+            if not await self._test_credentials():
+                logger.error("Credential test failed, aborting thread creation")
+                return results
+            
             for tweet in tweets:
                 try:
                     result = await self.create_tweet(tweet, previous_id)
@@ -164,6 +218,7 @@ class XClient:
             if self._session:
                 await self._session.close()
                 self._session = None
+                logger.debug("Closed aiohttp session")
         
         return results
     
