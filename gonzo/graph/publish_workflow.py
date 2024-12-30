@@ -1,7 +1,7 @@
 """Publishing workflow implementation for Gonzo."""
 import os
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
@@ -128,7 +128,7 @@ def get_stage(state: GonzoGraphState) -> str:
     """Get stage value from state."""
     return state.get('current_stage', WorkflowStage.MONITORING.value)
 
-def create_publish_workflow(config: Optional[Dict[str, Any]] = None) -> Tuple[StateGraph, MemorySaver]:
+def create_publish_workflow(config: Optional[Dict[str, Any]] = None) -> tuple[StateGraph, MemorySaver]:
     """Create the publishing workflow graph."""
     # Create workflow with state schema
     workflow = StateGraph(state_schema=GonzoGraphState)
