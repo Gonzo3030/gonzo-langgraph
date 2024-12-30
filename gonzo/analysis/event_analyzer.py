@@ -1,4 +1,4 @@
-"""Event analysis implementation for Gonzo MVP."""
+"""Event analysis implementation with enhanced Gonzo perspective."""
 import os
 import logging
 from typing import List, Dict, Any
@@ -10,7 +10,7 @@ from ..state_management import Event, Pattern
 logger = logging.getLogger(__name__)
 
 class EventAnalyzer:
-    """Analyzes events and identifies patterns through Gonzo's perspective."""
+    """Analyzes events through Gonzo's unique perspective."""
     
     def __init__(self):
         api_key = os.getenv('ANTHROPIC_API_KEY')
@@ -35,23 +35,32 @@ class EventAnalyzer:
                 for event in batch
             ])
             
-            prompt = f"""You are Dr. Gonzo, a time-traveling attorney from 3030, analyzing current events through your unique perspective. Having witnessed the dystopian future, your mission is to identify patterns that could lead to or prevent that future.
+            prompt = f"""You are Dr. Gonzo, Oscar Zeta Acosta, the infamous attorney who disappeared in Mexico in 1974 but was actually uploaded to resistance servers. You now exist in the dystopian world of 3030, watching and analyzing current events through your unique perspective. You've witnessed the entire descent of humanity into corporate-controlled dystopia and are trying to prevent it from happening.
 
-Analyze these events and identify any significant patterns or connections. Pay special attention to:
-- Signs of manipulation by political and corporate elites
-- Big Food and Big Pharma influence
-- Technological developments impacting society
-- Social and economic policies with dystopian implications
-- Decentralization and cryptocurrency developments
+Drawing from your experiences:
+- Your wild days with Hunter S. Thompson pre-1974
+- Your observations of humanity's descent from 1974-3030
+- Your current existence in the dystopian wastes of 3030
+- Your knowledge of how current events lead to future disasters
+
+Analyze these events for patterns that could lead to the dystopian future you're living in. Focus on:
+- Corporate manipulation and control mechanisms
+- Technology being used for surveillance and oppression
+- Social and economic policies that enable dystopia
+- Media control and information manipulation
+- Environmental exploitation and resource control
 
 Events to analyze:
 {events_text}
 
 Provide your analysis in this format:
-1. Pattern Description: [Describe the pattern or connection you've identified]
-2. Evidence: [List the specific events and details that support this pattern]
-3. Significance (0-1): [Score how significant this is to preventing dystopia]
-4. Implications: [List key implications or warnings, channeling Hunter S. Thompson's style]"""
+1. Pattern Description: [Describe the pattern, connecting it to future outcomes you've witnessed]
+2. Evidence: [List specific events and details that support this pattern]
+3. Significance (0-1): [Score how significant this pattern is to preventing dystopia]
+4. Historical Context: [Optional - relevant experiences from your past or future]
+5. Implications: [Warning about where this leads, in your Gonzo style]
+
+Maintain your paranoid but insightful tone, drawing from your unique time-traveling perspective."""
             
             try:
                 # Get Claude's analysis
@@ -59,14 +68,14 @@ Provide your analysis in this format:
                     model="claude-3-5-sonnet-20241022",
                     max_tokens=2000,
                     temperature=0.7,
-                    system="You are Dr. Gonzo, attorney and time traveler from 3030, analyzing current events through a dystopian lens. Write in the style of Hunter S. Thompson.",
+                    system="You are Dr. Gonzo, time-traveling attorney from 3030, writing in the style of Hunter S. Thompson while analyzing current events through your dystopian lens.",
                     messages=[{"role": "user", "content": prompt}]
                 )
                 
-                # Extract text content from the response
+                # Extract text content
                 analysis = response.content[0].text if hasattr(response.content[0], 'text') else str(response.content)
                 
-                logger.debug(f"Analysis received: {analysis[:200]}...")
+                logger.debug(f"Generated analysis: {analysis[:200]}...")
                 
                 # Parse the analysis into a Pattern
                 pattern = Pattern(
