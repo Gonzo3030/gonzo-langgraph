@@ -1,32 +1,25 @@
-"""Publishing implementation for Gonzo MVP."""
+"""Publishing implementation for Gonzo MVP with scheduling."""
 import os
 import logging
 import asyncio
 from typing import List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from .x_client import XClient
 
 logger = logging.getLogger(__name__)
 
 class Publisher:
-    """Handles publishing insights to social media."""
+    """Handles publishing insights to social media with scheduling."""
     
     def __init__(self, x_client: XClient):
         """Initialize publisher with X client."""
         self.x_client = x_client
         logger.info("Initialized publisher")
     
-    async def publish_thread(self, tweets: List[str]) -> Dict[str, Any]:
-        """Publish a thread to X.
-        
-        Args:
-            tweets: List of tweet contents
-            
-        Returns:
-            Dict containing thread info and status
-        """
-        if not tweets:
+    async def publish_thread(self, thread: List[str]) -> Dict[str, Any]:
+        """Publish a thread to X."""
+        if not thread:
             logger.warning("No tweets to post")
             return {
                 'success': False,
@@ -34,11 +27,11 @@ class Publisher:
             }
         
         try:
-            logger.info(f"Publishing thread of {len(tweets)} tweets")
-            results = await self.x_client.create_thread(tweets)
+            logger.info(f"Publishing thread of {len(thread)} tweets")
+            results = await self.x_client.create_thread(thread)
             
             return {
-                'success': True,
+                'success': len(results) == len(thread),
                 'tweets': results
             }
             
@@ -50,43 +43,66 @@ class Publisher:
                 'error': error_msg
             }
     
-    async def publish_insights(self, insights: List[Dict]) -> List[Dict[str, Any]]:
-        """Publish all insight threads.
+    def _schedule_insights(self, insights: List[Dict]) -> List[Dict]:
+        """Schedule insights for publication."""
+        now = datetime.now()
+        scheduled_insights = []
         
-        Args:
-            insights: List of insight dicts containing threads
+        for i, insight in enumerate(insights):
+            # First insight posts immediately, others scheduled hourly
+            scheduled_time = now + timedelta(hours=i) if i > 0 else now
             
-        Returns:
-            List of publishing results
-        """
+            scheduled_insights.append({
+                'insight': insight,
+                'scheduled_time': scheduled_time,
+                'status': 'scheduled' if i > 0 else 'ready'
+            })
+            
+            if i > 0:
+                logger.info(f"Scheduled insight for {scheduled_time}")
+            
+        return scheduled_insights
+    
+    async def publish_insights(self, insights: List[Dict]) -> List[Dict[str, Any]]:
+        """Publish first insight, schedule others."""
+        if not insights:
+            return []
+            
+        # Schedule insights
+        scheduled = self._schedule_insights(insights)
         results = []
         
-        for insight in insights:
-            try:
-                thread = insight.get('thread', [])
-                if thread:
-                    logger.info(f"Publishing thread for insight")
-                    result = await self.publish_thread(thread)
-                    results.append({
-                        'insight': insight,
-                        'published': result,
-                        'timestamp': datetime.now().isoformat()
-                    })
-                    # Wait between threads
-                    await asyncio.sleep(self.x_client.wait_time * 2)
-                    
-            except Exception as e:
-                logger.error(f"Error publishing insight: {str(e)}")
+        # Publish first insight immediately
+        first = scheduled[0]
+        try:
+            logger.info("Publishing immediate insight")
+            thread = first['insight'].get('thread', [])
+            if thread:
+                result = await self.publish_thread(thread)
                 results.append({
-                    'insight': insight,
-                    'published': {
-                        'success': False,
-                        'error': str(e)
-                    },
-                    'timestamp': datetime.now().isoformat()
+                    'insight': first['insight'],
+                    'published': result,
+                    'timestamp': datetime.now().isoformat(),
+                    'scheduled_time': first['scheduled_time']
                 })
+        except Exception as e:
+            logger.error(f"Error publishing immediate insight: {str(e)}")
         
-        logger.info(f"Published {len(results)} insight threads")
+        # Add scheduled insights to results
+        for insight in scheduled[1:]:
+            results.append({
+                'insight': insight['insight'],
+                'published': {'status': 'scheduled'},
+                'timestamp': None,
+                'scheduled_time': insight['scheduled_time']
+            })
+        
+        # Log schedule
+        logger.info(f"Published 1 insight immediately, scheduled {len(scheduled)-1} for later")
+        for result in results:
+            if result['scheduled_time'] > now:
+                logger.info(f"Scheduled insight for {result['scheduled_time']}")
+        
         return results
     
     @classmethod
