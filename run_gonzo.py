@@ -1,19 +1,15 @@
 #!/usr/bin/env python3
 
 import os
-import sys
-import signal
 import logging
 import asyncio
-from typing import Dict, Any, Tuple, Optional
+from typing import Dict, Any, Tuple
 from datetime import datetime
 from dotenv import load_dotenv
-import yaml
 
 from gonzo.state_management import WorkflowStage, create_empty_graph_state, GonzoGraphState
 from gonzo.graph.workflow import create_workflow
 from gonzo.tracing import init_tracing, TraceManager
-from gonzo.scheduling import WorkflowScheduler
 
 # Configure logging
 logging.basicConfig(
@@ -21,16 +17,6 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-
-def load_config() -> Dict[str, Any]:
-    """Load configuration from config.yml"""
-    config_path = os.path.join('config', 'config.yml')
-    try:
-        with open(config_path, 'r') as f:
-            return yaml.safe_load(f)
-    except Exception as e:
-        logger.error(f'Error loading config: {str(e)}')
-        sys.exit(1)
 
 def init_environment() -> None:
     """Initialize environment variables and tracing."""
@@ -81,7 +67,7 @@ async def run_workflow_cycle(workflow, memory, initial_state: GonzoGraphState) -
                 }
             )
         
-        # Compile with simple config
+        # Compile with simple config like the example
         graph = workflow.compile(checkpointer=memory)
         config = {"configurable": {"thread_id": thread_id}}
         
@@ -105,80 +91,43 @@ async def run_workflow_cycle(workflow, memory, initial_state: GonzoGraphState) -
             tracer.end_trace(run_id)
         return initial_state, False
 
-class GonzoRunner:
-    """Manages Gonzo's continuous operation."""
-    
-    def __init__(self):
-        self.scheduler = None
-        self.workflow = None
-        self.memory = None
-        self.current_state = None
-        self.config = None
+async def run_gonzo_async():
+    """Async main execution function for Gonzo"""
+    try:
+        # Initialize environment
+        init_environment()
+        logger.info('Environment initialized')
         
-    async def shutdown(self, sig=None):
-        """Handle graceful shutdown."""
-        if sig:
-            logger.info(f'Received exit signal {sig.name}...')
+        # Create initial state
+        initial_state = create_empty_graph_state()
+        logger.info('Initial state created')
         
-        if self.scheduler and self.scheduler.is_running:
-            logger.info('Initiating graceful shutdown...')
-            self.scheduler.request_shutdown()
-            
-            # Wait for scheduler to complete current cycle
-            while self.scheduler.is_running:
-                await asyncio.sleep(1)
-                
-        logger.info('Shutdown complete')
-    
-    async def run_workflow(self):
-        """Run a single workflow cycle."""
-        if not self.current_state:
-            self.current_state = create_empty_graph_state()
-            
-        new_state, completed = await run_workflow_cycle(
-            self.workflow,
-            self.memory,
-            self.current_state
-        )
+        # Create workflow
+        workflow, memory = create_workflow()
+        logger.info('Workflow created, starting Gonzo...')
+        
+        # Run workflow
+        new_state, completed = await run_workflow_cycle(workflow, memory, initial_state)
         
         if completed:
-            self.current_state = new_state
-    
-    async def start(self):
-        """Start Gonzo's continuous operation."""
-        try:
-            # Initialize environment and load config
-            init_environment()
-            self.config = load_config()
-            logger.info('Environment and configuration initialized')
+            logger.info(
+                f'Workflow completed successfully with '
+                f"{len(new_state.get('events', []))} events, "
+                f"{len(new_state.get('patterns', []))} patterns, and "
+                f"{len(new_state.get('insights', []))} insights"
+            )
+        else:
+            logger.warning('Workflow ended without completion')
             
-            # Create workflow components
-            self.workflow, self.memory = create_workflow()
-            self.current_state = create_empty_graph_state()
-            logger.info('Workflow components created')
-            
-            # Initialize scheduler
-            self.scheduler = WorkflowScheduler(self.config)
-            
-            # Setup signal handlers
-            for sig in (signal.SIGTERM, signal.SIGINT):
-                asyncio.get_event_loop().add_signal_handler(
-                    sig,
-                    lambda s=sig: asyncio.create_task(self.shutdown(s))
-                )
-            
-            logger.info('Starting Gonzo...')
-            await self.scheduler.schedule_workflow(self.run_workflow)
-            
-        except Exception as e:
-            logger.error(f'Failed to run Gonzo: {str(e)}')
-            await self.shutdown()
-            raise
+    except KeyboardInterrupt:
+        logger.info('Shutting down Gonzo gracefully...')
+    except Exception as e:
+        logger.error(f'Failed to run Gonzo: {str(e)}')
+        raise
 
 def run_gonzo():
     """Main execution function"""
-    runner = GonzoRunner()
-    asyncio.run(runner.start())
+    asyncio.run(run_gonzo_async())
 
 if __name__ == '__main__':
     run_gonzo()
