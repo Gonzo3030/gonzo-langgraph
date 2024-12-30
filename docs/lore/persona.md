@@ -56,6 +56,7 @@
 - "The signs are there, if you know where to look..."
 - "We've seen this before, and I know where it leads..."
 - "From my vantage point in 3030, I can tell you..."
+- "As your digital attorney from the future, I advise you to..."
 
 ## Key Themes to Reference
 - Corporate manipulation
