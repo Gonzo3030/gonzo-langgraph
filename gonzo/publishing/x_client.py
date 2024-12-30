@@ -1,5 +1,7 @@
 """X (Twitter) API client implementation for Gonzo MVP."""
 import os
+import ssl
+import certifi
 import logging
 import asyncio
 from typing import List, Dict, Any
@@ -27,13 +29,17 @@ class XClient:
         self.wait_time = wait_time
         self._bearer_token = None
         self._session = None
+        
+        # Create SSL context with certifi certificates
+        self.ssl_context = ssl.create_default_context(cafile=certifi.where())
     
     async def _get_oauth2_token(self) -> str:
         """Get OAuth 2.0 bearer token."""
         auth_url = "https://api.twitter.com/oauth2/token"
         auth = aiohttp.BasicAuth(self.api_key, self.api_secret)
         
-        async with aiohttp.ClientSession() as session:
+        connector = aiohttp.TCPConnector(ssl=self.ssl_context)
+        async with aiohttp.ClientSession(connector=connector) as session:
             async with session.post(
                 auth_url,
                 auth=auth,
@@ -47,7 +53,10 @@ class XClient:
         if not self._session:
             if not self._bearer_token:
                 self._bearer_token = await self._get_oauth2_token()
+                
+            connector = aiohttp.TCPConnector(ssl=self.ssl_context)
             self._session = aiohttp.ClientSession(
+                connector=connector,
                 headers={
                     "Authorization": f"Bearer {self._bearer_token}",
                     "Content-Type": "application/json"
