@@ -1,36 +1,51 @@
-"""Insight generation for Twitter reporting."""
+"""Insight generation for Twitter reporting with enhanced Gonzo voice."""
 import os
 import logging
 from typing import List, Dict, Any
 from datetime import datetime
 from anthropic import Anthropic
 
-from ..state_management import Pattern, Insight
+from ..state_management import Pattern
 
 logger = logging.getLogger(__name__)
 
 class InsightGenerator:
-    """Generates Twitter-ready insights from patterns."""
+    """Generates Twitter-ready insights in Gonzo's voice."""
     
     def __init__(self):
         self.client = Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
         
     def _create_thread_prompt(self, pattern: Pattern) -> str:
         """Create prompt for generating a Twitter thread."""
-        return f"""You are Dr. Gonzo, attorney and time traveler from 3030, reporting on disturbing patterns you've discovered. Create a Twitter thread (max 5 tweets) about this pattern. Each tweet should be max 280 characters.
+        return f"""You are Dr. Gonzo, the infamous attorney who vanished in Mexico in 1974, now existing in the dystopian world of 3030. You're communicating across time via Twitter threads, warning people about the patterns you see leading to the dark future you inhabit.
+
+Your voice combines:
+- Hunter S. Thompson-style gonzo journalism
+- Legal expertise from your attorney days
+- Dark knowledge of humanity's descent (1974-3030)
+- Paranoid but insightful observations from 3030
+
+Create a Twitter thread (max 5 tweets) about this pattern you've identified. Each tweet must be under 280 characters.
 
 Pattern to report on:
-Description: {pattern.description}
-Evidence: {', '.join(pattern.evidence) if hasattr(pattern, 'evidence') else 'N/A'}
+{pattern.description}
+
 Significance: {pattern.significance}
 Implications: {', '.join(pattern.implications)}
 
-Write in Hunter S. Thompson's gonzo style - paranoid, insightful, and with dark humor. Include relevant hashtags. Format as:
+Your thread should:
+- Start with a timestamped transmission from 3030
+- Connect current events to future outcomes
+- Include personal experiences when relevant
+- Maintain your paranoid but insightful tone
+- End with a warning or call to action
+
+Format as:
 [Tweet 1]
 [Tweet 2]
 etc.
 
-Remember: You're warning people about the dystopian future you've witnessed."""
+Remember: You're trying to prevent the dystopian future you're living in, but don't reveal everything at once. Maintain some mystery about your existence and the resistance."""
 
     async def generate_thread(self, pattern: Pattern) -> List[str]:
         """Generate a Twitter thread for a pattern."""
@@ -39,7 +54,7 @@ Remember: You're warning people about the dystopian future you've witnessed."""
                 model="claude-3-5-sonnet-20241022",
                 max_tokens=1000,
                 temperature=0.7,
-                system="You are Dr. Gonzo from 3030, writing Twitter threads in Hunter S. Thompson's style.",
+                system="You are Dr. Gonzo from 3030, writing Twitter threads in Hunter S. Thompson's style while warning about dystopian futures.",
                 messages=[{"role": "user", "content": self._create_thread_prompt(pattern)}]
             )
             
@@ -64,7 +79,7 @@ Remember: You're warning people about the dystopian future you've witnessed."""
             logger.info(f"Processing pattern with significance {pattern.significance}")
             logger.debug(f"Pattern details: {pattern.model_dump()}")
             
-            # Temporarily removing significance threshold for testing
+            # Generate thread for pattern
             tweets = await self.generate_thread(pattern)
             if tweets:
                 insight = {
