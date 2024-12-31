@@ -146,7 +146,7 @@ class Publisher:
         return results
     
     @classmethod
-    def from_env(cls, wait_time: float = 1.0) -> 'Publisher':
+    def from_env(cls, wait_time: float = 30.0) -> 'Publisher':
         """Create publisher from environment variables."""
         x_client = XClient.from_env(wait_time=wait_time)
         return cls(x_client=x_client)
