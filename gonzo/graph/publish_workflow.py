@@ -11,6 +11,22 @@ from ..publishing.publisher import Publisher
 
 logger = logging.getLogger(__name__)
 
+def get_datetime(value: Any) -> Optional[datetime]:
+    """Convert various datetime formats to datetime object."""
+    if isinstance(value, datetime):
+        return value
+    elif isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value)
+        except ValueError:
+            return None
+    elif isinstance(value, dict) and 'isoformat' in value:
+        try:
+            return datetime.fromisoformat(value['isoformat'])
+        except ValueError:
+            return None
+    return None
+
 async def check_queue_node(state: GonzoGraphState) -> Dict[str, Any]:
     """Check queue for pending posts."""
     logger.info("Checking publishing queue")
@@ -23,11 +39,6 @@ async def check_queue_node(state: GonzoGraphState) -> Dict[str, Any]:
                 "current_stage": WorkflowStage.COMPLETE.value
             }
         
-        # Debug log the state
-        for post in queued_posts:
-            logger.debug(f"Post in queue: {post}")
-            logger.debug(f"Scheduled time type: {type(post.get('scheduled_time'))}, value: {post.get('scheduled_time')}")
-        
         # Clean up old posts and sort by scheduled time
         current_time = datetime.now()
         ready_posts = []
@@ -35,27 +46,25 @@ async def check_queue_node(state: GonzoGraphState) -> Dict[str, Any]:
         
         for post in queued_posts:
             try:
-                scheduled_time = post.get('scheduled_time')
-                if isinstance(scheduled_time, dict):
-                    # Handle datetime objects that were serialized as dicts
-                    scheduled_time = scheduled_time.get('isoformat', scheduled_time.get('__str__'))
-                elif not isinstance(scheduled_time, str):
-                    logger.warning(f"Invalid scheduled_time format: {scheduled_time}, type: {type(scheduled_time)}")
+                scheduled_time = get_datetime(post.get('scheduled_time'))
+                if not scheduled_time:
+                    logger.warning(f"Could not parse scheduled time from post: {post.get('scheduled_time')}")
                     continue
-                
-                scheduled_dt = datetime.fromisoformat(scheduled_time)
                 
                 # Skip posts older than 24 hours
-                if current_time - scheduled_dt > timedelta(hours=24):
+                if current_time - scheduled_time > timedelta(hours=24):
+                    logger.info(f"Skipping post scheduled for {scheduled_time} (too old)")
                     continue
                     
-                if scheduled_dt <= current_time:
+                if scheduled_time <= current_time:
+                    logger.info(f"Found post ready for publishing (scheduled: {scheduled_time})")
                     ready_posts.append(post)
                 else:
+                    logger.info(f"Post scheduled for later: {scheduled_time}")
                     remaining_posts.append(post)
                     
-            except (ValueError, KeyError, TypeError) as e:
-                logger.warning(f"Invalid post format: {str(e)}; post: {post}")
+            except Exception as e:
+                logger.warning(f"Error processing post: {str(e)}")
         
         if not ready_posts:
             logger.info("No posts ready for publishing")
@@ -66,6 +75,7 @@ async def check_queue_node(state: GonzoGraphState) -> Dict[str, Any]:
                 "current_stage": WorkflowStage.COMPLETE.value
             }
             
+        logger.info(f"Found {len(ready_posts)} posts ready for publishing, {len(remaining_posts)} remaining in queue")
         return {
             "ready_posts": ready_posts[:1],  # Only take one post at a time
             "remaining_posts": remaining_posts + ready_posts[1:],  # Keep others in queue
@@ -109,13 +119,16 @@ async def publish_node(state: GonzoGraphState) -> Dict[str, Any]:
                     if result.get('success'):
                         published.append({
                             'post': post,
-                            'result': result
+                            'result': result,
+                            'published_at': datetime.now()
                         })
+                        logger.info("Successfully published thread")
                     else:
                         # Only retry rate limit errors
                         error = str(result.get('error', '')).lower()
                         if 'too many requests' in error or '429' in error:
                             failed.append(post)
+                            logger.info("Rate limited, will retry later")
                         else:
                             logger.warning(f"Dropping post due to non-retryable error: {error}")
             except Exception as e:
