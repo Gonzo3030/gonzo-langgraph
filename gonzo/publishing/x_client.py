@@ -1,11 +1,18 @@
 """X (Twitter) API client implementation."""
 import os
+import ssl
+import hmac
 import time
+import base64
+import certifi
 import logging
 import asyncio
-from typing import List, Dict, Any, Optional
+import urllib.parse
+from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
-from tweepy import Client, Response
+import aiohttp
+import hashlib
+import secrets
 
 logger = logging.getLogger(__name__)
 
@@ -17,21 +24,74 @@ class XClient:
         api_key: str,
         api_secret: str,
         access_token: str,
-        access_secret: str,
+        access_token_secret: str,
         wait_time: float = 1.0
     ):
-        self.client = Client(
-            consumer_key=api_key,
-            consumer_secret=api_secret,
-            access_token=access_token,
-            access_token_secret=access_secret
-        )
+        self.api_key = api_key
+        self.api_secret = api_secret
+        self.access_token = access_token
+        self.access_token_secret = access_token_secret
+        self.ssl_context = ssl.create_default_context(cafile=certifi.where())
         self.wait_time = wait_time
         self.last_request = datetime.min
         self._requests_remaining = 50  # X API default rate limit
         self._reset_time = datetime.now() + timedelta(minutes=15)
         
         logger.info("Initialized X client")
+    
+    def _generate_auth_headers(self, method: str, url: str) -> Dict[str, str]:
+        """Generate OAuth 1.0a headers according to X API v2 spec."""
+        oauth_timestamp = str(int(time.time()))
+        oauth_nonce = secrets.token_hex(16)
+        
+        # Create parameter string
+        params = {
+            'oauth_consumer_key': self.api_key,
+            'oauth_nonce': oauth_nonce,
+            'oauth_signature_method': 'HMAC-SHA1',
+            'oauth_timestamp': oauth_timestamp,
+            'oauth_token': self.access_token,
+            'oauth_version': '1.0'
+        }
+        
+        # Sort and encode parameters
+        param_string = '&'.join([
+            f"{urllib.parse.quote(key)}={urllib.parse.quote(str(value))}"
+            for key, value in sorted(params.items())
+        ])
+        
+        # Create signature base string
+        signature_base = '&'.join([
+            method.upper(),
+            urllib.parse.quote(url, safe=''),
+            urllib.parse.quote(param_string, safe='')
+        ])
+        
+        # Create signing key
+        signing_key = f"{urllib.parse.quote(self.api_secret)}&{urllib.parse.quote(self.access_token_secret)}"
+        
+        # Generate signature
+        signature = base64.b64encode(
+            hmac.new(
+                signing_key.encode('utf-8'),
+                signature_base.encode('utf-8'),
+                hashlib.sha1
+            ).digest()
+        ).decode('utf-8')
+        
+        # Add signature to parameters
+        params['oauth_signature'] = signature
+        
+        # Create authorization header
+        auth_header = 'OAuth ' + ', '.join([
+            f"{urllib.parse.quote(key)}=\"{urllib.parse.quote(str(value))}\""
+            for key, value in params.items()
+        ])
+        
+        return {
+            'Authorization': auth_header,
+            'Content-Type': 'application/json'
+        }
     
     async def _wait_for_rate_limit(self) -> None:
         """Handle rate limiting."""
@@ -60,25 +120,34 @@ class XClient:
         reply_to: Optional[str] = None
     ) -> Dict[str, Any]:
         """Create a tweet with rate limiting."""
+        url = 'https://api.twitter.com/2/tweets'
+        
+        data = {"text": text}
+        if reply_to:
+            data["reply"] = {"in_reply_to_tweet_id": reply_to}
+        
         try:
             await self._wait_for_rate_limit()
             
-            response = self.client.create_tweet(
-                text=text,
-                in_reply_to_tweet_id=reply_to
-            )
+            headers = self._generate_auth_headers('POST', url)
+            logger.info(f"Generated headers for tweet")
             
-            if isinstance(response, Response):
-                data = response.data
-                logger.info("Successfully created tweet")
-                return {
-                    'success': True,
-                    'id': str(data['id']),
-                    'text': text
-                }
-            else:
-                raise ValueError(f"Unexpected response type: {type(response)}")
-                
+            connector = aiohttp.TCPConnector(ssl=self.ssl_context)
+            async with aiohttp.ClientSession(connector=connector) as session:
+                async with session.post(url, headers=headers, json=data) as response:
+                    result = await response.json()
+                    status = response.status
+                    
+                    if status == 201 and 'data' in result:
+                        logger.info("Successfully created tweet")
+                        return {
+                            'success': True,
+                            'id': str(result['data']['id']),
+                            'text': text
+                        }
+                    else:
+                        raise ValueError(f"Error posting tweet: {result}")
+                    
         except Exception as e:
             error_msg = f"Error creating tweet: {str(e)}"
             logger.error(error_msg)
