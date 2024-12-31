@@ -25,7 +25,7 @@ class XClient:
         api_secret: str,
         access_token: str,
         access_token_secret: str,
-        wait_time: float = 30.0  # Increased base wait time to 30 seconds
+        wait_time: float = 30.0  # Base wait time between tweets
     ):
         self.api_key = api_key
         self.api_secret = api_secret
@@ -104,7 +104,7 @@ class XClient:
         time_since_last = (now - self.last_request).total_seconds()
         if time_since_last < self.current_wait_time:
             wait_time = self.current_wait_time - time_since_last
-            logger.info(f"Waiting {wait_time:.1f} seconds before next request")
+            logger.info(f"Waiting {wait_time:.1f} seconds before next tweet")
             await asyncio.sleep(wait_time)
         
         self.last_request = now
@@ -115,12 +115,16 @@ class XClient:
             # Set rate limit reset time to 15 minutes from now
             self.rate_limit_reset = datetime.now() + timedelta(minutes=15)
             logger.warning(f"Rate limited. Will resume at {self.rate_limit_reset}")
+        elif status == 201:
+            # On success, maintain current wait time
+            pass
         else:
-            # On normal response, gradually reduce wait time
-            self.current_wait_time = max(
-                self.base_wait_time,
-                self.current_wait_time * 0.8  # Reduce by 20%
+            # On other responses, increase wait time
+            self.current_wait_time = min(
+                300,  # Max 5 minutes
+                self.current_wait_time * 1.5  # Increase by 50%
             )
+            logger.info(f"Increased wait time to {self.current_wait_time:.1f} seconds")
     
     async def create_tweet(
         self,
@@ -150,6 +154,8 @@ class XClient:
                     
                     if status == 201 and 'data' in result:
                         logger.info("Successfully created tweet")
+                        # After successful tweet, wait minimum time
+                        await asyncio.sleep(self.base_wait_time)
                         return {
                             'success': True,
                             'id': str(result['data']['id']),
@@ -177,6 +183,8 @@ class XClient:
         results = []
         reply_to = None
         
+        logger.info(f"Starting thread of {len(tweets)} tweets with {self.current_wait_time:.1f}s spacing")
+        
         for i, tweet in enumerate(tweets, 1):
             try:
                 # Try up to 2 times for each tweet
@@ -187,6 +195,12 @@ class XClient:
                         reply_to = result['id']
                         results.append(result)
                         logger.info(f"Posted tweet {i} of {len(tweets)}")
+                        
+                        # Extra wait between thread tweets
+                        if i < len(tweets):
+                            wait_time = max(30, self.current_wait_time)  # At least 30s between thread tweets
+                            logger.info(f"Waiting {wait_time:.1f}s before next tweet in thread")
+                            await asyncio.sleep(wait_time)
                         break
                         
                     elif result.get('status') == 429 and attempt == 0:
@@ -195,7 +209,7 @@ class XClient:
                     else:
                         # Other error or second rate limit, add to results and stop thread
                         results.append(result)
-                        logger.error(f"Failed to post tweet {i}: {result['error']}")
+                        logger.error(f"Failed to post tweet {i}: {result.get('error')}")
                         return results
                         
             except Exception as e:
@@ -207,6 +221,7 @@ class XClient:
                 })
                 break
         
+        logger.info("Thread complete")
         return results
     
     @classmethod
