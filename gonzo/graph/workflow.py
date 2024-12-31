@@ -145,18 +145,20 @@ async def report_node(state: GonzoGraphState) -> Dict[str, Any]:
         now = datetime.now()
         scheduled_posts = []
         
-        # First post scheduled immediately
+        # First insight posted at next hour
         if insights:
+            next_hour = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
             scheduled_posts.append({
                 'insight': insights[0],
-                'scheduled_time': now.isoformat(),
+                'scheduled_time': next_hour.isoformat(),
                 'status': 'queued'
             })
-            logger.info("Queued first insight for immediate posting")
+            logger.info(f"Queued first insight for {next_hour}")
         
-        # Remaining posts spaced by 2 hours
+        # Remaining posts spaced by 3 hours
         for i, insight in enumerate(insights[1:], 1):
-            scheduled_time = now + timedelta(hours=2 * i)
+            # Start 3 hours after first post, then every 3 hours
+            scheduled_time = next_hour + timedelta(hours=3 * i)
             scheduled_posts.append({
                 'insight': insight,
                 'scheduled_time': scheduled_time.isoformat(),
@@ -164,9 +166,10 @@ async def report_node(state: GonzoGraphState) -> Dict[str, Any]:
             })
             logger.info(f"Queued insight for {scheduled_time}")
         
-        # Get existing queue
+        # Get existing queue and sort by scheduled time
         existing_queue = state.get('queued_posts', [])
-        updated_queue = existing_queue + scheduled_posts
+        all_posts = existing_queue + scheduled_posts
+        updated_queue = sorted(all_posts, key=lambda x: x['scheduled_time'])
         
         logger.info(f"Added {len(scheduled_posts)} posts to queue. Total queued: {len(updated_queue)}")
         
