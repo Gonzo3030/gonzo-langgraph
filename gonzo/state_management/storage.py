@@ -16,6 +16,9 @@ class GonzoStateStore:
         self.store = LocalFileStore(Path(base_path))
         self.queue_key = "post_queue"
         self.state_key = "current_state"
+        
+        # Create directory if it doesn't exist
+        Path(base_path).mkdir(parents=True, exist_ok=True)
     
     def _serialize_datetime(self, obj: Any) -> Any:
         """Handle datetime serialization."""
@@ -37,7 +40,8 @@ class GonzoStateStore:
         try:
             # Serialize with datetime handling
             serialized = json.dumps(state, default=self._serialize_datetime)
-            self.store.mset([(self.state_key, serialized)])
+            # Convert to bytes for storage
+            self.store.mset([(self.state_key, serialized.encode('utf-8'))])
             logger.debug(f"Saved state with {len(state.get('queued_posts', []))} queued posts")
         except Exception as e:
             logger.error(f"Error saving state: {str(e)}")
@@ -45,8 +49,10 @@ class GonzoStateStore:
     def load_state(self) -> Optional[Dict[str, Any]]:
         """Load full workflow state."""
         try:
-            serialized = self.store.mget([self.state_key])[0]
-            if serialized:
+            data = self.store.mget([self.state_key])[0]
+            if data:
+                # Convert from bytes to string
+                serialized = data.decode('utf-8')
                 state = json.loads(serialized)
                 # Deserialize datetime objects
                 if 'queued_posts' in state:
@@ -63,7 +69,7 @@ class GonzoStateStore:
         """Update just the post queue."""
         try:
             serialized = json.dumps(posts, default=self._serialize_datetime)
-            self.store.mset([(self.queue_key, serialized)])
+            self.store.mset([(self.queue_key, serialized.encode('utf-8'))])
             logger.debug(f"Updated queue with {len(posts)} posts")
         except Exception as e:
             logger.error(f"Error updating queue: {str(e)}")
@@ -71,8 +77,9 @@ class GonzoStateStore:
     def get_queue(self) -> list:
         """Get just the post queue."""
         try:
-            serialized = self.store.mget([self.queue_key])[0]
-            if serialized:
+            data = self.store.mget([self.queue_key])[0]
+            if data:
+                serialized = data.decode('utf-8')
                 posts = json.loads(serialized)
                 # Deserialize datetime objects
                 for post in posts:
