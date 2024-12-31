@@ -16,8 +16,13 @@ class Publisher:
         """Initialize publisher with X client."""
         self.x_client = x_client
         self.last_thread = datetime.min
-        self.min_thread_interval = 300  # 5 minutes between threads
+        self.min_thread_interval = 7200  # 2 hours between threads
+        self.failed_posts = set()  # Track failed post hashes to avoid duplicates
         logger.info("Initialized publisher")
+    
+    def _hash_thread(self, thread: List[str]) -> str:
+        """Create a simple hash of thread content to track duplicates."""
+        return '|'.join(thread)
     
     async def _wait_for_next_thread(self) -> None:
         """Wait appropriate time between threads."""
@@ -26,7 +31,9 @@ class Publisher:
         
         if time_since_last < self.min_thread_interval:
             wait_time = self.min_thread_interval - time_since_last
-            logger.info(f"Waiting {wait_time:.1f} seconds before next thread")
+            hours = int(wait_time // 3600)
+            minutes = int((wait_time % 3600) // 60)
+            logger.info(f"Waiting {hours} hours and {minutes} minutes before next thread")
             await asyncio.sleep(wait_time)
     
     async def publish_thread(self, thread: List[str]) -> Dict[str, Any]:
@@ -36,6 +43,15 @@ class Publisher:
             return {
                 'success': False,
                 'error': 'No tweets provided'
+            }
+        
+        # Check if we've tried this thread before
+        thread_hash = self._hash_thread(thread)
+        if thread_hash in self.failed_posts:
+            logger.warning("Skipping previously failed thread to avoid duplicate content")
+            return {
+                'success': False,
+                'error': 'Duplicate content detected'
             }
         
         try:
@@ -48,6 +64,9 @@ class Publisher:
             # Update last thread time if any tweet succeeded
             if any(r.get('success', False) for r in results):
                 self.last_thread = datetime.now()
+            else:
+                # If it failed, add to failed posts to avoid retrying
+                self.failed_posts.add(thread_hash)
             
             return {
                 'success': len(results) == len(thread),
@@ -57,6 +76,9 @@ class Publisher:
         except Exception as e:
             error_msg = f"Error publishing thread: {str(e)}"
             logger.error(error_msg)
+            # Add to failed posts if we got a duplicate content error
+            if 'duplicate content' in str(e).lower():
+                self.failed_posts.add(thread_hash)
             return {
                 'success': False,
                 'error': error_msg
@@ -77,11 +99,12 @@ class Publisher:
                     results.append({
                         'insight': insight,
                         'published': result,
-                        'timestamp': datetime.now().isoformat()
+                        'timestamp': datetime.now().isoformat(),
+                        'scheduled_time': insight.get('scheduled_time')
                     })
                     
-                    # Add extra delay between insight threads
-                    await asyncio.sleep(self.min_thread_interval)
+                    if not result.get('success'):
+                        logger.warning(f"Failed to publish thread: {result.get('error')}")
                     
             except Exception as e:
                 logger.error(f"Error publishing insight: {str(e)}")
