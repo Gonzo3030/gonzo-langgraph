@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
 import os
-import logging
 import asyncio
+import logging
 from dotenv import load_dotenv
-from gonzo.publishing.test_post import SimpleXPoster
+from gonzo.publishing.x_client import XClient
 
 # Configure logging
 logging.basicConfig(
@@ -13,30 +13,48 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-async def main():
-    """Test X API posting functionality."""
+async def test_single_tweet():
+    """Test posting a single tweet."""
     try:
-        # Load environment variables
-        load_dotenv()
+        # Initialize client with long wait times
+        client = XClient.from_env(wait_time=60.0)
         
-        logger.info("Starting X API test...")
+        # Test text
+        test_text = f"Test tweet from Gonzo bot {os.urandom(4).hex()}"
         
-        # Test credentials and posting
-        result = await SimpleXPoster.test_credentials()
+        logger.info(f"Attempting to post test tweet: {test_text}")
+        
+        # Try to post
+        result = await client.create_tweet(test_text)
         
         if result['success']:
-            logger.info("Test successful!")
-            logger.info(f"Response: {result['response']}")
+            logger.info(f"Successfully posted tweet with ID: {result['id']}")
         else:
-            logger.error(f"Test failed: {result.get('error', 'Unknown error')}")
-            if 'response' in result:
-                logger.error(f"API Response: {result['response']}")
-                
-        logger.info("Test complete")
-        
+            logger.error(f"Failed to post tweet: {result.get('error')}")
+            
     except Exception as e:
-        logger.error(f"Error running test: {str(e)}")
-        raise
+        logger.error(f"Error during test: {str(e)}")
 
-if __name__ == "__main__":
-    asyncio.run(main())
+def main():
+    """Main execution function."""
+    # Load environment variables
+    load_dotenv()
+    
+    # Required API keys
+    required = [
+        'X_API_KEY',
+        'X_API_SECRET',
+        'X_ACCESS_TOKEN',
+        'X_ACCESS_SECRET'
+    ]
+    
+    # Check required variables
+    missing = [var for var in required if not os.getenv(var)]
+    if missing:
+        raise ValueError(f'Missing required environment variables: {missing}')
+    
+    # Run the test
+    asyncio.run(test_single_tweet())
+
+if __name__ == '__main__':
+    main()
