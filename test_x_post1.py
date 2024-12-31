@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-
 import os
 import asyncio
 import logging
 from dotenv import load_dotenv
 from gonzo.publishing.x_client import XClient
-
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
