@@ -189,16 +189,13 @@ class XClient:
         return results
     
     @classmethod
-    def from_env(
-        cls,
-        wait_time: float = 1.0
-    ) -> 'XClient':
+    def from_env(cls, wait_time: float = 1.0) -> 'XClient':
         """Create client from environment variables."""
         required = [
             'X_API_KEY',
             'X_API_SECRET',
             'X_ACCESS_TOKEN',
-            'X_ACCESS_SECRET'
+            'X_ACCESS_TOKEN_SECRET'  # Changed to match environment variable name
         ]
         
         missing = [var for var in required if not os.getenv(var)]
@@ -209,6 +206,6 @@ class XClient:
             api_key=os.getenv('X_API_KEY'),
             api_secret=os.getenv('X_API_SECRET'),
             access_token=os.getenv('X_ACCESS_TOKEN'),
-            access_secret=os.getenv('X_ACCESS_SECRET'),
+            access_token_secret=os.getenv('X_ACCESS_TOKEN_SECRET')  # Changed to match
             wait_time=wait_time
         )
