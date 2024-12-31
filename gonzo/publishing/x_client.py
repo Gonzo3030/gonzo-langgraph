@@ -7,11 +7,9 @@ import base64
 import certifi
 import logging
 import asyncio
-import json
 import urllib.parse
 from typing import Dict, List, Any, Optional
-from datetime import datetime, timedelta
-from pathlib import Path
+from datetime import datetime
 import aiohttp
 import hashlib
 import secrets
@@ -34,9 +32,8 @@ class XClient:
         self.access_token = access_token
         self.access_token_secret = access_token_secret
         self.ssl_context = ssl.create_default_context(cafile=certifi.where())
-        self.base_wait_time = wait_time
-        self.current_wait_time = wait_time
-        self.last_request = datetime.min
+        self.wait_time = wait_time
+        self.last_tweet_time = None
         logger.info("Initialized X client")
     
     def _generate_auth_headers(self, method: str, url: str) -> Dict[str, str]:
@@ -86,21 +83,34 @@ class XClient:
             'Content-Type': 'application/json'
         }
     
+    async def _wait_for_rate_limit(self) -> None:
+        """Ensure proper spacing between tweets."""
+        now = datetime.now()
+        if self.last_tweet_time:
+            elapsed = (now - self.last_tweet_time).total_seconds()
+            if elapsed < self.wait_time:
+                wait_time = self.wait_time - elapsed
+                logger.info(f"Waiting {wait_time:.1f} seconds before next tweet...")
+                await asyncio.sleep(wait_time)
+        self.last_tweet_time = datetime.now()
+    
     async def create_tweet(
         self,
         text: str,
         reply_to: Optional[str] = None
     ) -> Dict[str, Any]:
         """Create a tweet with rate limiting."""
-        url = 'https://api.twitter.com/2/tweets'
+        # Ensure proper spacing between tweets
+        await self._wait_for_rate_limit()
         
+        url = 'https://api.twitter.com/2/tweets'
         data = {"text": text}
         if reply_to:
             data["reply"] = {"in_reply_to_tweet_id": reply_to}
         
         try:
             headers = self._generate_auth_headers('POST', url)
-            logger.info(f"Generated headers for tweet")
+            logger.info("Attempting to post tweet...")
             
             connector = aiohttp.TCPConnector(ssl=self.ssl_context)
             async with aiohttp.ClientSession(connector=connector) as session:
@@ -109,12 +119,17 @@ class XClient:
                     status = response.status
                     
                     if status == 201 and 'data' in result:
-                        logger.info("Successfully created tweet")
+                        logger.info("Successfully posted tweet")
                         return {
                             'success': True,
                             'id': str(result['data']['id']),
                             'text': text
                         }
+                    elif status == 429:
+                        logger.warning("Rate limited. Waiting 15 minutes...")
+                        await asyncio.sleep(900)  # 15 minutes
+                        logger.info("Retrying tweet after rate limit wait...")
+                        return await self.create_tweet(text, reply_to)
                     else:
                         error_msg = f"Error posting tweet: {result}"
                         logger.error(error_msg)
@@ -137,59 +152,17 @@ class XClient:
         results = []
         reply_to = None
         
-        logger.info(f"Starting thread of {len(tweets)} tweets with {self.current_wait_time:.1f}s spacing")
-        
-        # Initial wait of 5 seconds before starting thread
-        logger.info(f"Initial wait of {self.current_wait_time} seconds before starting thread...")
-        await asyncio.sleep(self.current_wait_time)
+        logger.info(f"Starting thread of {len(tweets)} tweets with {self.wait_time}s spacing")
         
         for i, tweet in enumerate(tweets, 1):
-            try:
-                result = await self.create_tweet(tweet, reply_to)
-                
-                if result.get('success'):
-                    reply_to = result['id']
-                    results.append(result)
-                    logger.info(f"Posted tweet {i} of {len(tweets)}")
-                    
-                    if i < len(tweets):
-                        # 5 second wait between tweets
-                        logger.info(f"Waiting {self.current_wait_time}s before next tweet in thread")
-                        await asyncio.sleep(self.current_wait_time)
-                        
-                elif result.get('status') == 429:
-                    # Rate limited - wait 15 minutes
-                    logger.warning("Rate limited. Waiting 15 minutes before retrying...")
-                    await asyncio.sleep(900)  # 15 minutes
-                    
-                    # Try this tweet again
-                    result = await self.create_tweet(tweet, reply_to)
-                    if result.get('success'):
-                        reply_to = result['id']
-                        results.append(result)
-                        logger.info(f"Posted tweet {i} of {len(tweets)} after rate limit wait")
-                        
-                        if i < len(tweets):
-                            await asyncio.sleep(self.current_wait_time)
-                    else:
-                        # Failed twice, add to results and stop
-                        results.append(result)
-                        logger.error(f"Failed to post tweet {i} after rate limit wait")
-                        break
-                        
-                else:
-                    # Other error
-                    results.append(result)
-                    logger.error(f"Failed to post tweet {i}: {result.get('error')}")
-                    break
-                    
-            except Exception as e:
-                error_msg = f"Error in thread at tweet {i}: {str(e)}"
-                logger.error(error_msg)
-                results.append({
-                    'success': False,
-                    'error': error_msg
-                })
+            result = await self.create_tweet(tweet, reply_to)
+            results.append(result)
+            
+            if result['success']:
+                reply_to = result['id']
+                logger.info(f"Posted tweet {i} of {len(tweets)}")
+            else:
+                logger.error(f"Failed to post tweet {i}. Stopping thread.")
                 break
         
         logger.info("Thread complete")
