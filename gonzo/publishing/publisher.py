@@ -98,53 +98,6 @@ class Publisher:
                 'error': error_msg
             }
     
-    def _filter_queue(self, posts: List[Dict]) -> List[Dict]:
-        """Filter queue to remove old/invalid posts."""
-        now = datetime.now()
-        valid_posts = []
-        
-        for post in posts:
-            try:
-                scheduled_time = datetime.fromisoformat(post['scheduled_time'])
-                # Keep posts scheduled within last 24 hours or in future
-                if now - scheduled_time < timedelta(hours=24) or scheduled_time > now:
-                    valid_posts.append(post)
-            except (KeyError, ValueError) as e:
-                logger.warning(f"Invalid post in queue: {str(e)}")
-        
-        return valid_posts
-    
-    async def publish_insights(self, insights: List[Dict]) -> List[Dict[str, Any]]:
-        """Publish insights as threads."""
-        if not insights:
-            return []
-        
-        # Clean and sort insights
-        filtered_insights = self._filter_queue(insights)
-        if len(filtered_insights) < len(insights):
-            logger.info(f"Filtered out {len(insights) - len(filtered_insights)} old/invalid posts")
-        
-        results = []
-        for insight in filtered_insights:
-            try:
-                thread = insight.get('thread', [])
-                if thread:
-                    result = await self.publish_thread(thread)
-                    results.append({
-                        'insight': insight,
-                        'published': result,
-                        'timestamp': datetime.now().isoformat(),
-                        'scheduled_time': insight.get('scheduled_time')
-                    })
-                    
-                    if not result.get('success'):
-                        logger.warning(f"Failed to publish thread: {result.get('error')}")
-                    
-            except Exception as e:
-                logger.error(f"Error publishing insight: {str(e)}")
-        
-        return results
-    
     @classmethod
     def from_env(cls, wait_time: float = 30.0) -> 'Publisher':
         """Create publisher from environment variables."""
