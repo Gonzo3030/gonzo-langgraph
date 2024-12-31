@@ -8,6 +8,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 from gonzo.state_management import WorkflowStage, create_empty_graph_state, GonzoGraphState
+from gonzo.state_management.storage import GonzoStateStore
 from gonzo.graph.workflow import create_workflow
 from gonzo.tracing import init_tracing, TraceManager
 
@@ -17,6 +18,9 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Initialize state store
+state_store = GonzoStateStore()
 
 def init_environment() -> None:
     """Initialize environment variables and tracing."""
@@ -67,12 +71,15 @@ async def run_workflow_cycle(workflow, memory, initial_state: GonzoGraphState) -
                 }
             )
         
-        # Compile with simple config like the example
+        # Compile with simple config
         graph = workflow.compile(checkpointer=memory)
         config = {"configurable": {"thread_id": thread_id}}
         
         # Stream through workflow states
         current_state = await graph.ainvoke(initial_state, config)
+        
+        # Save state for publisher to access
+        state_store.save_state(current_state)
         
         # Log final state
         logger.info(
