@@ -32,11 +32,10 @@ class XClient:
         self.access_token = access_token
         self.access_token_secret = access_token_secret
         self.ssl_context = ssl.create_default_context(cafile=certifi.where())
-        self.wait_time = wait_time
+        self.base_wait_time = wait_time
+        self.current_wait_time = wait_time
         self.last_request = datetime.min
-        self._requests_remaining = 50  # X API default rate limit
-        self._reset_time = datetime.now() + timedelta(minutes=15)
-        
+        self._consecutive_failures = 0
         logger.info("Initialized X client")
     
     def _generate_auth_headers(self, method: str, url: str) -> Dict[str, str]:
@@ -44,7 +43,6 @@ class XClient:
         oauth_timestamp = str(int(time.time()))
         oauth_nonce = secrets.token_hex(16)
         
-        # Create parameter string
         params = {
             'oauth_consumer_key': self.api_key,
             'oauth_nonce': oauth_nonce,
@@ -54,23 +52,19 @@ class XClient:
             'oauth_version': '1.0'
         }
         
-        # Sort and encode parameters
         param_string = '&'.join([
             f"{urllib.parse.quote(key)}={urllib.parse.quote(str(value))}"
             for key, value in sorted(params.items())
         ])
         
-        # Create signature base string
         signature_base = '&'.join([
             method.upper(),
             urllib.parse.quote(url, safe=''),
             urllib.parse.quote(param_string, safe='')
         ])
         
-        # Create signing key
         signing_key = f"{urllib.parse.quote(self.api_secret)}&{urllib.parse.quote(self.access_token_secret)}"
         
-        # Generate signature
         signature = base64.b64encode(
             hmac.new(
                 signing_key.encode('utf-8'),
@@ -79,10 +73,8 @@ class XClient:
             ).digest()
         ).decode('utf-8')
         
-        # Add signature to parameters
         params['oauth_signature'] = signature
         
-        # Create authorization header
         auth_header = 'OAuth ' + ', '.join([
             f"{urllib.parse.quote(key)}=\"{urllib.parse.quote(str(value))}\""
             for key, value in params.items()
@@ -93,26 +85,35 @@ class XClient:
             'Content-Type': 'application/json'
         }
     
-    async def _wait_for_rate_limit(self) -> None:
-        """Handle rate limiting."""
+    async def _wait_for_next_request(self) -> None:
+        """Handle adaptive rate limiting."""
         now = datetime.now()
-        
-        # Check if we need to wait for rate limit reset
-        if self._requests_remaining <= 1:
-            wait_seconds = (self._reset_time - now).total_seconds()
-            if wait_seconds > 0:
-                logger.warning(f"Rate limit reached, waiting {wait_seconds:.1f} seconds")
-                await asyncio.sleep(wait_seconds)
-                self._requests_remaining = 50
-                self._reset_time = now + timedelta(minutes=15)
-        
-        # Always wait at least minimum wait_time between requests
         time_since_last = (now - self.last_request).total_seconds()
-        if time_since_last < self.wait_time:
-            await asyncio.sleep(self.wait_time - time_since_last)
         
-        self.last_request = datetime.now()
-        self._requests_remaining -= 1
+        if time_since_last < self.current_wait_time:
+            wait_time = self.current_wait_time - time_since_last
+            logger.info(f"Waiting {wait_time:.1f} seconds before next request")
+            await asyncio.sleep(wait_time)
+        
+        self.last_request = now
+    
+    def _handle_rate_limit(self, success: bool) -> None:
+        """Adjust wait times based on success/failure."""
+        if success:
+            # On success, gradually reduce wait time
+            self._consecutive_failures = 0
+            self.current_wait_time = max(
+                self.base_wait_time,
+                self.current_wait_time * 0.8  # Reduce by 20%
+            )
+        else:
+            # On failure, increase wait time exponentially
+            self._consecutive_failures += 1
+            self.current_wait_time = min(
+                300,  # Max 5 minutes
+                self.current_wait_time * (2 ** self._consecutive_failures)
+            )
+            logger.warning(f"Increased wait time to {self.current_wait_time:.1f} seconds")
     
     async def create_tweet(
         self,
@@ -127,7 +128,7 @@ class XClient:
             data["reply"] = {"in_reply_to_tweet_id": reply_to}
         
         try:
-            await self._wait_for_rate_limit()
+            await self._wait_for_next_request()
             
             headers = self._generate_auth_headers('POST', url)
             logger.info(f"Generated headers for tweet")
@@ -140,17 +141,26 @@ class XClient:
                     
                     if status == 201 and 'data' in result:
                         logger.info("Successfully created tweet")
+                        self._handle_rate_limit(True)
                         return {
                             'success': True,
                             'id': str(result['data']['id']),
                             'text': text
                         }
                     else:
-                        raise ValueError(f"Error posting tweet: {result}")
+                        error_msg = f"Error posting tweet: {result}"
+                        logger.error(error_msg)
+                        self._handle_rate_limit(False)
+                        return {
+                            'success': False,
+                            'error': error_msg,
+                            'status': status
+                        }
                     
         except Exception as e:
             error_msg = f"Error creating tweet: {str(e)}"
             logger.error(error_msg)
+            self._handle_rate_limit(False)
             return {
                 'success': False,
                 'error': error_msg
@@ -169,11 +179,17 @@ class XClient:
                 if result['success']:
                     reply_to = result['id']
                     logger.info(f"Posted tweet {i} of {len(tweets)}")
-                    # Add extra delay between thread tweets
-                    await asyncio.sleep(self.wait_time * 2)
+                    # Extra wait between thread tweets
+                    await asyncio.sleep(self.current_wait_time * 2)
                 else:
-                    logger.error(f"Failed to post tweet {i}: {result['error']}")
-                    break
+                    # Check if it's a rate limit error
+                    if result.get('status') == 429:
+                        # Wait longer and retry this tweet
+                        await asyncio.sleep(self.current_wait_time * 4)
+                        continue
+                    else:
+                        logger.error(f"Failed to post tweet {i}: {result['error']}")
+                        break
                     
             except Exception as e:
                 error_msg = f"Error in thread at tweet {i}: {str(e)}"
@@ -184,8 +200,6 @@ class XClient:
                 })
                 break
         
-        # Add longer delay after completing thread
-        await asyncio.sleep(self.wait_time * 4)
         return results
     
     @classmethod
