@@ -27,7 +27,7 @@ class XClient:
         api_secret: str,
         access_token: str,
         access_token_secret: str,
-        wait_time: float = 60.0
+        wait_time: float = 5.0
     ):
         self.api_key = api_key
         self.api_secret = api_secret
@@ -139,10 +139,9 @@ class XClient:
         
         logger.info(f"Starting thread of {len(tweets)} tweets with {self.current_wait_time:.1f}s spacing")
         
-        # Initial wait to avoid rate limits
-        initial_wait = max(120, self.current_wait_time)  # At least 2 minutes
-        logger.info(f"Initial wait of {initial_wait} seconds before starting thread...")
-        await asyncio.sleep(initial_wait)
+        # Initial wait of 5 seconds before starting thread
+        logger.info(f"Initial wait of {self.current_wait_time} seconds before starting thread...")
+        await asyncio.sleep(self.current_wait_time)
         
         for i, tweet in enumerate(tweets, 1):
             try:
@@ -154,9 +153,9 @@ class XClient:
                     logger.info(f"Posted tweet {i} of {len(tweets)}")
                     
                     if i < len(tweets):
-                        wait_time = max(60, self.current_wait_time)  # At least 60s between tweets
-                        logger.info(f"Waiting {wait_time}s before next tweet in thread")
-                        await asyncio.sleep(wait_time)
+                        # 5 second wait between tweets
+                        logger.info(f"Waiting {self.current_wait_time}s before next tweet in thread")
+                        await asyncio.sleep(self.current_wait_time)
                         
                 elif result.get('status') == 429:
                     # Rate limited - wait 15 minutes
@@ -171,7 +170,7 @@ class XClient:
                         logger.info(f"Posted tweet {i} of {len(tweets)} after rate limit wait")
                         
                         if i < len(tweets):
-                            await asyncio.sleep(60)  # Wait at least a minute before next
+                            await asyncio.sleep(self.current_wait_time)
                     else:
                         # Failed twice, add to results and stop
                         results.append(result)
@@ -197,7 +196,7 @@ class XClient:
         return results
     
     @classmethod
-    def from_env(cls, wait_time: float = 60.0) -> 'XClient':
+    def from_env(cls, wait_time: float = 5.0) -> 'XClient':
         """Create client from environment variables."""
         required = [
             'X_API_KEY',
