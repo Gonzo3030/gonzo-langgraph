@@ -25,7 +25,7 @@ class XClient:
         api_secret: str,
         access_token: str,
         access_token_secret: str,
-        wait_time: float = 1.0
+        wait_time: float = 30.0  # Increased base wait time to 30 seconds
     ):
         self.api_key = api_key
         self.api_secret = api_secret
@@ -35,7 +35,7 @@ class XClient:
         self.base_wait_time = wait_time
         self.current_wait_time = wait_time
         self.last_request = datetime.min
-        self._consecutive_failures = 0
+        self.rate_limit_reset = None
         logger.info("Initialized X client")
     
     def _generate_auth_headers(self, method: str, url: str) -> Dict[str, str]:
@@ -88,8 +88,20 @@ class XClient:
     async def _wait_for_next_request(self) -> None:
         """Handle adaptive rate limiting."""
         now = datetime.now()
-        time_since_last = (now - self.last_request).total_seconds()
         
+        # Check rate limit reset time
+        if self.rate_limit_reset and now < self.rate_limit_reset:
+            wait_seconds = (self.rate_limit_reset - now).total_seconds()
+            minutes = int(wait_seconds // 60)
+            seconds = int(wait_seconds % 60)
+            logger.info(f"Waiting {minutes} minutes and {seconds} seconds for rate limit reset")
+            await asyncio.sleep(wait_seconds)
+            self.rate_limit_reset = None
+            self.current_wait_time = self.base_wait_time
+            return
+        
+        # Normal request spacing
+        time_since_last = (now - self.last_request).total_seconds()
         if time_since_last < self.current_wait_time:
             wait_time = self.current_wait_time - time_since_last
             logger.info(f"Waiting {wait_time:.1f} seconds before next request")
@@ -97,23 +109,18 @@ class XClient:
         
         self.last_request = now
     
-    def _handle_rate_limit(self, success: bool) -> None:
-        """Adjust wait times based on success/failure."""
-        if success:
-            # On success, gradually reduce wait time
-            self._consecutive_failures = 0
+    def _handle_rate_limit(self, status: int, response: Dict) -> None:
+        """Handle rate limit response."""
+        if status == 429:
+            # Set rate limit reset time to 15 minutes from now
+            self.rate_limit_reset = datetime.now() + timedelta(minutes=15)
+            logger.warning(f"Rate limited. Will resume at {self.rate_limit_reset}")
+        else:
+            # On normal response, gradually reduce wait time
             self.current_wait_time = max(
                 self.base_wait_time,
                 self.current_wait_time * 0.8  # Reduce by 20%
             )
-        else:
-            # On failure, increase wait time exponentially
-            self._consecutive_failures += 1
-            self.current_wait_time = min(
-                300,  # Max 5 minutes
-                self.current_wait_time * (2 ** self._consecutive_failures)
-            )
-            logger.warning(f"Increased wait time to {self.current_wait_time:.1f} seconds")
     
     async def create_tweet(
         self,
@@ -139,9 +146,10 @@ class XClient:
                     result = await response.json()
                     status = response.status
                     
+                    self._handle_rate_limit(status, result)
+                    
                     if status == 201 and 'data' in result:
                         logger.info("Successfully created tweet")
-                        self._handle_rate_limit(True)
                         return {
                             'success': True,
                             'id': str(result['data']['id']),
@@ -150,7 +158,6 @@ class XClient:
                     else:
                         error_msg = f"Error posting tweet: {result}"
                         logger.error(error_msg)
-                        self._handle_rate_limit(False)
                         return {
                             'success': False,
                             'error': error_msg,
@@ -160,7 +167,6 @@ class XClient:
         except Exception as e:
             error_msg = f"Error creating tweet: {str(e)}"
             logger.error(error_msg)
-            self._handle_rate_limit(False)
             return {
                 'success': False,
                 'error': error_msg
@@ -173,24 +179,25 @@ class XClient:
         
         for i, tweet in enumerate(tweets, 1):
             try:
-                result = await self.create_tweet(tweet, reply_to)
-                results.append(result)
-                
-                if result['success']:
-                    reply_to = result['id']
-                    logger.info(f"Posted tweet {i} of {len(tweets)}")
-                    # Extra wait between thread tweets
-                    await asyncio.sleep(self.current_wait_time * 2)
-                else:
-                    # Check if it's a rate limit error
-                    if result.get('status') == 429:
-                        # Wait longer and retry this tweet
-                        await asyncio.sleep(self.current_wait_time * 4)
+                # Try up to 2 times for each tweet
+                for attempt in range(2):
+                    result = await self.create_tweet(tweet, reply_to)
+                    
+                    if result.get('success'):
+                        reply_to = result['id']
+                        results.append(result)
+                        logger.info(f"Posted tweet {i} of {len(tweets)}")
+                        break
+                        
+                    elif result.get('status') == 429 and attempt == 0:
+                        # On first rate limit, wait and retry
                         continue
                     else:
+                        # Other error or second rate limit, add to results and stop thread
+                        results.append(result)
                         logger.error(f"Failed to post tweet {i}: {result['error']}")
-                        break
-                    
+                        return results
+                        
             except Exception as e:
                 error_msg = f"Error in thread at tweet {i}: {str(e)}"
                 logger.error(error_msg)
@@ -203,7 +210,7 @@ class XClient:
         return results
     
     @classmethod
-    def from_env(cls, wait_time: float = 1.0) -> 'XClient':
+    def from_env(cls, wait_time: float = 30.0) -> 'XClient':
         """Create client from environment variables."""
         required = [
             'X_API_KEY',
