@@ -104,8 +104,8 @@ async def publish_node(state: GonzoGraphState) -> Dict[str, Any]:
                 "current_stage": WorkflowStage.COMPLETE.value
             }
         
-        # Initialize publisher with 5s wait time
-        publisher = Publisher.from_env(wait_time=5.0)
+        # Initialize publisher with 30s wait time
+        publisher = Publisher.from_env(wait_time=30.0)
         
         # Publish posts
         published = []
