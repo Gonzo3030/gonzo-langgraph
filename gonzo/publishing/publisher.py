@@ -19,6 +19,7 @@ class Publisher:
         self.min_thread_interval = 7200  # 2 hours between threads
         self.failed_posts_window = timedelta(hours=24)  # Only track failures for 24 hours
         self.failed_posts: Dict[str, datetime] = {}  # Track failed post hashes with timestamp
+        self._current_task = None  # Track current publishing task
         logger.info("Initialized publisher")
     
     def _hash_thread(self, thread: List[str]) -> str:
@@ -45,6 +46,21 @@ class Publisher:
             minutes = int((wait_time % 3600) // 60)
             logger.info(f"Waiting {hours} hours and {minutes} minutes before next thread")
             await asyncio.sleep(wait_time)
+
+    async def _publish_single_tweet(self, tweet: str, reply_to: str = None) -> Dict[str, Any]:
+        """Publish a single tweet with proper error handling."""
+        try:
+            result = await self.x_client.create_tweet(tweet, reply_to)
+            return result
+        except asyncio.CancelledError:
+            logger.info("Tweet publishing cancelled")
+            raise
+        except Exception as e:
+            logger.error(f"Error publishing tweet: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
     
     async def publish_thread(self, thread: List[str]) -> Dict[str, Any]:
         """Publish a thread to X."""
@@ -74,13 +90,38 @@ class Publisher:
             await self._wait_for_next_thread()
             
             logger.info(f"Publishing thread of {len(thread)} tweets")
-            results = await self.x_client.create_thread(thread)
             
-            # Update tracking based on result
+            results = []
+            reply_to = None
+            
+            for i, tweet in enumerate(thread, 1):
+                # Create and track the task
+                self._current_task = asyncio.create_task(
+                    self._publish_single_tweet(tweet, reply_to)
+                )
+                
+                try:
+                    result = await self._current_task
+                    results.append(result)
+                    
+                    if result['success']:
+                        reply_to = result['id']
+                        logger.info(f"Posted tweet {i} of {len(thread)}")
+                    else:
+                        logger.error(f"Failed to post tweet {i}. Stopping thread.")
+                        break
+                        
+                except asyncio.CancelledError:
+                    logger.info("Thread publishing cancelled")
+                    raise
+                finally:
+                    self._current_task = None
+            
+            # Update tracking based on results
             if any(r.get('success', False) for r in results):
                 self.last_thread = datetime.now()
             else:
-                # Only track if it's a duplicate content error
+                # Only track if it's a duplicate content error or rate limit
                 error = next((r.get('error', '') for r in results if not r.get('success')), '')
                 if 'duplicate content' in error.lower() or 'too many requests' in error.lower():
                     self.failed_posts[thread_hash] = datetime.now()
@@ -90,6 +131,9 @@ class Publisher:
                 'tweets': results
             }
             
+        except asyncio.CancelledError:
+            logger.info("Thread publishing process cancelled")
+            raise
         except Exception as e:
             error_msg = f"Error publishing thread: {str(e)}"
             logger.error(error_msg)
@@ -97,9 +141,18 @@ class Publisher:
                 'success': False,
                 'error': error_msg
             }
+        
+    async def cancel_current_task(self):
+        """Cancel the current publishing task if any."""
+        if self._current_task and not self._current_task.done():
+            self._current_task.cancel()
+            try:
+                await self._current_task
+            except asyncio.CancelledError:
+                pass
     
     @classmethod
-    def from_env(cls, wait_time: float = 30.0) -> 'Publisher':
+    def from_env(cls, wait_time: float = 60.0) -> 'Publisher':
         """Create publisher from environment variables."""
         x_client = XClient.from_env(wait_time=wait_time)
         return cls(x_client=x_client)
