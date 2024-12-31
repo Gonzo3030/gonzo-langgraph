@@ -2,7 +2,7 @@
 import os
 import logging
 from typing import Dict, Any, Optional, List, Tuple
-from datetime import datetime
+from datetime import datetime, timedelta
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 
@@ -10,18 +10,6 @@ from ..state_management import WorkflowStage, GonzoGraphState
 from ..publishing.publisher import Publisher
 
 logger = logging.getLogger(__name__)
-
-def parse_datetime(dt_str) -> datetime:
-    """Safely parse datetime string."""
-    try:
-        if isinstance(dt_str, datetime):
-            return dt_str
-        if isinstance(dt_str, bytes):
-            dt_str = dt_str.decode('utf-8')
-        return datetime.fromisoformat(dt_str)
-    except Exception as e:
-        logger.error(f"Error parsing datetime {dt_str}: {str(e)}")
-        return datetime.now()
 
 async def check_queue_node(state: GonzoGraphState) -> Dict[str, Any]:
     """Check queue for pending posts."""
@@ -34,28 +22,40 @@ async def check_queue_node(state: GonzoGraphState) -> Dict[str, Any]:
             return {
                 "current_stage": WorkflowStage.COMPLETE.value
             }
-            
-        # Get the next post(s) that are ready
+        
+        # Clean up old posts and sort by scheduled time
+        current_time = datetime.now()
         ready_posts = []
         remaining_posts = []
-        current_time = datetime.now()
         
         for post in queued_posts:
-            scheduled_time = parse_datetime(post['scheduled_time'])
-            if scheduled_time <= current_time:
-                ready_posts.append(post)
-            else:
-                remaining_posts.append(post)
+            try:
+                scheduled_time = datetime.fromisoformat(post['scheduled_time'])
+                
+                # Skip posts older than 24 hours
+                if current_time - scheduled_time > timedelta(hours=24):
+                    continue
+                    
+                if scheduled_time <= current_time:
+                    ready_posts.append(post)
+                else:
+                    remaining_posts.append(post)
+                    
+            except (ValueError, KeyError) as e:
+                logger.warning(f"Invalid post format: {str(e)}")
         
         if not ready_posts:
             logger.info("No posts ready for publishing")
+            if len(remaining_posts) != len(queued_posts):
+                logger.info(f"Cleaned {len(queued_posts) - len(remaining_posts)} old posts from queue")
             return {
+                "queued_posts": remaining_posts,
                 "current_stage": WorkflowStage.COMPLETE.value
             }
             
         return {
-            "ready_posts": ready_posts,
-            "remaining_posts": remaining_posts,
+            "ready_posts": ready_posts[:1],  # Only take one post at a time
+            "remaining_posts": remaining_posts + ready_posts[1:],  # Keep others in queue
             "current_stage": WorkflowStage.PUBLISHING.value
         }
         
@@ -74,6 +74,7 @@ async def publish_node(state: GonzoGraphState) -> Dict[str, Any]:
     try:
         ready_posts = state.get('ready_posts', [])
         remaining_posts = state.get('remaining_posts', [])
+        published_posts = state.get('published_posts', [])
         
         if not ready_posts:
             return {
@@ -81,7 +82,7 @@ async def publish_node(state: GonzoGraphState) -> Dict[str, Any]:
             }
         
         # Initialize publisher
-        publisher = Publisher.from_env(wait_time=2.0)  # Increased wait time for rate limits
+        publisher = Publisher.from_env(wait_time=10.0)  # Increased base wait time
         
         # Publish posts
         published = []
@@ -98,22 +99,19 @@ async def publish_node(state: GonzoGraphState) -> Dict[str, Any]:
                             'result': result
                         })
                     else:
-                        failed.append({
-                            'post': post,
-                            'error': result.get('error')
-                        })
+                        # Only retry rate limit errors
+                        error = str(result.get('error', '')).lower()
+                        if 'too many requests' in error or '429' in error:
+                            failed.append(post)
+                        else:
+                            logger.warning(f"Dropping post due to non-retryable error: {error}")
             except Exception as e:
-                failed.append({
-                    'post': post,
-                    'error': str(e)
-                })
+                logger.error(f"Error publishing post: {str(e)}")
         
-        # Update queue
-        updated_queue = remaining_posts + [f['post'] for f in failed]
-        
+        # Update state
         return {
-            "published_posts": published,
-            "queued_posts": updated_queue,
+            "published_posts": published_posts + published,
+            "queued_posts": remaining_posts + failed,
             "current_stage": WorkflowStage.COMPLETE.value
         }
         
