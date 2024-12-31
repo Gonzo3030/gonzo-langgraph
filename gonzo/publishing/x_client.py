@@ -25,8 +25,9 @@ class XClient:
         api_secret: str,
         access_token: str,
         access_token_secret: str,
-        wait_time: float = 5.0,
-        max_retries: int = 3
+        wait_time: float = 30.0,  # Increased default wait time
+        max_retries: int = 3,
+        initial_wait: float = 10.0  # Added initial wait before first tweet
     ):
         self.api_key = api_key
         self.api_secret = api_secret
@@ -35,9 +36,11 @@ class XClient:
         self.ssl_context = ssl.create_default_context(cafile=certifi.where())
         self.wait_time = wait_time
         self.max_retries = max_retries
+        self.initial_wait = initial_wait
         self.last_tweet_time = None
         self.rate_limit_start = None
-        logger.info("Initialized X client")
+        self._first_tweet = True
+        logger.info(f"Initialized X client (wait_time={wait_time}s, initial_wait={initial_wait}s)")
     
     def _generate_auth_headers(self, method: str, url: str) -> Dict[str, str]:
         """Generate OAuth 1.0a headers according to X API v2 spec."""
@@ -98,12 +101,20 @@ class XClient:
     
     async def _wait_for_rate_limit(self) -> None:
         """Ensure proper spacing between tweets."""
+        # Handle initial wait for first tweet
+        if self._first_tweet:
+            logger.info(f"Initial wait of {self.initial_wait}s before first tweet...")
+            await asyncio.sleep(self.initial_wait)
+            self._first_tweet = False
+            return
+
+        # Normal tweet spacing
         now = datetime.now()
         if self.last_tweet_time:
             elapsed = (now - self.last_tweet_time).total_seconds()
             if elapsed < self.wait_time:
                 wait_time = self.wait_time - elapsed
-                logger.info(f"Waiting {wait_time:.1f} seconds before next tweet...")
+                logger.info(f"Waiting {wait_time:.1f}s before next tweet...")
                 await asyncio.sleep(wait_time)
     
     async def create_tweet(
@@ -144,7 +155,7 @@ class XClient:
                         }
                     elif status == 429:
                         self.rate_limit_start = datetime.now()
-                        wait_time = 900 * (retry_count + 1)  # Exponential backoff
+                        wait_time = min(900 * (2 ** retry_count), 3600)  # Exponential backoff, max 1 hour
                         logger.warning(f"Rate limited. Waiting {wait_time/60:.1f} minutes...")
                         await asyncio.sleep(wait_time)
                         
@@ -198,7 +209,7 @@ class XClient:
         return results
     
     @classmethod
-    def from_env(cls, wait_time: float = 5.0) -> 'XClient':
+    def from_env(cls, wait_time: float = 30.0) -> 'XClient':
         """Create client from environment variables."""
         required = [
             'X_API_KEY',
