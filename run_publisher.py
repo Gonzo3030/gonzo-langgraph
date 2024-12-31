@@ -33,7 +33,7 @@ def init_environment() -> None:
         'X_API_KEY',       # For Twitter posting
         'X_API_SECRET',
         'X_ACCESS_TOKEN',
-        'X_ACCESS_TOKEN_SECRET'  # Changed to match x_client
+        'X_ACCESS_SECRET'
     ]
     
     # Check required variables
