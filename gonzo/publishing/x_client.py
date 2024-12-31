@@ -195,7 +195,7 @@ class XClient:
             'X_API_KEY',
             'X_API_SECRET',
             'X_ACCESS_TOKEN',
-            'X_ACCESS_TOKEN_SECRET'  # Changed to match environment variable name
+            'X_ACCESS_SECRET'
         ]
         
         missing = [var for var in required if not os.getenv(var)]
@@ -206,6 +206,6 @@ class XClient:
             api_key=os.getenv('X_API_KEY'),
             api_secret=os.getenv('X_API_SECRET'),
             access_token=os.getenv('X_ACCESS_TOKEN'),
-            access_token_secret=os.getenv('X_ACCESS_TOKEN_SECRET')  # Changed to match
+            access_token_secret=os.getenv('X_ACCESS_SECRET'),
             wait_time=wait_time
         )
