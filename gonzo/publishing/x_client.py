@@ -5,7 +5,6 @@ import logging
 import asyncio
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
-from zxcvbn import zxcvbn
 from tweepy import Client, Response
 
 logger = logging.getLogger(__name__)
