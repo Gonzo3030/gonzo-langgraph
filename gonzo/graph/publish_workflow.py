@@ -11,6 +11,18 @@ from ..publishing.publisher import Publisher
 
 logger = logging.getLogger(__name__)
 
+def parse_datetime(dt_str) -> datetime:
+    """Safely parse datetime string."""
+    try:
+        if isinstance(dt_str, datetime):
+            return dt_str
+        if isinstance(dt_str, bytes):
+            dt_str = dt_str.decode('utf-8')
+        return datetime.fromisoformat(dt_str)
+    except Exception as e:
+        logger.error(f"Error parsing datetime {dt_str}: {str(e)}")
+        return datetime.now()
+
 async def check_queue_node(state: GonzoGraphState) -> Dict[str, Any]:
     """Check queue for pending posts."""
     logger.info("Checking publishing queue")
@@ -29,7 +41,7 @@ async def check_queue_node(state: GonzoGraphState) -> Dict[str, Any]:
         current_time = datetime.now()
         
         for post in queued_posts:
-            scheduled_time = datetime.fromisoformat(post['scheduled_time'])
+            scheduled_time = parse_datetime(post['scheduled_time'])
             if scheduled_time <= current_time:
                 ready_posts.append(post)
             else:
