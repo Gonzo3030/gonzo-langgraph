@@ -23,6 +23,11 @@ async def check_queue_node(state: GonzoGraphState) -> Dict[str, Any]:
                 "current_stage": WorkflowStage.COMPLETE.value
             }
         
+        # Debug log the state
+        for post in queued_posts:
+            logger.debug(f"Post in queue: {post}")
+            logger.debug(f"Scheduled time type: {type(post.get('scheduled_time'))}, value: {post.get('scheduled_time')}")
+        
         # Clean up old posts and sort by scheduled time
         current_time = datetime.now()
         ready_posts = []
@@ -30,19 +35,27 @@ async def check_queue_node(state: GonzoGraphState) -> Dict[str, Any]:
         
         for post in queued_posts:
             try:
-                scheduled_time = datetime.fromisoformat(post['scheduled_time'])
+                scheduled_time = post.get('scheduled_time')
+                if isinstance(scheduled_time, dict):
+                    # Handle datetime objects that were serialized as dicts
+                    scheduled_time = scheduled_time.get('isoformat', scheduled_time.get('__str__'))
+                elif not isinstance(scheduled_time, str):
+                    logger.warning(f"Invalid scheduled_time format: {scheduled_time}, type: {type(scheduled_time)}")
+                    continue
+                
+                scheduled_dt = datetime.fromisoformat(scheduled_time)
                 
                 # Skip posts older than 24 hours
-                if current_time - scheduled_time > timedelta(hours=24):
+                if current_time - scheduled_dt > timedelta(hours=24):
                     continue
                     
-                if scheduled_time <= current_time:
+                if scheduled_dt <= current_time:
                     ready_posts.append(post)
                 else:
                     remaining_posts.append(post)
                     
-            except (ValueError, KeyError) as e:
-                logger.warning(f"Invalid post format: {str(e)}")
+            except (ValueError, KeyError, TypeError) as e:
+                logger.warning(f"Invalid post format: {str(e)}; post: {post}")
         
         if not ready_posts:
             logger.info("No posts ready for publishing")
