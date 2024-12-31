@@ -25,7 +25,8 @@ class XClient:
         api_secret: str,
         access_token: str,
         access_token_secret: str,
-        wait_time: float = 5.0
+        wait_time: float = 5.0,
+        max_retries: int = 3
     ):
         self.api_key = api_key
         self.api_secret = api_secret
@@ -33,7 +34,9 @@ class XClient:
         self.access_token_secret = access_token_secret
         self.ssl_context = ssl.create_default_context(cafile=certifi.where())
         self.wait_time = wait_time
+        self.max_retries = max_retries
         self.last_tweet_time = None
+        self.rate_limit_start = None
         logger.info("Initialized X client")
     
     def _generate_auth_headers(self, method: str, url: str) -> Dict[str, str]:
@@ -83,6 +86,16 @@ class XClient:
             'Content-Type': 'application/json'
         }
     
+    async def _check_rate_limit(self) -> None:
+        """Check if we're currently rate limited and wait if necessary."""
+        if self.rate_limit_start:
+            elapsed = (datetime.now() - self.rate_limit_start).total_seconds()
+            if elapsed < 900:  # 15 minutes
+                wait_time = 900 - elapsed
+                logger.info(f"Still in rate limit window. Waiting {wait_time:.1f} seconds...")
+                await asyncio.sleep(wait_time)
+            self.rate_limit_start = None
+    
     async def _wait_for_rate_limit(self) -> None:
         """Ensure proper spacing between tweets."""
         now = datetime.now()
@@ -92,14 +105,17 @@ class XClient:
                 wait_time = self.wait_time - elapsed
                 logger.info(f"Waiting {wait_time:.1f} seconds before next tweet...")
                 await asyncio.sleep(wait_time)
-        self.last_tweet_time = datetime.now()
     
     async def create_tweet(
         self,
         text: str,
-        reply_to: Optional[str] = None
+        reply_to: Optional[str] = None,
+        retry_count: int = 0
     ) -> Dict[str, Any]:
-        """Create a tweet with rate limiting."""
+        """Create a tweet with rate limiting and retries."""
+        # Check if we're rate limited first
+        await self._check_rate_limit()
+        
         # Ensure proper spacing between tweets
         await self._wait_for_rate_limit()
         
@@ -120,16 +136,29 @@ class XClient:
                     
                     if status == 201 and 'data' in result:
                         logger.info("Successfully posted tweet")
+                        self.last_tweet_time = datetime.now()  # Update only after successful tweet
                         return {
                             'success': True,
                             'id': str(result['data']['id']),
                             'text': text
                         }
                     elif status == 429:
-                        logger.warning("Rate limited. Waiting 15 minutes...")
-                        await asyncio.sleep(900)  # 15 minutes
-                        logger.info("Retrying tweet after rate limit wait...")
-                        return await self.create_tweet(text, reply_to)
+                        self.rate_limit_start = datetime.now()
+                        wait_time = 900 * (retry_count + 1)  # Exponential backoff
+                        logger.warning(f"Rate limited. Waiting {wait_time/60:.1f} minutes...")
+                        await asyncio.sleep(wait_time)
+                        
+                        if retry_count < self.max_retries:
+                            logger.info("Retrying tweet after rate limit wait...")
+                            return await self.create_tweet(text, reply_to, retry_count + 1)
+                        else:
+                            error_msg = "Max retries exceeded after rate limiting"
+                            logger.error(error_msg)
+                            return {
+                                'success': False,
+                                'error': error_msg,
+                                'status': status
+                            }
                     else:
                         error_msg = f"Error posting tweet: {result}"
                         logger.error(error_msg)
