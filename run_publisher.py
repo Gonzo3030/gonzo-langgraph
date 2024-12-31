@@ -10,6 +10,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 from gonzo.state_management import WorkflowStage, create_empty_graph_state
+from gonzo.state_management.storage import GonzoStateStore
 from gonzo.graph.publish_workflow import create_publish_workflow
 from gonzo.tracing import init_tracing
 
@@ -19,6 +20,9 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Initialize state store
+state_store = GonzoStateStore()
 
 def init_environment() -> None:
     """Initialize environment variables and tracing."""
@@ -47,11 +51,12 @@ async def run_publish_cycle():
         # Create workflow
         workflow, memory = create_publish_workflow()
         
-        # Use existing state or create new
-        try:
-            last_state = memory.get_latest()
-            logger.info('Retrieved existing state')
-        except:
+        # Load state from storage
+        stored_state = state_store.load_state()
+        if stored_state:
+            logger.info('Retrieved state from storage')
+            last_state = stored_state
+        else:
             last_state = create_empty_graph_state()
             logger.info('Created new state')
         
@@ -60,6 +65,9 @@ async def run_publish_cycle():
         config = {"configurable": {"thread_id": f"publisher_{datetime.now().strftime('%Y%m%d_%H%M%S')}"}}        
         
         current_state = await graph.ainvoke(last_state, config)
+        
+        # Save updated state
+        state_store.save_state(current_state)
         
         logger.info(
             f"Published posts: {len(current_state.get('published_posts', []))}, "
