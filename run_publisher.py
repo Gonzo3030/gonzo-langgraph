@@ -26,16 +26,21 @@ state_store = GonzoStateStore()
 
 # Global shutdown flag
 shutdown_flag = False
+runner = None
 
 def handle_sigint(signum, frame):
-    """Handle SIGINT (Ctrl+C) more aggressively."""
-    global shutdown_flag
+    """Handle SIGINT (Ctrl+C) more gracefully."""
+    global shutdown_flag, runner
     if shutdown_flag:  # If flag is already set, force exit
         logger.info('Forced shutdown...')
+        if runner:
+            asyncio.create_task(runner.stop(force=True))
         sys.exit(1)
     else:
         shutdown_flag = True
         logger.info('Graceful shutdown initiated... (Ctrl+C again to force)')
+        if runner:
+            asyncio.create_task(runner.stop())
 
 def init_environment() -> None:
     """Initialize environment variables and tracing."""
@@ -58,50 +63,12 @@ def init_environment() -> None:
     if os.getenv('LANGCHAIN_API_KEY'):
         init_tracing()
 
-async def run_publish_cycle():
-    """Run a single publishing cycle."""
-    try:
-        # Check shutdown flag
-        if shutdown_flag:
-            return None
-            
-        # Create workflow
-        workflow, memory = create_publish_workflow()
-        
-        # Load state from storage
-        stored_state = state_store.load_state()
-        if stored_state:
-            logger.info('Retrieved state from storage')
-            last_state = stored_state
-        else:
-            last_state = create_empty_graph_state()
-            logger.info('Created new state')
-        
-        # Run workflow
-        graph = workflow.compile(checkpointer=memory)
-        config = {"configurable": {"thread_id": f"publisher_{datetime.now().strftime('%Y%m%d_%H%M%S')}"}}        
-        
-        current_state = await graph.ainvoke(last_state, config)
-        
-        # Save updated state
-        state_store.save_state(current_state)
-        
-        logger.info(
-            f"Published posts: {len(current_state.get('published_posts', []))}, "
-            f"Remaining in queue: {len(current_state.get('queued_posts', []))}"
-        )
-        
-        return current_state
-        
-    except Exception as e:
-        logger.error(f'Error in publish cycle: {str(e)}')
-        return None
-
 class PublisherRunner:
     """Manages continuous publishing operation."""
     
     def __init__(self):
         self.running = False
+        self.current_workflow = None
         
     async def start(self):
         """Start continuous publishing operation."""
@@ -116,19 +83,54 @@ class PublisherRunner:
             
             while not shutdown_flag:
                 try:
-                    await run_publish_cycle()
+                    # Create new workflow for each cycle
+                    workflow, memory = create_publish_workflow()
+                    self.current_workflow = workflow
+                    
+                    # Load state from storage
+                    stored_state = state_store.load_state()
+                    if stored_state:
+                        logger.info('Retrieved state from storage')
+                        last_state = stored_state
+                    else:
+                        last_state = create_empty_graph_state()
+                        logger.info('Created new state')
+                    
+                    # Run workflow
+                    graph = workflow.compile(checkpointer=memory)
+                    config = {"configurable": {"thread_id": f"publisher_{datetime.now().strftime('%Y%m%d_%H%M%S')}"}}        
+                    
+                    current_state = await graph.ainvoke(last_state, config)
+                    
+                    # Save updated state
+                    if not shutdown_flag:  # Only save if not shutting down
+                        state_store.save_state(current_state)
+                        
+                        logger.info(
+                            f"Published posts: {len(current_state.get('published_posts', []))}, "
+                            f"Remaining in queue: {len(current_state.get('queued_posts', []))}"
+                        )
+                    
                     if shutdown_flag:
                         break
+                        
+                except asyncio.CancelledError:
+                    logger.info('Workflow cancelled')
+                    break
                 except Exception as e:
                     logger.error(f'Error in publish cycle: {str(e)}')
                     if shutdown_flag:
                         break
                 
                 # Check queue every minute
-                for _ in range(60):  # Check shutdown flag every second
-                    if shutdown_flag:
+                if not shutdown_flag:
+                    try:
+                        for _ in range(60):  # Check shutdown flag every second
+                            if shutdown_flag:
+                                break
+                            await asyncio.sleep(1)
+                    except asyncio.CancelledError:
                         break
-                    await asyncio.sleep(1)
                 
         except Exception as e:
             logger.error(f'Failed to run publisher: {str(e)}')
@@ -137,9 +139,25 @@ class PublisherRunner:
         finally:
             self.running = False
             logger.info('Publisher stopped')
+    
+    async def stop(self, force: bool = False):
+        """Stop the publisher gracefully."""
+        if self.current_workflow:
+            # Cancel current workflow
+            try:
+                # Attempt to cancel any running tasks
+                tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+                for task in tasks:
+                    task.cancel()
+                if tasks:
+                    await asyncio.gather(*tasks, return_exceptions=True)
+            except Exception as e:
+                logger.error(f"Error stopping workflow: {e}")
 
 def run_publisher():
     """Main execution function"""
+    global runner
+    
     # Setup SIGINT handler
     signal.signal(signal.SIGINT, handle_sigint)
     
