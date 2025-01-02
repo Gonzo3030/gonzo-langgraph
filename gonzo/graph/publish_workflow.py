@@ -27,11 +27,37 @@ def get_datetime(value: Any) -> Optional[datetime]:
             return None
     return None
 
+def clean_queue(posts: List[Dict], window_hours: int = 24) -> List[Dict]:
+    """Remove duplicate and old posts from queue."""
+    current_time = datetime.now()
+    unique_posts = {}
+    
+    for post in posts:
+        try:
+            scheduled_time = get_datetime(post.get('scheduled_time'))
+            if not scheduled_time:
+                continue
+                
+            # Skip posts older than window_hours
+            if current_time - scheduled_time > timedelta(hours=window_hours):
+                continue
+                
+            # Use content hash as key to prevent duplicates
+            content_hash = '|'.join(post.get('insight', {}).get('thread', []))
+            if content_hash and content_hash not in unique_posts:
+                unique_posts[content_hash] = post
+                
+        except Exception:
+            continue
+    
+    return list(unique_posts.values())
+
 async def check_queue_node(state: GonzoGraphState) -> Dict[str, Any]:
     """Check queue for pending posts."""
     logger.info("Checking publishing queue")
     
     try:
+        # Get and clean queue
         queued_posts = state.get('queued_posts', [])
         if not queued_posts:
             logger.info("No posts in queue")
@@ -39,7 +65,10 @@ async def check_queue_node(state: GonzoGraphState) -> Dict[str, Any]:
                 "current_stage": WorkflowStage.COMPLETE.value
             }
         
-        # Clean up old posts and sort by scheduled time
+        # Clean up queue first
+        queued_posts = clean_queue(queued_posts)
+        
+        # Process remaining posts
         current_time = datetime.now()
         ready_posts = []
         remaining_posts = []
@@ -49,11 +78,6 @@ async def check_queue_node(state: GonzoGraphState) -> Dict[str, Any]:
                 scheduled_time = get_datetime(post.get('scheduled_time'))
                 if not scheduled_time:
                     logger.warning(f"Could not parse scheduled time from post: {post.get('scheduled_time')}")
-                    continue
-                
-                # Skip posts older than 24 hours
-                if current_time - scheduled_time > timedelta(hours=24):
-                    logger.info(f"Skipping post scheduled for {scheduled_time} (too old)")
                     continue
                     
                 if scheduled_time <= current_time:
@@ -68,8 +92,6 @@ async def check_queue_node(state: GonzoGraphState) -> Dict[str, Any]:
         
         if not ready_posts:
             logger.info("No posts ready for publishing")
-            if len(remaining_posts) != len(queued_posts):
-                logger.info(f"Cleaned {len(queued_posts) - len(remaining_posts)} old posts from queue")
             return {
                 "queued_posts": remaining_posts,
                 "current_stage": WorkflowStage.COMPLETE.value
@@ -78,7 +100,7 @@ async def check_queue_node(state: GonzoGraphState) -> Dict[str, Any]:
         logger.info(f"Found {len(ready_posts)} posts ready for publishing, {len(remaining_posts)} remaining in queue")
         return {
             "ready_posts": ready_posts[:1],  # Only take one post at a time
-            "remaining_posts": remaining_posts + ready_posts[1:],  # Keep others in queue
+            "queued_posts": remaining_posts + ready_posts[1:],  # Keep others in queue
             "current_stage": WorkflowStage.PUBLISHING.value
         }
         
@@ -96,7 +118,7 @@ async def publish_node(state: GonzoGraphState) -> Dict[str, Any]:
     
     try:
         ready_posts = state.get('ready_posts', [])
-        remaining_posts = state.get('remaining_posts', [])
+        remaining_posts = state.get('queued_posts', [])
         published_posts = state.get('published_posts', [])
         
         if not ready_posts:
@@ -104,8 +126,8 @@ async def publish_node(state: GonzoGraphState) -> Dict[str, Any]:
                 "current_stage": WorkflowStage.COMPLETE.value
             }
         
-        # Initialize publisher with 30s wait time
-        publisher = Publisher.from_env(wait_time=30.0)
+        # Initialize publisher with 3s wait time for tweets in thread
+        publisher = Publisher.from_env(wait_time=3.0)
         
         # Publish posts
         published = []
@@ -120,13 +142,15 @@ async def publish_node(state: GonzoGraphState) -> Dict[str, Any]:
                         published.append({
                             'post': post,
                             'result': result,
-                            'published_at': datetime.now()
+                            'published_at': datetime.now().isoformat()
                         })
                         logger.info("Successfully published thread")
                     else:
-                        # Only retry rate limit errors
                         error = str(result.get('error', '')).lower()
-                        if 'too many requests' in error or '429' in error:
+                        if 'duplicate content' in error:
+                            logger.info("Skipping duplicate content")
+                            # Don't add to failed - it's already been published
+                        elif 'too many requests' in error or '429' in error:
                             failed.append(post)
                             logger.info("Rate limited, will retry later")
                         else:
@@ -134,10 +158,13 @@ async def publish_node(state: GonzoGraphState) -> Dict[str, Any]:
             except Exception as e:
                 logger.error(f"Error publishing post: {str(e)}")
         
+        # Clean remaining queue
+        cleaned_queue = clean_queue(remaining_posts + failed)
+        
         # Update state
         return {
             "published_posts": published_posts + published,
-            "queued_posts": remaining_posts + failed,
+            "queued_posts": cleaned_queue,
             "current_stage": WorkflowStage.COMPLETE.value
         }
         
