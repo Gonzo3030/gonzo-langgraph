@@ -26,9 +26,9 @@ class XClient:
         api_secret: str,
         access_token: str,
         access_token_secret: str,
-        wait_time: float = 60.0,  # Default 1 minute between tweets
+        wait_time: float = 3.0,  # 3s between tweets in a thread
         max_retries: int = 3,
-        initial_wait: float = 30.0  # 30s initial wait
+        initial_wait: float = 5.0  # 5s before starting thread
     ):
         self.api_key = api_key
         self.api_secret = api_secret
@@ -39,38 +39,9 @@ class XClient:
         self.max_retries = max_retries
         self.initial_wait = initial_wait
         self.last_tweet_time = None
-        self.rate_limit_start = self._load_rate_limit_state()
+        self.rate_limit_start = None
         self._first_tweet = True
         logger.info(f"Initialized X client (wait_time={wait_time}s, initial_wait={initial_wait}s)")
-    
-    def _get_rate_limit_file(self) -> str:
-        """Get path to rate limit state file."""
-        return os.path.join(os.path.dirname(__file__), 'rate_limit_state.json')
-    
-    def _load_rate_limit_state(self) -> Optional[datetime]:
-        """Load rate limit state from file."""
-        try:
-            file_path = self._get_rate_limit_file()
-            if os.path.exists(file_path):
-                with open(file_path, 'r') as f:
-                    data = json.load(f)
-                    if data.get('rate_limit_start'):
-                        return datetime.fromisoformat(data['rate_limit_start'])
-        except Exception as e:
-            logger.error(f"Error loading rate limit state: {e}")
-        return None
-    
-    def _save_rate_limit_state(self) -> None:
-        """Save rate limit state to file."""
-        try:
-            file_path = self._get_rate_limit_file()
-            data = {
-                'rate_limit_start': self.rate_limit_start.isoformat() if self.rate_limit_start else None
-            }
-            with open(file_path, 'w') as f:
-                json.dump(data, f)
-        except Exception as e:
-            logger.error(f"Error saving rate limit state: {e}")
     
     def _generate_auth_headers(self, method: str, url: str) -> Dict[str, str]:
         """Generate OAuth 1.0a headers according to X API v2 spec."""
@@ -128,33 +99,31 @@ class XClient:
                 logger.warning(f"Still in rate limit window. Waiting {wait_time:.1f} seconds...")
                 await asyncio.sleep(wait_time)
             self.rate_limit_start = None
-            self._save_rate_limit_state()
     
     async def _wait_for_rate_limit(self) -> None:
         """Ensure proper spacing between tweets."""
-        # Handle initial wait for first tweet
+        # Handle initial wait for first tweet in thread
         if self._first_tweet:
-            logger.info(f"Initial wait of {self.initial_wait}s before first tweet...")
+            logger.info(f"Initial wait of {self.initial_wait}s before starting thread...")
             await asyncio.sleep(self.initial_wait)
             self._first_tweet = False
             return
 
-        # Normal tweet spacing
+        # Normal tweet spacing within thread
         now = datetime.now()
         if self.last_tweet_time:
             elapsed = (now - self.last_tweet_time).total_seconds()
             if elapsed < self.wait_time:
                 wait_time = self.wait_time - elapsed
-                logger.info(f"Waiting {wait_time:.1f}s before next tweet...")
+                logger.info(f"Waiting {wait_time:.1f}s before next tweet in thread...")
                 await asyncio.sleep(wait_time)
     
     async def create_tweet(
         self,
         text: str,
-        reply_to: Optional[str] = None,
-        retry_count: int = 0
+        reply_to: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Create a tweet with rate limiting and retries."""
+        """Create a tweet with rate limiting."""
         # Check if we're rate limited first
         await self._check_rate_limit()
         
@@ -186,14 +155,13 @@ class XClient:
                         }
                     elif status == 429:
                         self.rate_limit_start = datetime.now()
-                        self._save_rate_limit_state()
                         wait_time = min(900 * (2 ** retry_count), 3600)  # Exponential backoff, max 1 hour
                         logger.warning(f"Rate limited. Waiting {wait_time/60:.1f} minutes...")
                         await asyncio.sleep(wait_time)
                         
                         if retry_count < self.max_retries:
                             logger.info("Retrying tweet after rate limit wait...")
-                            return await self.create_tweet(text, reply_to, retry_count + 1)
+                            return await self.create_tweet(text, reply_to)
                         else:
                             error_msg = "Max retries exceeded after rate limiting"
                             logger.error(error_msg)
@@ -221,9 +189,6 @@ class XClient:
     
     async def create_thread(self, tweets: List[str]) -> List[Dict[str, Any]]:
         """Create a thread of tweets with rate limiting."""
-        # Check rate limit state at start of thread
-        await self._check_rate_limit()
-        
         results = []
         reply_to = None
         
@@ -244,7 +209,7 @@ class XClient:
         return results
     
     @classmethod
-    def from_env(cls, wait_time: float = 60.0) -> 'XClient':
+    def from_env(cls, wait_time: float = 3.0) -> 'XClient':
         """Create client from environment variables."""
         required = [
             'X_API_KEY',
