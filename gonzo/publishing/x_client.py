@@ -1,4 +1,4 @@
-"""X (Twitter) API client implementation with enhanced error logging."""
+"""X (Twitter) API client implementation with enhanced tweet limit handling."""
 import os
 import ssl
 import hmac
@@ -9,16 +9,54 @@ import certifi
 import logging
 import asyncio
 import urllib.parse
-from typing import Dict, List, Any, Optional
-from datetime import datetime
+from typing import Dict, List, Any, Optional, Tuple
+from datetime import datetime, timezone
 import aiohttp
 import hashlib
 import secrets
 
 logger = logging.getLogger(__name__)
 
+class TweetLimit:
+    """Track and manage tweet limits."""
+    
+    def __init__(self, headers: Dict[str, str]):
+        """Initialize from API response headers."""
+        self.app_limit = int(headers.get('x-app-limit-24hour-limit', '17'))
+        self.app_remaining = int(headers.get('x-app-limit-24hour-remaining', '0'))
+        self.user_limit = int(headers.get('x-user-limit-24hour-limit', '17'))
+        self.user_remaining = int(headers.get('x-user-limit-24hour-remaining', '0'))
+        self.reset_timestamp = int(headers.get('x-app-limit-24hour-reset', '0'))
+        
+    @property
+    def can_tweet(self) -> bool:
+        """Check if tweeting is allowed."""
+        return self.app_remaining > 0 and self.user_remaining > 0
+    
+    @property
+    def wait_seconds(self) -> int:
+        """Calculate seconds until reset."""
+        now = int(datetime.now(timezone.utc).timestamp())
+        return max(0, self.reset_timestamp - now)
+    
+    @property
+    def reset_time(self) -> datetime:
+        """Get reset time as datetime."""
+        return datetime.fromtimestamp(self.reset_timestamp, timezone.utc)
+    
+    def __str__(self) -> str:
+        """Human readable limit status."""
+        reset_time_str = self.reset_time.strftime('%Y-%m-%d %H:%M:%S UTC')
+        return (
+            f"Tweet Limits:\n"
+            f"  App:  {self.app_remaining}/{self.app_limit} remaining\n"
+            f"  User: {self.user_remaining}/{self.user_limit} remaining\n"
+            f"  Resets at: {reset_time_str}\n"
+            f"  Wait time: {self.wait_seconds//3600}h {(self.wait_seconds%3600)//60}m"
+        )
+
 class XClient:
-    """Wrapper for X API interactions with rate limiting."""
+    """Wrapper for X API interactions with enhanced limit handling."""
     
     def __init__(
         self,
@@ -39,8 +77,8 @@ class XClient:
         self.max_retries = max_retries
         self.initial_wait = initial_wait
         self.last_tweet_time = None
-        self.rate_limit_start = None
         self._first_tweet = True
+        self.tweet_limit: Optional[TweetLimit] = None
         logger.info(f"Initialized X client (wait_time={wait_time}s, initial_wait={initial_wait}s)")
     
     def _generate_auth_headers(self, method: str, url: str) -> Dict[str, str]:
@@ -85,11 +123,6 @@ class XClient:
             for key, value in params.items()
         ])
         
-        # Log OAuth details for debugging
-        logger.debug(f"OAuth Signature Base String: {signature_base}")
-        logger.debug(f"OAuth Signature: {signature}")
-        logger.debug(f"OAuth Header: {auth_header}")
-        
         return {
             'Authorization': auth_header,
             'Content-Type': 'application/json'
@@ -97,14 +130,12 @@ class XClient:
     
     async def _wait_for_rate_limit(self) -> None:
         """Ensure proper spacing between tweets."""
-        # Handle initial wait for first tweet in thread
         if self._first_tweet:
             logger.info(f"Initial wait of {self.initial_wait}s before starting thread...")
             await asyncio.sleep(self.initial_wait)
             self._first_tweet = False
             return
 
-        # Normal tweet spacing within thread
         now = datetime.now()
         if self.last_tweet_time:
             elapsed = (now - self.last_tweet_time).total_seconds()
@@ -113,15 +144,35 @@ class XClient:
                 logger.info(f"Waiting {wait_time:.1f}s before next tweet in thread...")
                 await asyncio.sleep(wait_time)
     
+    def _update_tweet_limit(self, headers: Dict[str, str]):
+        """Update tweet limit tracking from response headers."""
+        self.tweet_limit = TweetLimit(headers)
+        if not self.tweet_limit.can_tweet:
+            logger.warning(str(self.tweet_limit))
+    
     async def create_tweet(
         self,
         text: str,
         reply_to: Optional[str] = None,
         retry_count: int = 0
     ) -> Dict[str, Any]:
-        """Create a tweet with rate limiting and retries."""
+        """Create a tweet with enhanced limit handling."""
         try:
-            # Ensure proper spacing between tweets
+            # Check existing limit before attempting
+            if self.tweet_limit and not self.tweet_limit.can_tweet:
+                wait_time = self.tweet_limit.wait_seconds
+                if wait_time > 0:
+                    error_msg = (
+                        f"Tweet limit reached. Must wait {wait_time//3600}h "
+                        f"{(wait_time%3600)//60}m until {self.tweet_limit.reset_time}"
+                    )
+                    logger.error(error_msg)
+                    return {
+                        'success': False,
+                        'error': error_msg,
+                        'limit_info': str(self.tweet_limit)
+                    }
+            
             await self._wait_for_rate_limit()
             
             url = 'https://api.twitter.com/2/tweets'
@@ -131,20 +182,16 @@ class XClient:
             
             headers = self._generate_auth_headers('POST', url)
             logger.info("Attempting to post tweet...")
-            logger.debug(f"Request URL: {url}")
-            logger.debug(f"Request data: {data}")
             
             connector = aiohttp.TCPConnector(ssl=self.ssl_context)
             async with aiohttp.ClientSession(connector=connector) as session:
                 async with session.post(url, headers=headers, json=data) as response:
-                    status = response.status
                     result = await response.json()
+                    status = response.status
                     response_headers = dict(response.headers)
                     
-                    # Log complete response details
-                    logger.debug(f"Response status: {status}")
-                    logger.debug(f"Response headers: {response_headers}")
-                    logger.debug(f"Response body: {result}")
+                    # Always update limit tracking
+                    self._update_tweet_limit(response_headers)
                     
                     if status == 201 and 'data' in result:
                         logger.info("Successfully posted tweet")
@@ -152,33 +199,18 @@ class XClient:
                         return {
                             'success': True,
                             'id': str(result['data']['id']),
-                            'text': text
+                            'text': text,
+                            'limit_info': str(self.tweet_limit)
                         }
-                    elif status == 429:  # Rate limit
-                        # Log rate limit details
-                        reset_time = response_headers.get('x-rate-limit-reset')
-                        remaining = response_headers.get('x-rate-limit-remaining')
-                        logger.warning(f"Rate limit details - Reset: {reset_time}, Remaining: {remaining}")
-                        logger.warning(f"Full error response: {result}")
-                        
-                        self.rate_limit_start = datetime.now()
-                        wait_time = min(900 * (2 ** retry_count), 3600)  # Exponential backoff, max 1 hour
-                        logger.warning(f"Rate limited. Waiting {wait_time/60:.1f} minutes...")
-                        await asyncio.sleep(wait_time)
-                        
-                        if retry_count < self.max_retries:
-                            logger.info("Retrying tweet after rate limit wait...")
-                            return await self.create_tweet(text, reply_to, retry_count + 1)
-                        else:
-                            error_msg = "Max retries exceeded after rate limiting"
-                            logger.error(error_msg)
-                            return {
-                                'success': False,
-                                'error': error_msg,
-                                'status': status,
-                                'headers': response_headers,
-                                'details': result
-                            }
+                    elif status == 429:  # Rate/Tweet limit
+                        error_msg = f"Tweet limit reached: {result.get('detail', 'Unknown error')}"
+                        logger.error(error_msg)
+                        return {
+                            'success': False,
+                            'error': error_msg,
+                            'limit_info': str(self.tweet_limit),
+                            'reset_time': self.tweet_limit.reset_time if self.tweet_limit else None
+                        }
                     else:
                         error_msg = f"Error posting tweet: {result}"
                         logger.error(error_msg)
@@ -187,7 +219,7 @@ class XClient:
                             'error': result,
                             'status': status,
                             'headers': response_headers,
-                            'details': result
+                            'limit_info': str(self.tweet_limit)
                         }
                     
         except Exception as e:
@@ -197,6 +229,23 @@ class XClient:
                 'success': False,
                 'error': error_msg
             }
+    
+    async def get_tweet_limit(self) -> Optional[TweetLimit]:
+        """Get current tweet limit status."""
+        try:
+            # Make a minimal API call to get limit headers
+            url = 'https://api.twitter.com/2/users/me'
+            headers = self._generate_auth_headers('GET', url)
+            
+            connector = aiohttp.TCPConnector(ssl=self.ssl_context)
+            async with aiohttp.ClientSession(connector=connector) as session:
+                async with session.get(url, headers=headers) as response:
+                    self._update_tweet_limit(dict(response.headers))
+                    return self.tweet_limit
+                    
+        except Exception as e:
+            logger.error(f"Error getting tweet limit: {str(e)}")
+            return None
     
     @classmethod
     def from_env(cls, wait_time: float = 3.0) -> 'XClient':
