@@ -1,4 +1,4 @@
-"""X (Twitter) API client implementation."""
+"""X (Twitter) API client implementation with enhanced error logging."""
 import os
 import ssl
 import hmac
@@ -85,6 +85,11 @@ class XClient:
             for key, value in params.items()
         ])
         
+        # Log OAuth details for debugging
+        logger.debug(f"OAuth Signature Base String: {signature_base}")
+        logger.debug(f"OAuth Signature: {signature}")
+        logger.debug(f"OAuth Header: {auth_header}")
+        
         return {
             'Authorization': auth_header,
             'Content-Type': 'application/json'
@@ -126,12 +131,20 @@ class XClient:
             
             headers = self._generate_auth_headers('POST', url)
             logger.info("Attempting to post tweet...")
+            logger.debug(f"Request URL: {url}")
+            logger.debug(f"Request data: {data}")
             
             connector = aiohttp.TCPConnector(ssl=self.ssl_context)
             async with aiohttp.ClientSession(connector=connector) as session:
                 async with session.post(url, headers=headers, json=data) as response:
-                    result = await response.json()
                     status = response.status
+                    result = await response.json()
+                    response_headers = dict(response.headers)
+                    
+                    # Log complete response details
+                    logger.debug(f"Response status: {status}")
+                    logger.debug(f"Response headers: {response_headers}")
+                    logger.debug(f"Response body: {result}")
                     
                     if status == 201 and 'data' in result:
                         logger.info("Successfully posted tweet")
@@ -142,6 +155,12 @@ class XClient:
                             'text': text
                         }
                     elif status == 429:  # Rate limit
+                        # Log rate limit details
+                        reset_time = response_headers.get('x-rate-limit-reset')
+                        remaining = response_headers.get('x-rate-limit-remaining')
+                        logger.warning(f"Rate limit details - Reset: {reset_time}, Remaining: {remaining}")
+                        logger.warning(f"Full error response: {result}")
+                        
                         self.rate_limit_start = datetime.now()
                         wait_time = min(900 * (2 ** retry_count), 3600)  # Exponential backoff, max 1 hour
                         logger.warning(f"Rate limited. Waiting {wait_time/60:.1f} minutes...")
@@ -156,7 +175,9 @@ class XClient:
                             return {
                                 'success': False,
                                 'error': error_msg,
-                                'status': status
+                                'status': status,
+                                'headers': response_headers,
+                                'details': result
                             }
                     else:
                         error_msg = f"Error posting tweet: {result}"
@@ -164,7 +185,9 @@ class XClient:
                         return {
                             'success': False,
                             'error': result,
-                            'status': status
+                            'status': status,
+                            'headers': response_headers,
+                            'details': result
                         }
                     
         except Exception as e:
